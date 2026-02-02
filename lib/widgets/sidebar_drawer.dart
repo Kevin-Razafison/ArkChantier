@@ -42,8 +42,9 @@ class SidebarDrawer extends StatelessWidget {
               _buildItem(Icons.dashboard, "Dashboard", 0),
               _buildItem(Icons.business, "Chantiers", 1),
               _buildItem(Icons.people, "Ouvriers", 2),
-              _buildItem(Icons.inventory_2, "Matériel", 3),
-              _buildItem(Icons.settings, "Paramètres", 4),
+              _buildItem(Icons.bar_chart, "Statistiques", 3), // Nouvel onglet inséré
+              _buildItem(Icons.inventory_2, "Matériel", 4),   // Index décalé
+              _buildItem(Icons.settings, "Paramètres", 5),    // Index décalé
               const Spacer(),
             ],
           ),
@@ -51,19 +52,21 @@ class SidebarDrawer extends StatelessWidget {
       ),
     );
   }
+
   Widget _buildItem(IconData icon, String label, int index) {
     bool isSelected = currentIndex == index;
     
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
       decoration: BoxDecoration(
-        color: isSelected ? Colors.white.withOpacity(0.1) : Colors.transparent,
+        // Utilisation de withValues pour éviter le warning de dépréciation
+        color: isSelected ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
       ),
       child: ListTile(
         leading: Icon(
           icon, 
-          color: isSelected ? const Color(0xFFFFD700) : Colors.white70 // Or (Gold) si sélectionné
+          color: isSelected ? const Color(0xFFFFD700) : Colors.white70
         ),
         title: Text(
           label, 
@@ -73,7 +76,6 @@ class SidebarDrawer extends StatelessWidget {
             fontSize: 14
           ),
         ),
-        // La petite barre verticale Gold à gauche
         shape: isSelected 
             ? const Border(left: BorderSide(color: Color(0xFFFFD700), width: 4)) 
             : null,

@@ -16,7 +16,7 @@ class ChantierApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        primarySwatch: Colors.blue,
+        primaryColor: const Color(0xFF1A334D),
       ),
       home: const MainShell(),
     );
@@ -41,23 +41,20 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
-    // Détection de la taille d'écran
     bool isMobile = MediaQuery.of(context).size.width < 800;
     
-    // Définition des pages
+    // Définition des pages (L'ordre ici doit correspondre exactement au Sidebar)
     final List<Widget> pages = [
-      DashboardView(user: currentUser), 
-      const ChantiersScreen(),
-      const OuvriersScreen(),
-      const StatsScreen(),
-      const Center(child: Text("Stocks Matériel")), 
-      const Center(child: Text("Paramètres")), 
+      DashboardView(user: currentUser),             // Index 0
+      const ChantiersScreen(),                     // Index 1
+      const OuvriersScreen(),                      // Index 2
+      const StatsScreen(),                         // Index 3
+      const Center(child: Text("Stocks Matériel")), // Index 4
+      const Center(child: Text("Paramètres")),      // Index 5
     ];
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7F9),
-      
-      // L'AppBar n'apparaît que sur Mobile pour porter le bouton Hamburger
       appBar: isMobile 
         ? AppBar(
             title: const Text("ArkChantier", style: TextStyle(color: Colors.white, fontSize: 18)),
@@ -65,8 +62,6 @@ class _MainShellState extends State<MainShell> {
             iconTheme: const IconThemeData(color: Colors.white),
           ) 
         : null,
-      
-      // Drawer (Menu coulissant) activé uniquement sur Mobile
       drawer: isMobile 
         ? Drawer(
             child: SidebarDrawer(
@@ -79,7 +74,6 @@ class _MainShellState extends State<MainShell> {
             )
           ) 
         : null,
-
       body: Row(
         children: [
           if (!isMobile) 
@@ -88,8 +82,6 @@ class _MainShellState extends State<MainShell> {
               currentIndex: _selectedIndex, 
               onDestinationSelected: (i) => setState(() => _selectedIndex = i)
             ),
-          
-          // Zone de contenu principale
           Expanded(
             child: IndexedStack(
               index: _selectedIndex,
