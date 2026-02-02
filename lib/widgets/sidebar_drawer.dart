@@ -17,14 +17,19 @@ class SidebarDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: 250, 
-      child: Drawer( // Utilisation de Drawer pour le style natif
+      child: Drawer(
         elevation: 0,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.only(
+            topRight: Radius.circular(2), 
+            bottomRight: Radius.circular(2),
+          ),
+        ),
         child: Container(
-          color: const Color(0xFF1A334D), // Bleu foncé du design
+          color: const Color(0xFF1A334D), 
           child: Column(
             children: [
               const SizedBox(height: 40),
-              // Logo / Titre
               const Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
@@ -55,7 +60,6 @@ class SidebarDrawer extends StatelessWidget {
         label, 
         style: const TextStyle(color: Colors.white, fontSize: 14),
       ),
-      // Orange du design pour l'élément sélectionné
       tileColor: isSelected ? Colors.orange : Colors.transparent,
       onTap: () => onDestinationSelected(index),
     );
