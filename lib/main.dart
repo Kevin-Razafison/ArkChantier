@@ -4,6 +4,7 @@ import 'widgets/sidebar_drawer.dart';
 import 'screens/dashboard_view.dart'; 
 import 'screens/chantiers_screen.dart';
 import 'screens/ouvriers_screen.dart';
+import 'screens/stats_screen.dart';
 
 void main() => runApp(const ChantierApp());
 
@@ -48,6 +49,7 @@ class _MainShellState extends State<MainShell> {
       DashboardView(user: currentUser), 
       const ChantiersScreen(),
       const OuvriersScreen(),
+      const StatsScreen(),
       const Center(child: Text("Stocks Matériel")), 
       const Center(child: Text("Paramètres")), 
     ];
