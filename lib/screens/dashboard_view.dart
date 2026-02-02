@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/user_model.dart';
 import '../widgets/info_card.dart';
+import '../widgets/chantier_map_preview.dart';
 
 // Modèle local simple
 class ChecklistTask {
@@ -42,26 +43,18 @@ class _DashboardViewState extends State<DashboardView> {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             crossAxisCount: isMobile ? 1 : 2,
-            childAspectRatio: isMobile ? 1.2 : 1.5,
+            childAspectRatio: isMobile ? 1.0 : 1.3, // Ajusté pour laisser de la place à la carte
             crossAxisSpacing: 20,
             mainAxisSpacing: 20,
             children: [
+              InfoCard(title: "LOCALISATION DES CHANTIERS", child: const ChantierMapPreview()), // NOUVEAU
               InfoCard(title: "PROGRÈS DES CHANTIERS", child: _listProgres()),
-              
+              InfoCard(title: "TÂCHES À FAIRE AUJ.", child: _listTasks()),
               if (widget.user.role != UserRole.client)
                 InfoCard(
                   title: "ALERTES & NOTIFICATIONS", 
                   borderColor: Colors.orange,
                   child: _listAlertes(),
-                ),
-
-              // SECTION TÂCHES MISE À JOUR
-              InfoCard(title: "TÂCHES À FAIRE AUJ.", child: _listTasks()),
-              
-              if (widget.user.role == UserRole.chefProjet)
-                InfoCard(
-                  title: "STATISTIQUES FINANCIÈRES", 
-                  child: const Center(child: Icon(Icons.analytics, size: 40, color: Colors.blue)),
                 ),
             ],
           ),
