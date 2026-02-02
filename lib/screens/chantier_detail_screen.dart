@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import '../models/chantier_model.dart';
 import '../models/ouvrier_model.dart';
 import '../models/journal_model.dart';
@@ -73,85 +75,124 @@ class ChantierDetailScreen extends StatelessWidget {
   
 }
 
-  class JournalTab extends StatefulWidget {
-    const JournalTab({super.key});
+class JournalTab extends StatefulWidget {
+  const JournalTab({super.key});
 
-    @override
-    State<JournalTab> createState() => _JournalTabState();
-  }
+  @override
+  State<JournalTab> createState() => _JournalTabState();
+}
 
-  class _JournalTabState extends State<JournalTab> {
-    final List<JournalEntry> _notes = [
-      JournalEntry(id: '1', date: "02/02/2026", contenu: "Fondations terminées. Livraison du béton reçue à 10h.", auteur: "Chef de chantier"),
-      JournalEntry(id: '2', date: "01/02/2026", contenu: "Pluie battante toute la matinée. Travaux extérieurs suspendus.", auteur: "Chef de chantier"),
-    ];
+class _JournalTabState extends State<JournalTab> {
+  final List<JournalEntry> _notes = [];
+  final _textController = TextEditingController();
+  final ImagePicker _picker = ImagePicker();
+  File? _selectedImage;
 
-    final _textController = TextEditingController();
-
-    void _addNote() {
-      if (_textController.text.isNotEmpty) {
-        setState(() {
-          _notes.insert(0, JournalEntry(
-            id: DateTime.now().toString(),
-            date: "Aujourd'hui",
-            contenu: _textController.text,
-            auteur: "Moi",
-          ));
-          _textController.clear();
-        });
-      }
-    }
-
-    @override
-    Widget build(BuildContext context) {
-      return Column(
-        children: [
-          // Zone de saisie
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _textController,
-                    decoration: const InputDecoration(
-                      hintText: "Ajouter un rapport quotidien...",
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  onPressed: _addNote,
-                  icon: const Icon(Icons.send, color: Color(0xFF1A334D)),
-                ),
-              ],
-            ),
-          ),
-          // Liste des notes
-          Expanded(
-            child: ListView.builder(
-              itemCount: _notes.length,
-              itemBuilder: (context, index) {
-                final note = _notes[index];
-                return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: ListTile(
-                    title: Text(note.date, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                    subtitle: Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Text(note.contenu),
-                    ),
-                    trailing: Text(note.auteur, style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 10)),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      );
+  // Fonction pour prendre une photo
+  Future<void> _takePhoto() async {
+    final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
+    if (photo != null) {
+      setState(() {
+        _selectedImage = File(photo.path);
+      });
     }
   }
+
+  void _addEntry() {
+    if (_textController.text.isNotEmpty || _selectedImage != null) {
+      setState(() {
+        _notes.insert(0, JournalEntry(
+          id: DateTime.now().toString(),
+          date: "Aujourd'hui à ${DateTime.now().hour}:${DateTime.now().minute}",
+          contenu: _textController.text,
+          auteur: "Chef de chantier",
+          imagePath: _selectedImage?.path,
+        ));
+        _textController.clear();
+        _selectedImage = null; // Reset l'image après envoi
+      });
+    }
+  }
+  @override
+  void dispose() {
+    _textController.dispose(); // Libère la mémoire quand on quitte l'écran
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // --- ZONE DE SAISIE ---
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)]),
+          child: Column(
+            children: [
+              if (_selectedImage != null) 
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: Image.file(_selectedImage!, height: 100, fit: BoxFit.cover),
+                ),
+              Row(
+                children: [
+                  IconButton(icon: const Icon(Icons.camera_alt, color: Colors.orange), onPressed: _takePhoto),
+                  Expanded(
+                    child: TextField(
+                      controller: _textController,
+                      decoration: const InputDecoration(hintText: "Rapport de situation...", border: InputBorder.none),
+                    ),
+                  ),
+                  IconButton(icon: const Icon(Icons.send, color: Color(0xFF1A334D)), onPressed: _addEntry),
+                ],
+              ),
+            ],
+          ),
+        ),
+        // --- FIL D'ACTUALITÉ ---
+        Expanded(
+          child: ListView.builder(
+            itemCount: _notes.length,
+            itemBuilder: (context, index) {
+              final note = _notes[index];
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (note.imagePath != null)
+                      ClipRRect(
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                        child: Image.file(File(note.imagePath!), height: 200, width: double.infinity, fit: BoxFit.cover),
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(note.date, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
+                              Text(note.auteur, style: const TextStyle(fontSize: 10, fontStyle: FontStyle.italic)),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(note.contenu, style: const TextStyle(fontSize: 15)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
 class TeamTab extends StatefulWidget {
   const TeamTab({super.key});
 
