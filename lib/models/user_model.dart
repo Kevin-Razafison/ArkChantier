@@ -5,7 +5,7 @@ class UserModel {
   final String nom;
   final String email;
   final UserRole role;
-  final String? chantierId; // Uniquement pour le Client (lié à son projet)
+  final String? chantierId; 
 
   UserModel({
     required this.id,
@@ -15,7 +15,6 @@ class UserModel {
     this.chantierId,
   });
 
-  // Pour simuler une connexion
   static UserModel mockAdmin() => UserModel(
     id: '1', 
     nom: 'Jean Projet', 

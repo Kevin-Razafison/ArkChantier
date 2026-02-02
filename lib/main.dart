@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'models/user_model.dart';
 import 'widgets/sidebar_drawer.dart';
 import 'screens/dashboard_view.dart'; 
+import 'screens/chantiers_screen.dart';
 
 void main() => runApp(const ChantierApp());
 
@@ -44,9 +45,10 @@ class _MainShellState extends State<MainShell> {
     // Définition des pages
     final List<Widget> _pages = [
       DashboardView(user: currentUser), 
-      const Center(child: Text("Liste des Chantiers")), 
+      const ChantiersScreen(),
       const Center(child: Text("Gestion des Ouvriers")), 
       const Center(child: Text("Stocks Matériel")), 
+      const Center(child: Text("Paramètres")), 
     ];
 
     return Scaffold(
@@ -69,7 +71,7 @@ class _MainShellState extends State<MainShell> {
               currentIndex: _selectedIndex, 
               onDestinationSelected: (i) {
                 setState(() => _selectedIndex = i);
-                Navigator.pop(context); // Fermeture automatique du menu
+                Navigator.pop(context); 
               }
             )
           ) 
@@ -77,7 +79,6 @@ class _MainShellState extends State<MainShell> {
 
       body: Row(
         children: [
-          // Sidebar fixe affichée uniquement sur Desktop
           if (!isMobile) 
             SidebarDrawer(
               role: currentUser.role, 

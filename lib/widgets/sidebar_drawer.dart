@@ -51,17 +51,34 @@ class SidebarDrawer extends StatelessWidget {
       ),
     );
   }
-
   Widget _buildItem(IconData icon, String label, int index) {
     bool isSelected = currentIndex == index;
-    return ListTile(
-      leading: Icon(icon, color: Colors.white),
-      title: Text(
-        label, 
-        style: const TextStyle(color: Colors.white, fontSize: 14),
+    
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+      decoration: BoxDecoration(
+        color: isSelected ? Colors.white.withOpacity(0.1) : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
       ),
-      tileColor: isSelected ? Colors.orange : Colors.transparent,
-      onTap: () => onDestinationSelected(index),
+      child: ListTile(
+        leading: Icon(
+          icon, 
+          color: isSelected ? const Color(0xFFFFD700) : Colors.white70 // Or (Gold) si sélectionné
+        ),
+        title: Text(
+          label, 
+          style: TextStyle(
+            color: isSelected ? const Color(0xFFFFD700) : Colors.white70,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            fontSize: 14
+          ),
+        ),
+        // La petite barre verticale Gold à gauche
+        shape: isSelected 
+            ? const Border(left: BorderSide(color: Color(0xFFFFD700), width: 4)) 
+            : null,
+        onTap: () => onDestinationSelected(index),
+      ),
     );
   }
 }
