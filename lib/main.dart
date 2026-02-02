@@ -81,8 +81,8 @@ class DashboardPage extends StatelessWidget {
   // --- CONTENU DES WIDGETS ---
 
   Widget _buildSidebarContent() {
-    return Container( // Ajoute ce Container
-      color: const Color(0xFF1A334D), // Ton bleu foncé
+    return Container(
+      color: const Color(0xFF1A334D), 
       child: Column(
         children: [
           const DrawerHeader(
