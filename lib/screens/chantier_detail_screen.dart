@@ -15,20 +15,21 @@ class ChantierDetailScreen extends StatefulWidget {
 }
 
 class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
-  // Liste qui centralise les photos pour la Galerie
-  final List<String> _galleryImages = [];
+  // On stocke désormais les objets JournalEntry complets
+  final List<JournalEntry> _journalEntries = [];
+  final List<Ouvrier> _equipe = []; 
 
-  // Fonction pour ajouter une photo à la galerie depuis le Journal
-  void _onNewPhoto(String path) {
+  // Cette fonction est le "pont" entre le Journal et la Galerie
+  void _onNewJournalEntry(JournalEntry entry) {
     setState(() {
-      _galleryImages.insert(0, path);
+      _journalEntries.insert(0, entry);
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4, // Passage à 4 onglets pour tout avoir
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: Text(widget.chantier.nom),
@@ -50,22 +51,31 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
         body: TabBarView(
           children: [
             _buildOverviewTab(context),
-            const TeamTab(),
-            JournalTab(onPhotoAdded: _onNewPhoto), // On passe la fonction de rappel
-            GalleryTab(images: _galleryImages),
+            _buildTeamTab(),
+            JournalTab(onEntryAdded: _onNewJournalEntry), // Mis à jour
+            GalleryTab(entries: _journalEntries),          // Mis à jour
           ],
         ),
       ),
     );
   }
 
-  // --- 1. MÉTÉO ET STATUT ---
   Widget _buildOverviewTab(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _kpiCard("Ouvriers", "${_equipe.length}", Icons.people, Colors.blue),
+              // On compte uniquement les entrées du journal qui ont une image
+              _kpiCard("Photos", "${_journalEntries.where((e) => e.imagePath != null).length}", Icons.photo, Colors.orange),
+              _kpiCard("Jours", "24", Icons.timer, Colors.green),
+            ],
+          ),
+          const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(15),
             decoration: BoxDecoration(
@@ -112,6 +122,26 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
     );
   }
 
+  Widget _kpiCard(String label, String value, IconData icon, Color color) {
+    return Container(
+      width: MediaQuery.of(context).size.width * 0.28,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)],
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(height: 5),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+
   void _showStatusPicker(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -148,12 +178,56 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
       subtitle: Text(subtitle, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
     );
   }
+
+  Widget _buildTeamTab() {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      floatingActionButton: FloatingActionButton(
+        mini: true,
+        onPressed: () => _showAddWorkerDialog(),
+        child: const Icon(Icons.add),
+      ),
+      body: _equipe.isEmpty 
+        ? const Center(child: Text("Aucun ouvrier assigné"))
+        : ListView.builder(
+            itemCount: _equipe.length,
+            itemBuilder: (context, index) => ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.person)),
+              title: Text(_equipe[index].nom),
+              subtitle: Text(_equipe[index].specialite),
+              trailing: IconButton(
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () => setState(() => _equipe.removeAt(index)),
+              ),
+            ),
+          ),
+    );
+  }
+
+  void _showAddWorkerDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Assigner un ouvrier"),
+        content: DropdownButtonFormField<Ouvrier>(
+          hint: const Text("Choisir"),
+          items: globalOuvriers.map((o) => DropdownMenuItem(value: o, child: Text(o.nom))).toList(),
+          onChanged: (val) {
+            if (val != null && !_equipe.contains(val)) {
+              setState(() => _equipe.add(val));
+            }
+            Navigator.pop(context);
+          },
+        ),
+      ),
+    );
+  }
 }
 
-// --- 2. JOURNAL (AVEC CALLBACK PHOTO) ---
+// --- 3. JOURNAL MODIFIÉ ---
 class JournalTab extends StatefulWidget {
-  final Function(String) onPhotoAdded;
-  const JournalTab({super.key, required this.onPhotoAdded});
+  final Function(JournalEntry) onEntryAdded; // Reçoit l'objet complet
+  const JournalTab({super.key, required this.onEntryAdded});
 
   @override
   State<JournalTab> createState() => _JournalTabState();
@@ -167,24 +241,23 @@ class _JournalTabState extends State<JournalTab> {
 
   Future<void> _takePhoto() async {
     final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
-    if (photo != null) {
-      setState(() => _selectedImage = File(photo.path));
-    }
+    if (photo != null) setState(() => _selectedImage = File(photo.path));
   }
 
   void _addEntry() {
     if (_textController.text.isNotEmpty || _selectedImage != null) {
-      if (_selectedImage != null) {
-        widget.onPhotoAdded(_selectedImage!.path); // Envoi à la Galerie
-      }
-      setState(() {
-        _notes.insert(0, JournalEntry(
+      final newEntry = JournalEntry(
           id: DateTime.now().toString(),
-          date: "Aujourd'hui à ${DateTime.now().hour}:${DateTime.now().minute}",
+          date: "Le ${DateTime.now().day}/${DateTime.now().month} à ${DateTime.now().hour}:${DateTime.now().minute}",
           contenu: _textController.text,
           auteur: "Chef de chantier",
           imagePath: _selectedImage?.path,
-        ));
+      );
+
+      widget.onEntryAdded(newEntry); // Envoie l'objet au parent pour la Galerie
+
+      setState(() {
+        _notes.insert(0, newEntry);
         _textController.clear();
         _selectedImage = null;
       });
@@ -204,7 +277,7 @@ class _JournalTabState extends State<JournalTab> {
               Row(
                 children: [
                   IconButton(icon: const Icon(Icons.camera_alt, color: Colors.orange), onPressed: _takePhoto),
-                  Expanded(child: TextField(controller: _textController, decoration: const InputDecoration(hintText: "Rapport..."))),
+                  Expanded(child: TextField(controller: _textController, decoration: const InputDecoration(hintText: "Rapport de situation..."))),
                   IconButton(icon: const Icon(Icons.send, color: Color(0xFF1A334D)), onPressed: _addEntry),
                 ],
               ),
@@ -233,66 +306,77 @@ class _JournalTabState extends State<JournalTab> {
   }
 }
 
-// --- 3. GALERIE ---
+// --- 4. GALERIE ---
 class GalleryTab extends StatelessWidget {
-  final List<String> images;
-  const GalleryTab({super.key, required this.images});
+    final List<JournalEntry> entries; 
 
-  @override
-  Widget build(BuildContext context) {
-    return images.isEmpty 
-      ? const Center(child: Text("Aucune photo")) 
-      : GridView.builder(
-          padding: const EdgeInsets.all(10),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 5, mainAxisSpacing: 5),
-          itemCount: images.length,
-          itemBuilder: (context, index) => Image.file(File(images[index]), fit: BoxFit.cover),
-        );
-  }
-}
+    const GalleryTab({super.key, required this.entries});
 
-// --- 4. ÉQUIPE ---
-class TeamTab extends StatefulWidget {
-  const TeamTab({super.key});
-  @override
-  State<TeamTab> createState() => _TeamTabState();
-}
+    @override
+    Widget build(BuildContext context) {
+      final entriesWithImages = entries.where((e) => e.imagePath != null).toList();
 
-class _TeamTabState extends State<TeamTab> {
-  final List<Ouvrier> _equipe = []; // Liste locale au chantier
+      if (entriesWithImages.isEmpty) {
+        return const Center(child: Text("Aucune photo disponible"));
+      }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        mini: true,
-        onPressed: _showAddWorkerDialog,
-        child: const Icon(Icons.add),
-      ),
-      body: ListView.builder(
-        itemCount: _equipe.length,
-        itemBuilder: (context, index) => ListTile(
-          leading: const CircleAvatar(child: Icon(Icons.person)),
-          title: Text(_equipe[index].nom),
-          subtitle: Text(_equipe[index].specialite),
+      return GridView.builder(
+        padding: const EdgeInsets.all(10),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
         ),
-      ),
-    );
-  }
+        itemCount: entriesWithImages.length,
+        itemBuilder: (context, index) {
+          final entry = entriesWithImages[index];
+          return GestureDetector(
+            onTap: () => _showPhotoDetail(context, entry),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.file(File(entry.imagePath!), fit: BoxFit.cover),
+            ),
+          );
+        },
+      );
+    }
 
-  void _showAddWorkerDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Ajouter un ouvrier"),
-        content: DropdownButtonFormField<Ouvrier>(
-          items: globalOuvriers.map((o) => DropdownMenuItem(value: o, child: Text(o.nom))).toList(),
-          onChanged: (val) {
-            if (val != null) setState(() => _equipe.add(val));
-            Navigator.pop(context);
-          },
+    void _showPhotoDetail(BuildContext context, JournalEntry entry) {
+      showDialog(
+        context: context,
+        builder: (context) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+                child: Image.file(File(entry.imagePath!), fit: BoxFit.contain),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(entry.date, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                    const SizedBox(height: 8),
+                    Text(
+                      entry.contenu.isEmpty ? "(Sans commentaire)" : entry.contenu,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 10),
+                    Text("Rapporté par : ${entry.auteur}", 
+                        style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 12)),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Fermer"),
+              )
+            ],
+          ),
         ),
-      ),
-    );
-  }
+      );
+    }
 }
