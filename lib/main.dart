@@ -81,15 +81,23 @@ class DashboardPage extends StatelessWidget {
   // --- CONTENU DES WIDGETS ---
 
   Widget _buildSidebarContent() {
-    return Column(
-      children: [
-        const DrawerHeader(child: Center(child: Text("ArkChantier", style: TextStyle(color: Colors.white, fontSize: 20)))),
-        _buildSidebarItem(Icons.dashboard, "Dashboard", isSelected: true),
+    return Container( // Ajoute ce Container
+      color: const Color(0xFF1A334D), // Ton bleu foncé
+      child: Column(
+        children: [
+          const DrawerHeader(
+            child: Center(
+              child: Text("ArkChantier", style: TextStyle(color: Colors.white, fontSize: 20))
+            )
+          ),
+                 _buildSidebarItem(Icons.dashboard, "Dashboard", isSelected: true),
         _buildSidebarItem(Icons.location_city, "Chantiers"),
         _buildSidebarItem(Icons.people, "Ouvriers"),
         _buildSidebarItem(Icons.inventory, "Matériel"),
         _buildSidebarItem(Icons.settings, "Paramètres"),
-      ],
+          const Expanded(child: SizedBox.expand()), 
+        ],
+      ),
     );
   }
 
@@ -140,7 +148,6 @@ class DashboardPage extends StatelessWidget {
     );
   }
 
-  // --- STYLE GÉNÉRIQUE ---
 
   Widget _buildSidebarItem(IconData icon, String title, {bool isSelected = false}) {
     return ListTile(
@@ -155,7 +162,7 @@ class DashboardPage extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(5),
         border: borderColor != null ? Border.all(color: borderColor, width: 2) : null,
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
       ),
