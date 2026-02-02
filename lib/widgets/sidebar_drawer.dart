@@ -17,30 +17,31 @@ class SidebarDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: 250, 
-      child: Container(
-        color: const Color(0xFF1A334D),
-        child: Column(
-          children: [
-            const DrawerHeader(
-              child: Center(
+      child: Drawer( // Utilisation de Drawer pour le style natif
+        elevation: 0,
+        child: Container(
+          color: const Color(0xFF1A334D), // Bleu foncé du design
+          child: Column(
+            children: [
+              const SizedBox(height: 40),
+              // Logo / Titre
+              const Padding(
+                padding: EdgeInsets.all(16.0),
                 child: Text(
-                  "ArkChantier", 
-                  style: TextStyle(
-                    color: Colors.white, 
-                    fontSize: 20, 
-                    fontWeight: FontWeight.bold
-                  ),
+                  "ArkChantier",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
                 ),
               ),
-            ),
-            _buildItem(Icons.dashboard, "Dashboard", 0),
-            _buildItem(Icons.location_city, "Chantiers", 1),
-            if (role != UserRole.client) ...[
+              const Divider(color: Colors.white24),
+              _buildItem(Icons.dashboard, "Dashboard", 0),
+              _buildItem(Icons.business, "Chantiers", 1),
               _buildItem(Icons.people, "Ouvriers", 2),
-              _buildItem(Icons.inventory, "Matériel", 3),
+              _buildItem(Icons.inventory_2, "Matériel", 3),
+              _buildItem(Icons.settings, "Paramètres", 4),
+              const Spacer(),
             ],
-            const Expanded(child: SizedBox.expand()),
-          ],
+          ),
         ),
       ),
     );
@@ -52,12 +53,10 @@ class SidebarDrawer extends StatelessWidget {
       leading: Icon(icon, color: Colors.white),
       title: Text(
         label, 
-        style: const TextStyle(
-          color: Colors.white, 
-          overflow: TextOverflow.ellipsis
-        ),
+        style: const TextStyle(color: Colors.white, fontSize: 14),
       ),
-      tileColor: isSelected ? Colors.orange.withOpacity(0.8) : Colors.transparent,
+      // Orange du design pour l'élément sélectionné
+      tileColor: isSelected ? Colors.orange : Colors.transparent,
       onTap: () => onDestinationSelected(index),
     );
   }
