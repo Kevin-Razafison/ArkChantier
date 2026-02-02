@@ -3,6 +3,7 @@ import 'models/user_model.dart';
 import 'widgets/sidebar_drawer.dart';
 import 'screens/dashboard_view.dart'; 
 import 'screens/chantiers_screen.dart';
+import 'screens/ouvrier_screen.dart';
 
 void main() => runApp(const ChantierApp());
 
@@ -46,7 +47,7 @@ class _MainShellState extends State<MainShell> {
     final List<Widget> pages = [
       DashboardView(user: currentUser), 
       const ChantiersScreen(),
-      const Center(child: Text("Gestion des Ouvriers")), 
+      const OuvriersScreen(),
       const Center(child: Text("Stocks Matériel")), 
       const Center(child: Text("Paramètres")), 
     ];
