@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/chantier_model.dart';
 import '../widgets/add_chantier_form.dart';
+import 'chantier_detail_screen.dart';
 
 class ChantiersScreen extends StatefulWidget {
   const ChantiersScreen({super.key});
@@ -41,7 +42,7 @@ class _ChantiersScreenState extends State<ChantiersScreen> {
             clipBehavior: Clip.antiAlias,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
             child: InkWell( // Ajout de l'interaction au clic
-              onTap: () => _showSimpleDetail(context, c.nom),
+              onTap: () => _goToDetail(context, c),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -116,9 +117,12 @@ class _ChantiersScreenState extends State<ChantiersScreen> {
     );
   }
 
-  void _showSimpleDetail(BuildContext context, String nom) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Détails de : $nom"), behavior: SnackBarBehavior.floating),
+  void _goToDetail(BuildContext context, Chantier chantier) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChantierDetailScreen(chantier: chantier),
+      ),
     );
   }
 }
