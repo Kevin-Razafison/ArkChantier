@@ -2,10 +2,28 @@ import 'package:flutter/material.dart';
 import '../models/user_model.dart';
 import '../widgets/info_card.dart';
 
-class DashboardView extends StatelessWidget {
-  final UserModel user;
+// Modèle local simple
+class ChecklistTask {
+  final String title;
+  bool isDone;
+  ChecklistTask({required this.title, this.isDone = false});
+}
 
+class DashboardView extends StatefulWidget {
+  final UserModel user;
   const DashboardView({super.key, required this.user});
+
+  @override
+  State<DashboardView> createState() => _DashboardViewState();
+}
+
+class _DashboardViewState extends State<DashboardView> {
+  // Liste de tâches factices pour le test
+  final List<ChecklistTask> _tasks = [
+    ChecklistTask(title: "Vérifier livraison ciment"),
+    ChecklistTask(title: "Réunion équipe matin"),
+    ChecklistTask(title: "Signature permis zone B"),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -16,14 +34,8 @@ class DashboardView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            "BIENVENUE, ${user.nom.toUpperCase()}",
-            style: const TextStyle(fontSize: 14, color: Colors.grey),
-          ),
-          Text(
-            "ESPACE ${user.role.name.toUpperCase()}",
-            style: const TextStyle(fontSize: 18, color: Colors.orange, fontWeight: FontWeight.bold),
-          ),
+          Text("BIENVENUE, ${widget.user.nom.toUpperCase()}", style: const TextStyle(fontSize: 14, color: Colors.grey)),
+          Text("ESPACE ${widget.user.role.name.toUpperCase()}", style: const TextStyle(fontSize: 18, color: Colors.orange, fontWeight: FontWeight.bold)),
           const SizedBox(height: 20),
           
           GridView.count(
@@ -36,16 +48,17 @@ class DashboardView extends StatelessWidget {
             children: [
               InfoCard(title: "PROGRÈS DES CHANTIERS", child: _listProgres()),
               
-              if (user.role != UserRole.client)
+              if (widget.user.role != UserRole.client)
                 InfoCard(
                   title: "ALERTES & NOTIFICATIONS", 
                   borderColor: Colors.orange,
                   child: _listAlertes(),
                 ),
 
-              InfoCard(title: "TÂCHES À FAIRE AUJ.", child: const Center(child: Text("Flux de tâches"))),
+              // SECTION TÂCHES MISE À JOUR
+              InfoCard(title: "TÂCHES À FAIRE AUJ.", child: _listTasks()),
               
-              if (user.role == UserRole.chefProjet)
+              if (widget.user.role == UserRole.chefProjet)
                 InfoCard(
                   title: "STATISTIQUES FINANCIÈRES", 
                   child: const Center(child: Icon(Icons.analytics, size: 40, color: Colors.blue)),
@@ -57,7 +70,28 @@ class DashboardView extends StatelessWidget {
     );
   }
 
-  // Méthodes d'aide (Helpers) pour le contenu
+  Widget _listTasks() {
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _tasks.length,
+      itemBuilder: (context, index) {
+        return CheckboxListTile(
+          value: _tasks[index].isDone,
+          title: Text(_tasks[index].title, style: const TextStyle(fontSize: 12)),
+          onChanged: (bool? value) {
+            setState(() {
+              _tasks[index].isDone = value!;
+            });
+          },
+          controlAffinity: ListTileControlAffinity.leading,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+        );
+      },
+    );
+  }
+
   Widget _listProgres() {
     return Column(
       children: [
@@ -80,11 +114,10 @@ class DashboardView extends StatelessWidget {
     );
   }
 
-Widget _listAlertes() {
+  Widget _listAlertes() {
     return ListView(
-      shrinkWrap: true, 
-      physics: const NeverScrollableScrollPhysics(), 
-      padding: EdgeInsets.zero,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       children: const [
         ListTile(
           leading: Icon(Icons.warning, color: Colors.orange, size: 20),
