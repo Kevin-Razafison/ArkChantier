@@ -5,6 +5,7 @@ import '../models/chantier_model.dart';
 import '../models/ouvrier_model.dart';
 import '../models/journal_model.dart';
 import '../data/mock_data.dart';
+import '../services/data_storage.dart';
 
 class ChantierDetailScreen extends StatefulWidget {
   final Chantier chantier;
@@ -15,18 +16,48 @@ class ChantierDetailScreen extends StatefulWidget {
 }
 
 class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
-  final List<JournalEntry> _journalEntries = [];
-  final List<Ouvrier> _equipe = []; 
+  List<JournalEntry> _journalEntries = [];
+  List<Ouvrier> _equipe = []; 
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadChantierData();
+  }
+
+  // Chargement des données spécifiques au chantier (Journal et Équipe)
+  Future<void> _loadChantierData() async {
+    final savedJournal = await DataStorage.loadJournal(widget.chantier.id);
+    final savedTeam = await DataStorage.loadTeam(widget.chantier.id);
+    
+    setState(() {
+      _journalEntries = savedJournal;
+      _equipe = savedTeam;
+      _isLoading = false;
+    });
+  }
+
+  // Sauvegarde du journal
+  Future<void> _persistJournal() async {
+    await DataStorage.saveJournal(widget.chantier.id, _journalEntries);
+  }
+
+  // Sauvegarde de l'équipe
+  Future<void> _persistTeam() async {
+    await DataStorage.saveTeam(widget.chantier.id, _equipe);
+  }
 
   void _onNewJournalEntry(JournalEntry entry) {
     setState(() {
       _journalEntries.insert(0, entry);
     });
+    _persistJournal();
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     return DefaultTabController(
       length: 4,
@@ -53,7 +84,7 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
           children: [
             _buildOverviewTab(context),
             _buildTeamTab(),
-            JournalTab(onEntryAdded: _onNewJournalEntry),
+            JournalTab(onEntryAdded: _onNewJournalEntry, entries: _journalEntries),
             GalleryTab(entries: _journalEntries),
           ],
         ),
@@ -78,7 +109,6 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
             ],
           ),
           const SizedBox(height: 20),
-          // Widget Météo
           Container(
             padding: const EdgeInsets.all(15),
             decoration: BoxDecoration(
@@ -134,12 +164,7 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(10),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
-              blurRadius: 5
-            )
-          ],
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05), blurRadius: 5)],
         ),
         child: Column(
           children: [
@@ -212,7 +237,10 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
               subtitle: Text(_equipe[index].specialite),
               trailing: IconButton(
                 icon: const Icon(Icons.delete_outline, color: Colors.red),
-                onPressed: () => setState(() => _equipe.removeAt(index)),
+                onPressed: () {
+                  setState(() => _equipe.removeAt(index));
+                  _persistTeam();
+                },
               ),
             ),
           ),
@@ -230,8 +258,9 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
           hint: const Text("Choisir"),
           items: globalOuvriers.map((o) => DropdownMenuItem(value: o, child: Text(o.nom))).toList(),
           onChanged: (val) {
-            if (val != null && !_equipe.contains(val)) {
+            if (val != null && !_equipe.any((o) => o.id == val.id)) {
               setState(() => _equipe.add(val));
+              _persistTeam();
             }
             Navigator.pop(context);
           },
@@ -244,14 +273,14 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
 // --- JOURNAL ---
 class JournalTab extends StatefulWidget {
   final Function(JournalEntry) onEntryAdded;
-  const JournalTab({super.key, required this.onEntryAdded});
+  final List<JournalEntry> entries;
+  const JournalTab({super.key, required this.onEntryAdded, required this.entries});
 
   @override
   State<JournalTab> createState() => _JournalTabState();
 }
 
 class _JournalTabState extends State<JournalTab> {
-  final List<JournalEntry> _notes = [];
   final _textController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
   File? _selectedImage;
@@ -264,7 +293,7 @@ class _JournalTabState extends State<JournalTab> {
   void _addEntry() {
     if (_textController.text.isNotEmpty || _selectedImage != null) {
       final newEntry = JournalEntry(
-          id: DateTime.now().toString(),
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
           date: "Le ${DateTime.now().day}/${DateTime.now().month} à ${DateTime.now().hour}:${DateTime.now().minute}",
           contenu: _textController.text,
           auteur: "Chef de chantier",
@@ -272,9 +301,7 @@ class _JournalTabState extends State<JournalTab> {
       );
 
       widget.onEntryAdded(newEntry);
-
       setState(() {
-        _notes.insert(0, newEntry);
         _textController.clear();
         _selectedImage = null;
       });
@@ -283,8 +310,6 @@ class _JournalTabState extends State<JournalTab> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Column(
       children: [
         Container(
@@ -295,23 +320,12 @@ class _JournalTabState extends State<JournalTab> {
               if (_selectedImage != null) 
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8.0),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.file(_selectedImage!, height: 100),
-                  ),
+                  child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(_selectedImage!, height: 100)),
                 ),
               Row(
                 children: [
                   IconButton(icon: const Icon(Icons.camera_alt, color: Colors.orange), onPressed: _takePhoto),
-                  Expanded(
-                    child: TextField(
-                      controller: _textController, 
-                      decoration: const InputDecoration(
-                        hintText: "Rapport de situation...",
-                        border: InputBorder.none
-                      )
-                    )
-                  ),
+                  Expanded(child: TextField(controller: _textController, decoration: const InputDecoration(hintText: "Rapport...", border: InputBorder.none))),
                   IconButton(icon: const Icon(Icons.send, color: Color(0xFF1A334D)), onPressed: _addEntry),
                 ],
               ),
@@ -321,9 +335,9 @@ class _JournalTabState extends State<JournalTab> {
         const Divider(height: 1),
         Expanded(
           child: ListView.builder(
-            itemCount: _notes.length,
+            itemCount: widget.entries.length,
             itemBuilder: (context, index) {
-              final note = _notes[index];
+              final note = widget.entries[index];
               return Card(
                 color: Theme.of(context).cardColor,
                 margin: const EdgeInsets.all(10),
@@ -353,33 +367,22 @@ class _JournalTabState extends State<JournalTab> {
 // --- GALERIE ---
 class GalleryTab extends StatelessWidget {
     final List<JournalEntry> entries; 
-
     const GalleryTab({super.key, required this.entries});
 
     @override
     Widget build(BuildContext context) {
-      final entriesWithImages = entries.where((e) => e.imagePath != null).toList();
-
-      if (entriesWithImages.isEmpty) {
-        return Center(child: Text("Aucune photo disponible", style: TextStyle(color: Theme.of(context).hintColor)));
-      }
+      final imgs = entries.where((e) => e.imagePath != null).toList();
+      if (imgs.isEmpty) return Center(child: Text("Aucune photo disponible", style: TextStyle(color: Theme.of(context).hintColor)));
 
       return GridView.builder(
         padding: const EdgeInsets.all(10),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: 8,
-          mainAxisSpacing: 8,
-        ),
-        itemCount: entriesWithImages.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 8, mainAxisSpacing: 8),
+        itemCount: imgs.length,
         itemBuilder: (context, index) {
-          final entry = entriesWithImages[index];
+          final entry = imgs[index];
           return GestureDetector(
             onTap: () => _showPhotoDetail(context, entry),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.file(File(entry.imagePath!), fit: BoxFit.cover),
-            ),
+            child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(File(entry.imagePath!), fit: BoxFit.cover)),
           );
         },
       );
@@ -394,10 +397,7 @@ class GalleryTab extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
-                child: Image.file(File(entry.imagePath!), fit: BoxFit.contain),
-              ),
+              ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(15)), child: Image.file(File(entry.imagePath!), fit: BoxFit.contain)),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -405,20 +405,11 @@ class GalleryTab extends StatelessWidget {
                   children: [
                     Text(entry.date, style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12)),
                     const SizedBox(height: 8),
-                    Text(
-                      entry.contenu.isEmpty ? "(Sans commentaire)" : entry.contenu,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 10),
-                    Text("Rapporté par : ${entry.auteur}", 
-                        style: TextStyle(fontStyle: FontStyle.italic, fontSize: 12, color: Theme.of(context).hintColor)),
+                    Text(entry.contenu.isEmpty ? "(Sans commentaire)" : entry.contenu, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("Fermer"),
-              )
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text("Fermer"))
             ],
           ),
         ),

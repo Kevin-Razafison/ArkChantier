@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/chantier_model.dart';
 import '../widgets/add_chantier_form.dart';
+import '../services/data_storage.dart';
 import 'chantier_detail_screen.dart';
 
 class ChantiersScreen extends StatefulWidget {
@@ -11,21 +12,50 @@ class ChantiersScreen extends StatefulWidget {
 }
 
 class _ChantiersScreenState extends State<ChantiersScreen> {
-  final List<Chantier> _listChantiers = [
-    Chantier(id: '1', nom: "Résidence Horizon", lieu: "Paris", progression: 0.65, statut: StatutChantier.enCours),
-    Chantier(id: '2', nom: "Extension École B", lieu: "Lyon", progression: 0.15, statut: StatutChantier.enRetard),
-  ];
-
+  List<Chantier> _listChantiers = [];
   StatutChantier? _filterStatut;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialData();
+  }
+
+  // Charge les données depuis le téléphone
+  Future<void> _loadInitialData() async {
+    final savedChantiers = await DataStorage.loadChantiers();
+    setState(() {
+      if (savedChantiers.isNotEmpty) {
+        _listChantiers = savedChantiers;
+      } else {
+        // Données par défaut si le stockage est vide
+        _listChantiers = [
+          Chantier(id: '1', nom: "Résidence Horizon", lieu: "Paris", progression: 0.65, statut: StatutChantier.enCours),
+          Chantier(id: '2', nom: "Extension École B", lieu: "Lyon", progression: 0.15, statut: StatutChantier.enRetard),
+        ];
+      }
+      _isLoading = false;
+    });
+  }
+
+  // Fonction utilitaire pour sauvegarder après chaque modif
+  Future<void> _saveAndRefresh() async {
+    await DataStorage.saveChantiers(_listChantiers);
+    setState(() {});
+  }
 
   void _addNewChantier(Chantier nouveauChantier) {
     setState(() {
       _listChantiers.add(nouveauChantier);
     });
+    _saveAndRefresh();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final filteredChantiers = _filterStatut == null 
       ? _listChantiers 
@@ -40,7 +70,6 @@ class _ChantiersScreenState extends State<ChantiersScreen> {
       ),
       body: Column(
         children: [
-          // --- BARRE DE FILTRES ---
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -86,6 +115,7 @@ class _ChantiersScreenState extends State<ChantiersScreen> {
                   confirmDismiss: (_) => _confirmDeletion(context, c.nom),
                   onDismissed: (_) {
                     setState(() => _listChantiers.removeWhere((item) => item.id == c.id));
+                    _saveAndRefresh();
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text("${c.nom} supprimé"), behavior: SnackBarBehavior.floating),
                     );
@@ -97,7 +127,15 @@ class _ChantiersScreenState extends State<ChantiersScreen> {
                     clipBehavior: Clip.antiAlias,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                     child: InkWell(
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ChantierDetailScreen(chantier: c))),
+                      onTap: () async {
+                        // On attend le retour de l'écran détail
+                        await Navigator.push(
+                          context, 
+                          MaterialPageRoute(builder: (context) => ChantierDetailScreen(chantier: c))
+                        );
+                        // On sauvegarde si le statut a été changé là-bas
+                        _saveAndRefresh();
+                      },
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
