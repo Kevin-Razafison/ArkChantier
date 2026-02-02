@@ -33,23 +33,35 @@ class _MainShellState extends State<MainShell> {
     id: '1',
     nom: 'Admin ArkChantier',
     email: 'admin@ark.com',
-    role: UserRole.chefChantier, // Tu peux changer ici pour tester les vues
+    role: UserRole.chefChantier,
   );
 
   @override
   Widget build(BuildContext context) {
+    // Détection de la taille d'écran
     bool isMobile = MediaQuery.of(context).size.width < 800;
     
+    // Définition des pages
     final List<Widget> _pages = [
-      DashboardView(user: currentUser), // Page 0
-      const Center(child: Text("Liste des Chantiers")), // Page 1
-      const Center(child: Text("Gestion des Ouvriers")), // Page 2
-      const Center(child: Text("Stocks Matériel")), // Page 3
+      DashboardView(user: currentUser), 
+      const Center(child: Text("Liste des Chantiers")), 
+      const Center(child: Text("Gestion des Ouvriers")), 
+      const Center(child: Text("Stocks Matériel")), 
     ];
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7F9),
-      // Gestion du menu mobile
+      
+      // L'AppBar n'apparaît que sur Mobile pour porter le bouton Hamburger
+      appBar: isMobile 
+        ? AppBar(
+            title: const Text("ArkChantier", style: TextStyle(color: Colors.white, fontSize: 18)),
+            backgroundColor: const Color(0xFF1A334D),
+            iconTheme: const IconThemeData(color: Colors.white),
+          ) 
+        : null,
+      
+      // Drawer (Menu coulissant) activé uniquement sur Mobile
       drawer: isMobile 
         ? Drawer(
             child: SidebarDrawer(
@@ -57,13 +69,15 @@ class _MainShellState extends State<MainShell> {
               currentIndex: _selectedIndex, 
               onDestinationSelected: (i) {
                 setState(() => _selectedIndex = i);
-                Navigator.pop(context); // Ferme le menu après sélection
+                Navigator.pop(context); // Fermeture automatique du menu
               }
             )
           ) 
         : null,
+
       body: Row(
         children: [
+          // Sidebar fixe affichée uniquement sur Desktop
           if (!isMobile) 
             SidebarDrawer(
               role: currentUser.role, 
@@ -71,6 +85,7 @@ class _MainShellState extends State<MainShell> {
               onDestinationSelected: (i) => setState(() => _selectedIndex = i)
             ),
           
+          // Zone de contenu principale
           Expanded(
             child: IndexedStack(
               index: _selectedIndex,
