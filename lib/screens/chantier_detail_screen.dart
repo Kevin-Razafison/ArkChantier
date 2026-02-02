@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/chantier_model.dart';
 import '../models/ouvrier_model.dart';
+import '../models/journal_model.dart';
 
 class ChantierDetailScreen extends StatelessWidget {
   final Chantier chantier;
@@ -31,7 +32,7 @@ class ChantierDetailScreen extends StatelessWidget {
           children: [
             _buildOverviewTab(),
             const TeamTab(), 
-            _buildDocsTab(),
+            const JournalTab()
           ],
         ),
       ),
@@ -70,10 +71,87 @@ class ChantierDetailScreen extends StatelessWidget {
     );
   }
   
-  Widget _buildDocsTab() => const Center(child: Text("Photos et PDF du chantier..."));
 }
 
+  class JournalTab extends StatefulWidget {
+    const JournalTab({super.key});
 
+    @override
+    State<JournalTab> createState() => _JournalTabState();
+  }
+
+  class _JournalTabState extends State<JournalTab> {
+    final List<JournalEntry> _notes = [
+      JournalEntry(id: '1', date: "02/02/2026", contenu: "Fondations terminées. Livraison du béton reçue à 10h.", auteur: "Chef de chantier"),
+      JournalEntry(id: '2', date: "01/02/2026", contenu: "Pluie battante toute la matinée. Travaux extérieurs suspendus.", auteur: "Chef de chantier"),
+    ];
+
+    final _textController = TextEditingController();
+
+    void _addNote() {
+      if (_textController.text.isNotEmpty) {
+        setState(() {
+          _notes.insert(0, JournalEntry(
+            id: DateTime.now().toString(),
+            date: "Aujourd'hui",
+            contenu: _textController.text,
+            auteur: "Moi",
+          ));
+          _textController.clear();
+        });
+      }
+    }
+
+    @override
+    Widget build(BuildContext context) {
+      return Column(
+        children: [
+          // Zone de saisie
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _textController,
+                    decoration: const InputDecoration(
+                      hintText: "Ajouter un rapport quotidien...",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: _addNote,
+                  icon: const Icon(Icons.send, color: Color(0xFF1A334D)),
+                ),
+              ],
+            ),
+          ),
+          // Liste des notes
+          Expanded(
+            child: ListView.builder(
+              itemCount: _notes.length,
+              itemBuilder: (context, index) {
+                final note = _notes[index];
+                return Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: ListTile(
+                    title: Text(note.date, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Text(note.contenu),
+                    ),
+                    trailing: Text(note.auteur, style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 10)),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      );
+    }
+  }
 class TeamTab extends StatefulWidget {
   const TeamTab({super.key});
 
