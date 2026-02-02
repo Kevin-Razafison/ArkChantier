@@ -4,6 +4,7 @@ import 'dart:io';
 import '../models/chantier_model.dart';
 import '../models/ouvrier_model.dart';
 import '../models/journal_model.dart';
+import '../data/mock_data.dart';  
 
 class ChantierDetailScreen extends StatelessWidget {
   final Chantier chantier;
@@ -268,42 +269,40 @@ class _TeamTabState extends State<TeamTab> {
   }
 
   void _showAddWorkerDialog() {
-    String name = "";
-    String job = "";
     showDialog(
-      context: context, // Correction : Virgule ici, pas de point-virgule
+      context: context, 
       builder: (context) => AlertDialog(
         title: const Text("Ajouter à l'équipe"),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
-              decoration: const InputDecoration(labelText: "Nom complet"),
-              onChanged: (v) => name = v,
-            ),
-            TextField(
-              decoration: const InputDecoration(labelText: "Spécialité"),
-              onChanged: (v) => job = v,
+            const Text("Sélectionner un ouvrier existant :", style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<Ouvrier>(
+              isExpanded: true,
+              hint: const Text("Choisir un ouvrier"),
+              items: globalOuvriers.map((o) => DropdownMenuItem(
+                value: o,
+                child: Text(o.nom),
+              )).toList(),
+              onChanged: (selected) {
+                if (selected != null) {
+                  // Vérifier si l'ouvrier est déjà dans l'équipe pour éviter les doublons
+                  if (!_equipe.any((e) => e.id == selected.id)) {
+                    setState(() {
+                      _equipe.add(selected);
+                    });
+                  }
+                  Navigator.pop(context);
+                }
+              },
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A334D)),
-            onPressed: () {
-              if (name.isNotEmpty && job.isNotEmpty) {
-                setState(() {
-                  _equipe.add(Ouvrier(
-                    id: DateTime.now().toString(), 
-                    nom: name, 
-                    specialite: job
-                  ));
-                });
-                Navigator.pop(context);
-              }
-            },
-            child: const Text("Ajouter", style: TextStyle(color: Colors.white)),
+          TextButton(
+            onPressed: () => Navigator.pop(context), 
+            child: const Text("Annuler")
           ),
         ],
       ),
