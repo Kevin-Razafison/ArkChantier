@@ -1,17 +1,39 @@
-enum CategorieMateriel { consommable, outillage }
+enum CategorieMateriel { consommable, outillage, securite, autre }
 
 class Materiel {
   final String id;
   final String nom;
   int quantite;
-  final String unite; // ex: "Sacs", "Unités", "Litres"
+  final double prixUnitaire; 
+  final String unite; 
   final CategorieMateriel categorie;
 
   Materiel({
     required this.id,
     required this.nom,
     required this.quantite,
+    required this.prixUnitaire,
     required this.unite,
     required this.categorie,
   });
+
+  double get coutTotal => quantite * prixUnitaire;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'nom': nom,
+    'quantite': quantite,
+    'prixUnitaire': prixUnitaire,
+    'unite': unite,
+    'categorie': categorie.index,
+  };
+
+  factory Materiel.fromJson(Map<String, dynamic> json) => Materiel(
+    id: json['id'],
+    nom: json['nom'],
+    quantite: json['quantite'],
+    prixUnitaire: (json['prixUnitaire'] as num).toDouble(),
+    unite: json['unite'],
+    categorie: CategorieMateriel.values[json['categorie']],
+  );
 }

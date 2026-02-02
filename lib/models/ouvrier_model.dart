@@ -4,6 +4,7 @@ class Ouvrier {
   final String specialite;
   final String photoUrl;
   bool estPresent;
+  final double salaireJournalier;
 
   Ouvrier({
     required this.id,
@@ -11,6 +12,7 @@ class Ouvrier {
     required this.specialite,
     this.photoUrl = 'https://via.placeholder.com/150',
     this.estPresent = true,
+    this.salaireJournalier = 0.0,
   });
 
   Map<String, dynamic> toJson() => {
@@ -19,6 +21,7 @@ class Ouvrier {
     'specialite': specialite,
     'photoUrl': photoUrl,
     'estPresent': estPresent,
+    'salaireJournalier':salaireJournalier
   };
 
   factory Ouvrier.fromJson(Map<String, dynamic> json) => Ouvrier(
@@ -27,5 +30,6 @@ class Ouvrier {
     specialite: json['specialite'],
     photoUrl: json['photoUrl'],
     estPresent: json['estPresent'],
+    salaireJournalier: (json['salaireJournalier'] as num).toDouble()
   );
 }

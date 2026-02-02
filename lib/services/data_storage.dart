@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/chantier_model.dart';
 import '../models/journal_model.dart';
 import '../models/ouvrier_model.dart';
+import '../models/materiel_model.dart'; // N'oublie pas l'import
 
 class DataStorage {
   static const String _keyChantiers = 'chantiers_list';
@@ -36,7 +37,6 @@ class DataStorage {
     final String key = 'journal_$chantierId';
     final String? savedData = prefs.getString(key);
     if (savedData == null) return [];
-
     final List<dynamic> decodedData = jsonDecode(savedData);
     return decodedData.map((item) => JournalEntry.fromJson(item)).toList();
   }
@@ -54,8 +54,24 @@ class DataStorage {
     final String key = 'team_$chantierId';
     final String? savedData = prefs.getString(key);
     if (savedData == null) return [];
-
     final List<dynamic> decodedData = jsonDecode(savedData);
     return decodedData.map((item) => Ouvrier.fromJson(item)).toList();
+  }
+
+  // --- NOUVEAU : GESTION DES MATÉRIELS (Par Chantier) ---
+  static Future<void> saveMateriels(String chantierId, List<Materiel> materiels) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String key = 'materiels_$chantierId';
+    final String encodedData = jsonEncode(materiels.map((m) => m.toJson()).toList());
+    await prefs.setString(key, encodedData);
+  }
+
+  static Future<List<Materiel>> loadMateriels(String chantierId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String key = 'materiels_$chantierId';
+    final String? savedData = prefs.getString(key);
+    if (savedData == null) return [];
+    final List<dynamic> decodedData = jsonDecode(savedData);
+    return decodedData.map((item) => Materiel.fromJson(item)).toList();
   }
 }

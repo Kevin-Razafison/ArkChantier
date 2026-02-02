@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import '../models/user_model.dart';
+import '../models/chantier_model.dart';
+import '../services/data_storage.dart';
 import '../widgets/info_card.dart';
 import '../widgets/chantier_map_preview.dart';
 import '../widgets/financial_stats_card.dart';
 
-// Modèle local simple
+// Modèle local pour les tâches
 class ChecklistTask {
   final String title;
   bool isDone;
@@ -20,7 +22,10 @@ class DashboardView extends StatefulWidget {
 }
 
 class _DashboardViewState extends State<DashboardView> {
-  // Liste de tâches factices pour le test
+  List<Chantier> _chantiers = [];
+  bool _isLoading = true;
+
+  // Liste de tâches factices
   final List<ChecklistTask> _tasks = [
     ChecklistTask(title: "Vérifier livraison ciment"),
     ChecklistTask(title: "Réunion équipe matin"),
@@ -28,33 +33,68 @@ class _DashboardViewState extends State<DashboardView> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _loadDashboardData();
+  }
+
+  // Chargement des données réelles pour alimenter les cartes
+  Future<void> _loadDashboardData() async {
+    final data = await DataStorage.loadChantiers();
+    setState(() {
+      _chantiers = data;
+      _isLoading = false;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     bool isMobile = MediaQuery.of(context).size.width < 800;
+
+    // On récupère le chantier lié à l'utilisateur ou le premier de la liste pour les stats
+    Chantier? chantierCible;
+    if (widget.user.chantierId != null) {
+      chantierCible = _chantiers.firstWhere(
+        (c) => c.id == widget.user.chantierId,
+        orElse: () => _chantiers.isNotEmpty ? _chantiers.first : _dummyChantier(),
+      );
+    } else if (_chantiers.isNotEmpty) {
+      chantierCible = _chantiers.first;
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text("BIENVENUE, ${widget.user.nom.toUpperCase()}", style: const TextStyle(fontSize: 14, color: Colors.grey)),
-          Text("ESPACE ${widget.user.role.name.toUpperCase()}", style: const TextStyle(fontSize: 18, color: Colors.orange, fontWeight: FontWeight.bold)),
+          Text("BIENVENUE, ${widget.user.nom.toUpperCase()}", 
+              style: const TextStyle(fontSize: 14, color: Colors.grey)),
+          Text("ESPACE ${widget.user.role.name.toUpperCase()}", 
+              style: const TextStyle(fontSize: 18, color: Colors.orange, fontWeight: FontWeight.bold)),
           const SizedBox(height: 20),
           
           GridView.count(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             crossAxisCount: isMobile ? 1 : 2,
-            childAspectRatio: isMobile ? 1.0 : 1.3, // Ajusté pour laisser de la place à la carte
+            childAspectRatio: isMobile ? 1.1 : 1.4,
             crossAxisSpacing: 20,
             mainAxisSpacing: 20,
             children: [
                 InfoCard(title: "LOCALISATION DES CHANTIERS", child: const ChantierMapPreview()),
                 InfoCard(title: "TÂCHES À FAIRE AUJ.", child: _listTasks()),
                 
+                // Correction : On passe l'objet chantier au FinancialStatsCard
                 if (widget.user.role == UserRole.chefProjet || widget.user.role == UserRole.chefChantier) 
                   InfoCard(
                     title: "STATISTIQUES FINANCIÈRES", 
-                    child: const FinancialStatsCard()
+                    child: chantierCible != null 
+                        ? FinancialStatsCard(chantier: chantierCible)
+                        : const Center(child: Text("Aucune donnée financière")),
                   ),
 
                 if (widget.user.role != UserRole.client)
@@ -71,6 +111,12 @@ class _DashboardViewState extends State<DashboardView> {
       ),
     );
   }
+
+  // Chantier de secours si la base est vide pour éviter les crashs UI
+  Chantier _dummyChantier() => Chantier(
+    id: "0", nom: "Aucun", lieu: "N/A", progression: 0, statut: StatutChantier.enCours,
+    budgetInitial: 0, depensesActuelles: 0
+  );
 
   Widget _listTasks() {
     return ListView.builder(
@@ -95,11 +141,14 @@ class _DashboardViewState extends State<DashboardView> {
   }
 
   Widget _listProgres() {
+    if (_chantiers.isEmpty) return const Center(child: Text("Aucun chantier"));
+    
     return Column(
-      children: [
-        _progresItem("Chantier A", 0.7, Colors.green),
-        _progresItem("Chantier C", 0.3, Colors.blue),
-      ],
+      children: _chantiers.take(3).map((c) => _progresItem(
+        c.nom, 
+        c.progression, 
+        c.progression > 0.8 ? Colors.green : Colors.blue
+      )).toList(),
     );
   }
 
@@ -109,8 +158,21 @@ class _DashboardViewState extends State<DashboardView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(t, style: const TextStyle(fontSize: 12)),
-          LinearProgressIndicator(value: v, color: c, backgroundColor: Colors.grey[200]),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(t, style: const TextStyle(fontSize: 12)),
+              Text("${(v * 100).toInt()}%", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          LinearProgressIndicator(
+            value: v, 
+            color: c, 
+            backgroundColor: Colors.grey[200],
+            minHeight: 6,
+            borderRadius: BorderRadius.circular(4),
+          ),
         ],
       ),
     );

@@ -7,6 +7,8 @@ class Chantier {
   final double progression;
   StatutChantier statut;
   final String imageAppercu;
+  final double budgetInitial;
+  double depensesActuelles;
 
   Chantier({
     required this.id,
@@ -15,6 +17,8 @@ class Chantier {
     required this.progression,
     required this.statut,
     this.imageAppercu = 'assets/chantier_placeholder.jpg',
+    this.budgetInitial = 0.0,
+    this.depensesActuelles = 0.0,
   });
 
   Map<String, dynamic> toJson() => {
@@ -22,8 +26,10 @@ class Chantier {
     'nom': nom,
     'lieu': lieu,
     'progression': progression,
-    'statut': statut.index, // On stocke l'index 0, 1 ou 2
+    'statut': statut.index,
     'imageAppercu': imageAppercu,
+    'budgetInitial': budgetInitial,
+    'depensesActuelles': depensesActuelles
   };
 
   factory Chantier.fromJson(Map<String, dynamic> json) => Chantier(
@@ -31,7 +37,9 @@ class Chantier {
     nom: json['nom'],
     lieu: json['lieu'],
     progression: (json['progression'] as num).toDouble(),
-    statut: StatutChantier.values[json['statut']],
+    statut: StatutChantier.values[json['statut'] as int],
     imageAppercu: json['imageAppercu'] ?? 'assets/chantier_placeholder.jpg',
+    budgetInitial: (json['budgetInitial'] as num? ?? 0.0).toDouble(),
+    depensesActuelles: (json['depensesActuelles'] as num? ?? 0.0).toDouble(),
   );
 }

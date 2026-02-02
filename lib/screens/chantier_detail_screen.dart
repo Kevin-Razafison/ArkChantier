@@ -4,6 +4,7 @@ import 'dart:io';
 import '../models/chantier_model.dart';
 import '../models/ouvrier_model.dart';
 import '../models/journal_model.dart';
+import '../models/materiel_model.dart'; // Assure-toi que ce modèle existe
 import '../data/mock_data.dart';
 import '../services/data_storage.dart';
 
@@ -17,7 +18,8 @@ class ChantierDetailScreen extends StatefulWidget {
 
 class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
   List<JournalEntry> _journalEntries = [];
-  List<Ouvrier> _equipe = []; 
+  List<Ouvrier> _equipe = [];
+  List<Materiel> _materiels = [];
   bool _isLoading = true;
 
   @override
@@ -26,33 +28,36 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
     _loadChantierData();
   }
 
-  // Chargement des données spécifiques au chantier (Journal et Équipe)
   Future<void> _loadChantierData() async {
     final savedJournal = await DataStorage.loadJournal(widget.chantier.id);
     final savedTeam = await DataStorage.loadTeam(widget.chantier.id);
+    final savedMat = await DataStorage.loadMateriels(widget.chantier.id);
     
     setState(() {
       _journalEntries = savedJournal;
       _equipe = savedTeam;
+      _materiels = savedMat;
       _isLoading = false;
     });
   }
 
-  // Sauvegarde du journal
-  Future<void> _persistJournal() async {
+  Future<void> _persistAll() async {
     await DataStorage.saveJournal(widget.chantier.id, _journalEntries);
-  }
-
-  // Sauvegarde de l'équipe
-  Future<void> _persistTeam() async {
     await DataStorage.saveTeam(widget.chantier.id, _equipe);
+    await DataStorage.saveMateriels(widget.chantier.id, _materiels);
+    
+    // Mise à jour du chantier global (pour le budget et statut)
+    final list = await DataStorage.loadChantiers();
+    final index = list.indexWhere((c) => c.id == widget.chantier.id);
+    if (index != -1) {
+      list[index] = widget.chantier;
+      await DataStorage.saveChantiers(list);
+    }
   }
 
   void _onNewJournalEntry(JournalEntry entry) {
-    setState(() {
-      _journalEntries.insert(0, entry);
-    });
-    _persistJournal();
+    setState(() => _journalEntries.insert(0, entry));
+    _persistAll();
   }
 
   @override
@@ -60,7 +65,7 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
@@ -75,6 +80,7 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
             tabs: [
               Tab(icon: Icon(Icons.info), text: "Infos"),
               Tab(icon: Icon(Icons.group), text: "Équipe"),
+              Tab(icon: Icon(Icons.build), text: "Matériels"),
               Tab(icon: Icon(Icons.history), text: "Journal"),
               Tab(icon: Icon(Icons.photo_library), text: "Galerie"),
             ],
@@ -84,6 +90,7 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
           children: [
             _buildOverviewTab(context),
             _buildTeamTab(),
+            _buildMaterialsTab(),
             JournalTab(onEntryAdded: _onNewJournalEntry, entries: _journalEntries),
             GalleryTab(entries: _journalEntries),
           ],
@@ -94,41 +101,54 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
 
   Widget _buildOverviewTab(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    double ratio = widget.chantier.budgetInitial > 0 
+        ? widget.chantier.depensesActuelles / widget.chantier.budgetInitial 
+        : 0;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // --- DASHBOARD BUDGET ---
+          Container(
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4)],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("Suivi Budgétaire", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 12),
+                LinearProgressIndicator(
+                  value: ratio > 1.0 ? 1.0 : ratio,
+                  minHeight: 10,
+                  borderRadius: BorderRadius.circular(5),
+                  color: ratio > 0.9 ? Colors.red : Colors.green,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text("${widget.chantier.depensesActuelles.toStringAsFixed(0)} €", 
+                      style: TextStyle(fontWeight: FontWeight.bold, color: ratio > 1.0 ? Colors.red : Colors.green)),
+                    Text("Budget: ${widget.chantier.budgetInitial.toStringAsFixed(0)} €"),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _kpiCard("Ouvriers", "${_equipe.length}", Icons.people, Colors.blue),
               _kpiCard("Photos", "${_journalEntries.where((e) => e.imagePath != null).length}", Icons.photo, Colors.orange),
-              _kpiCard("Jours", "24", Icons.timer, Colors.green),
+              _kpiCard("Matériel", "${_materiels.length}", Icons.inventory, Colors.purple),
             ],
-          ),
-          const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.all(15),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.blue.withValues(alpha: 0.1) : Colors.blue[50],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: isDark ? Colors.blue.withValues(alpha: 0.3) : Colors.blue[100]!),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.wb_sunny, color: Colors.orange, size: 40),
-                const SizedBox(width: 15),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("Météo sur site", style: TextStyle(fontWeight: FontWeight.bold)),
-                    Text("Ensoleillé - 24°C", style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
-                  ],
-                ),
-              ],
-            ),
           ),
           const SizedBox(height: 25),
           Text("Progression : ${(widget.chantier.progression * 100).toInt()}%",
@@ -157,14 +177,13 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
   }
 
   Widget _kpiCard(String label, String value, IconData icon, Color color) {
-      final isDark = Theme.of(context).brightness == Brightness.dark;
       return Container(
         width: MediaQuery.of(context).size.width * 0.28,
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(10),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05), blurRadius: 5)],
+          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 5)],
         ),
         child: Column(
           children: [
@@ -177,24 +196,145 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
       );
   }
 
+  // --- ONGLET EQUIPE ---
+  Widget _buildTeamTab() {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      floatingActionButton: FloatingActionButton(
+        mini: true, backgroundColor: const Color(0xFF1A334D),
+        onPressed: () => _showAddWorkerDialog(),
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
+      body: _equipe.isEmpty 
+        ? Center(child: Text("Aucun ouvrier", style: TextStyle(color: Theme.of(context).hintColor)))
+        : ListView.builder(
+            itemCount: _equipe.length,
+            itemBuilder: (context, index) => ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.person)),
+              title: Text(_equipe[index].nom),
+              subtitle: Text("${_equipe[index].specialite} • ${_equipe[index].salaireJournalier}€/j"),
+              trailing: IconButton(
+                icon: const Icon(Icons.delete, color: Colors.red),
+                onPressed: () {
+                  setState(() => _equipe.removeAt(index));
+                  _persistAll();
+                },
+              ),
+            ),
+          ),
+    );
+  }
+
+  // --- ONGLET MATERIELS ---
+  Widget _buildMaterialsTab() {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      floatingActionButton: FloatingActionButton(
+        mini: true, backgroundColor: Colors.orange,
+        onPressed: () => _showAddMaterialDialog(),
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
+      body: _materiels.isEmpty 
+        ? Center(child: Text("Aucun matériel", style: TextStyle(color: Theme.of(context).hintColor)))
+        : ListView.builder(
+            itemCount: _materiels.length,
+            itemBuilder: (context, index) {
+              final m = _materiels[index];
+              return ListTile(
+                leading: const Icon(Icons.category, color: Colors.blue),
+                title: Text(m.nom),
+                subtitle: Text("${m.quantite} ${m.unite} x ${m.prixUnitaire}€"),
+                trailing: Text("${(m.quantite * m.prixUnitaire).toStringAsFixed(0)} €", style: const TextStyle(fontWeight: FontWeight.bold)),
+              );
+            },
+          ),
+    );
+  }
+
+  void _showAddWorkerDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Ajouter à l'équipe"),
+        content: DropdownButtonFormField<Ouvrier>(
+          hint: const Text("Choisir un ouvrier"),
+          items: globalOuvriers.map((o) => DropdownMenuItem(value: o, child: Text("${o.nom} (${o.salaireJournalier}€/j)"))).toList(),
+          onChanged: (val) {
+            if (val != null && !_equipe.any((o) => o.id == val.id)) {
+              setState(() {
+                _equipe.add(val);
+                widget.chantier.depensesActuelles += val.salaireJournalier;
+              });
+              _persistAll();
+            }
+            Navigator.pop(context);
+          },
+        ),
+      ),
+    );
+  }
+
+  void _showAddMaterialDialog() {
+    final nomCtrl = TextEditingController();
+    final qteCtrl = TextEditingController();
+    final prixCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Ajouter Matériel"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: nomCtrl, decoration: const InputDecoration(labelText: "Nom du matériel")),
+            TextField(controller: qteCtrl, decoration: const InputDecoration(labelText: "Quantité"), keyboardType: TextInputType.number),
+            TextField(controller: prixCtrl, decoration: const InputDecoration(labelText: "Prix Unitaire (€)"), keyboardType: TextInputType.number),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
+          ElevatedButton(
+            onPressed: () {
+              final qte = int.tryParse(qteCtrl.text) ?? 0;
+              final prix = double.tryParse(prixCtrl.text) ?? 0;
+              final nouveauMat = Materiel(
+                id: DateTime.now().toString(),
+                nom: nomCtrl.text,
+                quantite: qte,
+                prixUnitaire: prix,
+                unite: "Unités",
+                categorie: CategorieMateriel.consommable
+              );
+              setState(() {
+                _materiels.add(nouveauMat);
+                widget.chantier.depensesActuelles += (qte * prix);
+              });
+              _persistAll();
+              Navigator.pop(context);
+            },
+            child: const Text("Ajouter"),
+          )
+        ],
+      ),
+    );
+  }
+
+  // --- LOGIQUE STATUT & UI HELPERS ---
   void _showStatusPicker(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: StatutChantier.values.map((s) => ListTile(
-            leading: Icon(Icons.circle, color: _getStatusColor(s)),
-            title: Text(s.name.toUpperCase()),
-            onTap: () {
-              setState(() => widget.chantier.statut = s);
-              Navigator.pop(context);
-            },
-          )).toList(),
-        ),
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: StatutChantier.values.map((s) => ListTile(
+          leading: Icon(Icons.circle, color: _getStatusColor(s)),
+          title: Text(s.name.toUpperCase()),
+          onTap: () {
+            setState(() => widget.chantier.statut = s);
+            _persistAll();
+            Navigator.pop(context);
+          },
+        )).toList(),
       ),
     );
   }
@@ -214,68 +354,14 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
       subtitle: Text(subtitle, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
     );
   }
-
-  Widget _buildTeamTab() {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton(
-        mini: true,
-        backgroundColor: const Color(0xFF1A334D),
-        onPressed: () => _showAddWorkerDialog(),
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
-      body: _equipe.isEmpty 
-        ? Center(child: Text("Aucun ouvrier assigné", style: TextStyle(color: Theme.of(context).hintColor)))
-        : ListView.builder(
-            itemCount: _equipe.length,
-            itemBuilder: (context, index) => ListTile(
-              leading: CircleAvatar(
-                backgroundColor: Colors.blue.withValues(alpha: 0.1),
-                child: const Icon(Icons.person, color: Colors.blue)
-              ),
-              title: Text(_equipe[index].nom, style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text(_equipe[index].specialite),
-              trailing: IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.red),
-                onPressed: () {
-                  setState(() => _equipe.removeAt(index));
-                  _persistTeam();
-                },
-              ),
-            ),
-          ),
-    );
-  }
-
-  void _showAddWorkerDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).cardColor,
-        title: const Text("Assigner un ouvrier"),
-        content: DropdownButtonFormField<Ouvrier>(
-          dropdownColor: Theme.of(context).cardColor,
-          hint: const Text("Choisir"),
-          items: globalOuvriers.map((o) => DropdownMenuItem(value: o, child: Text(o.nom))).toList(),
-          onChanged: (val) {
-            if (val != null && !_equipe.any((o) => o.id == val.id)) {
-              setState(() => _equipe.add(val));
-              _persistTeam();
-            }
-            Navigator.pop(context);
-          },
-        ),
-      ),
-    );
-  }
 }
 
-// --- JOURNAL ---
+// --- LES CLASSES JOURNAL & GALERIE RESTENT IDENTIQUES À TON CODE ---
+
 class JournalTab extends StatefulWidget {
   final Function(JournalEntry) onEntryAdded;
   final List<JournalEntry> entries;
   const JournalTab({super.key, required this.onEntryAdded, required this.entries});
-
   @override
   State<JournalTab> createState() => _JournalTabState();
 }
@@ -299,12 +385,8 @@ class _JournalTabState extends State<JournalTab> {
           auteur: "Chef de chantier",
           imagePath: _selectedImage?.path,
       );
-
       widget.onEntryAdded(newEntry);
-      setState(() {
-        _textController.clear();
-        _selectedImage = null;
-      });
+      setState(() { _textController.clear(); _selectedImage = null; });
     }
   }
 
@@ -339,7 +421,6 @@ class _JournalTabState extends State<JournalTab> {
             itemBuilder: (context, index) {
               final note = widget.entries[index];
               return Card(
-                color: Theme.of(context).cardColor,
                 margin: const EdgeInsets.all(10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -349,10 +430,7 @@ class _JournalTabState extends State<JournalTab> {
                         borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
                         child: Image.file(File(note.imagePath!), fit: BoxFit.cover, width: double.infinity, height: 200)
                       ),
-                    ListTile(
-                      title: Text(note.contenu), 
-                      subtitle: Text(note.date, style: TextStyle(color: Theme.of(context).hintColor, fontSize: 11))
-                    ),
+                    ListTile(title: Text(note.contenu), subtitle: Text(note.date, style: const TextStyle(fontSize: 11))),
                   ],
                 ),
               );
@@ -364,7 +442,6 @@ class _JournalTabState extends State<JournalTab> {
   }
 }
 
-// --- GALERIE ---
 class GalleryTab extends StatelessWidget {
     final List<JournalEntry> entries; 
     const GalleryTab({super.key, required this.entries});
@@ -372,7 +449,7 @@ class GalleryTab extends StatelessWidget {
     @override
     Widget build(BuildContext context) {
       final imgs = entries.where((e) => e.imagePath != null).toList();
-      if (imgs.isEmpty) return Center(child: Text("Aucune photo disponible", style: TextStyle(color: Theme.of(context).hintColor)));
+      if (imgs.isEmpty) return const Center(child: Text("Aucune photo"));
 
       return GridView.builder(
         padding: const EdgeInsets.all(10),
@@ -392,23 +469,11 @@ class GalleryTab extends StatelessWidget {
       showDialog(
         context: context,
         builder: (context) => Dialog(
-          backgroundColor: Theme.of(context).cardColor,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(15)), child: Image.file(File(entry.imagePath!), fit: BoxFit.contain)),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(entry.date, style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12)),
-                    const SizedBox(height: 8),
-                    Text(entry.contenu.isEmpty ? "(Sans commentaire)" : entry.contenu, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
+              Image.file(File(entry.imagePath!)),
+              Padding(padding: const EdgeInsets.all(16), child: Text(entry.contenu)),
               TextButton(onPressed: () => Navigator.pop(context), child: const Text("Fermer"))
             ],
           ),
