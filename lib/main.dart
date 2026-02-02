@@ -5,6 +5,7 @@ import 'screens/dashboard_view.dart';
 import 'screens/chantiers_screen.dart';
 import 'screens/ouvriers_screen.dart';
 import 'screens/stats_screen.dart';
+import 'screens/materiel_screen.dart';
 
 void main() => runApp(const ChantierApp());
 
@@ -49,7 +50,7 @@ class _MainShellState extends State<MainShell> {
       const ChantiersScreen(),                     // Index 1
       const OuvriersScreen(),                      // Index 2
       const StatsScreen(),                         // Index 3
-      const Center(child: Text("Stocks Matériel")), // Index 4
+      const MaterielScreen(),                      // Index 4
       const Center(child: Text("Paramètres")),      // Index 5
     ];
 
