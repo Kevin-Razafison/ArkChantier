@@ -15,19 +15,33 @@ class SidebarDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFF1A334D),
-      child: Column(
-        children: [
-          const DrawerHeader(child: Center(child: Text("ArkChantier", style: TextStyle(color: Colors.white, fontSize: 20)))),
-          _buildItem(Icons.dashboard, "Dashboard", 0),
-          _buildItem(Icons.location_city, "Chantiers", 1),
-          if (role != UserRole.client) ...[
-            _buildItem(Icons.people, "Ouvriers", 2),
-            _buildItem(Icons.inventory, "Matériel", 3),
+    return SizedBox(
+      width: 250, 
+      child: Container(
+        color: const Color(0xFF1A334D),
+        child: Column(
+          children: [
+            const DrawerHeader(
+              child: Center(
+                child: Text(
+                  "ArkChantier", 
+                  style: TextStyle(
+                    color: Colors.white, 
+                    fontSize: 20, 
+                    fontWeight: FontWeight.bold
+                  ),
+                ),
+              ),
+            ),
+            _buildItem(Icons.dashboard, "Dashboard", 0),
+            _buildItem(Icons.location_city, "Chantiers", 1),
+            if (role != UserRole.client) ...[
+              _buildItem(Icons.people, "Ouvriers", 2),
+              _buildItem(Icons.inventory, "Matériel", 3),
+            ],
+            const Expanded(child: SizedBox.expand()),
           ],
-          const Expanded(child: SizedBox.expand()),
-        ],
+        ),
       ),
     );
   }
@@ -36,7 +50,13 @@ class SidebarDrawer extends StatelessWidget {
     bool isSelected = currentIndex == index;
     return ListTile(
       leading: Icon(icon, color: Colors.white),
-      title: Text(label, style: const TextStyle(color: Colors.white)),
+      title: Text(
+        label, 
+        style: const TextStyle(
+          color: Colors.white, 
+          overflow: TextOverflow.ellipsis
+        ),
+      ),
       tileColor: isSelected ? Colors.orange.withOpacity(0.8) : Colors.transparent,
       onTap: () => onDestinationSelected(index),
     );

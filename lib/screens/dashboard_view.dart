@@ -80,8 +80,11 @@ class DashboardView extends StatelessWidget {
     );
   }
 
-  Widget _listAlertes() {
+Widget _listAlertes() {
     return ListView(
+      shrinkWrap: true, 
+      physics: const NeverScrollableScrollPhysics(), 
+      padding: EdgeInsets.zero,
       children: const [
         ListTile(
           leading: Icon(Icons.warning, color: Colors.orange, size: 20),

@@ -64,7 +64,6 @@ class _MainShellState extends State<MainShell> {
         : null,
       body: Row(
         children: [
-          // Sidebar fixe pour Desktop
           if (!isMobile) 
             SidebarDrawer(
               role: currentUser.role, 
@@ -72,7 +71,6 @@ class _MainShellState extends State<MainShell> {
               onDestinationSelected: (i) => setState(() => _selectedIndex = i)
             ),
           
-          // ZONE DE CONTENU DYNAMIQUE
           Expanded(
             child: IndexedStack(
               index: _selectedIndex,
