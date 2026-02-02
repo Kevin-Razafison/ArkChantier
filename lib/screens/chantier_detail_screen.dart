@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/chantier_model.dart';
+import '../models/ouvrier_model.dart';
 
 class ChantierDetailScreen extends StatelessWidget {
   final Chantier chantier;
@@ -37,6 +38,7 @@ class ChantierDetailScreen extends StatelessWidget {
     );
   }
 
+
   Widget _buildOverviewTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -69,6 +71,49 @@ class ChantierDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildTeamTab() => const Center(child: Text("Liste des ouvriers assignés..."));
+    Widget _buildTeamTab() {
+    // Données fictives pour l'exemple
+    final List<Ouvrier> equipe = [
+      Ouvrier(id: '1', nom: "Jean Dupont", specialite: "Maçon Expert"),
+      Ouvrier(id: '2', nom: "Marc Vasseur", specialite: "Électricien"),
+      Ouvrier(id: '3', nom: "Amine Sadek", specialite: "Conducteur d'engins"),
+    ];
+
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: equipe.length,
+      separatorBuilder: (context, index) => const Divider(),
+      itemBuilder: (context, index) {
+        final worker = equipe[index];
+        return ListTile(
+          leading: CircleAvatar(
+            backgroundColor: Colors.grey[200],
+            backgroundImage: NetworkImage(worker.photoUrl),
+          ),
+          title: Text(worker.nom, style: const TextStyle(fontWeight: FontWeight.bold)),
+          subtitle: Text(worker.specialite),
+          trailing: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: worker.estPresent ? Colors.green[100] : Colors.red[100],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              worker.estPresent ? "PRÉSENT" : "ABSENT",
+              style: TextStyle(
+                color: worker.estPresent ? Colors.green[800] : Colors.red[800],
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          onTap: () {
+            // Future : Voir le profil détaillé de l'ouvrier
+          },
+        );
+      },
+    );
+  }
+  
   Widget _buildDocsTab() => const Center(child: Text("Photos et PDF du chantier..."));
 }
