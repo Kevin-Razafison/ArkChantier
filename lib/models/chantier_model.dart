@@ -5,7 +5,7 @@ class Chantier {
   final String nom;
   final String lieu;
   final double progression;
-  final StatutChantier statut;
+  StatutChantier statut;
   final String imageAppercu; // URL ou chemin local
 
   Chantier({

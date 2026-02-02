@@ -43,7 +43,7 @@ class _MainShellState extends State<MainShell> {
     bool isMobile = MediaQuery.of(context).size.width < 800;
     
     // Définition des pages
-    final List<Widget> _pages = [
+    final List<Widget> pages = [
       DashboardView(user: currentUser), 
       const ChantiersScreen(),
       const Center(child: Text("Gestion des Ouvriers")), 
@@ -90,7 +90,7 @@ class _MainShellState extends State<MainShell> {
           Expanded(
             child: IndexedStack(
               index: _selectedIndex,
-              children: _pages,
+              children: pages,
             ),
           ),
         ],

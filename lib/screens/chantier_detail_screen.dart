@@ -4,66 +4,141 @@ import 'dart:io';
 import '../models/chantier_model.dart';
 import '../models/ouvrier_model.dart';
 import '../models/journal_model.dart';
-import '../data/mock_data.dart';  
+import '../data/mock_data.dart';
 
-class ChantierDetailScreen extends StatelessWidget {
+class ChantierDetailScreen extends StatefulWidget {
   final Chantier chantier;
-
   const ChantierDetailScreen({super.key, required this.chantier});
+
+  @override
+  State<ChantierDetailScreen> createState() => _ChantierDetailScreenState();
+}
+
+class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
+  // Liste qui centralise les photos pour la Galerie
+  final List<String> _galleryImages = [];
+
+  // Fonction pour ajouter une photo à la galerie depuis le Journal
+  void _onNewPhoto(String path) {
+    setState(() {
+      _galleryImages.insert(0, path);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3, 
+      length: 4, // Passage à 4 onglets pour tout avoir
       child: Scaffold(
         appBar: AppBar(
-          title: Text(chantier.nom),
+          title: Text(widget.chantier.nom),
           backgroundColor: const Color(0xFF1A334D),
           foregroundColor: Colors.white,
           bottom: const TabBar(
+            isScrollable: true,
             labelColor: Color(0xFFFFD700),
             unselectedLabelColor: Colors.white70,
             indicatorColor: Color(0xFFFFD700),
             tabs: [
               Tab(icon: Icon(Icons.info), text: "Infos"),
               Tab(icon: Icon(Icons.group), text: "Équipe"),
-              Tab(icon: Icon(Icons.folder), text: "Documents"),
+              Tab(icon: Icon(Icons.history), text: "Journal"),
+              Tab(icon: Icon(Icons.photo_library), text: "Galerie"),
             ],
           ),
         ),
         body: TabBarView(
           children: [
-            _buildOverviewTab(),
-            const TeamTab(), 
-            const JournalTab()
+            _buildOverviewTab(context),
+            const TeamTab(),
+            JournalTab(onPhotoAdded: _onNewPhoto), // On passe la fonction de rappel
+            GalleryTab(images: _galleryImages),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildOverviewTab() {
+  // --- 1. MÉTÉO ET STATUT ---
+  Widget _buildOverviewTab(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text("Progression actuelle : ${(chantier.progression * 100).toInt()}%", 
-               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Container(
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue[100]!),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.wb_sunny, color: Colors.orange, size: 40),
+                SizedBox(width: 15),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Météo sur site", style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text("Ensoleillé - 24°C", style: TextStyle(fontSize: 12)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 25),
+          Text("Progression : ${(widget.chantier.progression * 100).toInt()}%",
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
           LinearProgressIndicator(
-            value: chantier.progression,
-            minHeight: 15,
+            value: widget.chantier.progression,
+            minHeight: 12,
             borderRadius: BorderRadius.circular(10),
             color: Colors.green,
           ),
           const SizedBox(height: 30),
-          _infoTile(Icons.location_on, "Localisation", chantier.lieu),
-          _infoTile(Icons.calendar_today, "Début des travaux", "12 Janvier 2024"),
-          _infoTile(Icons.assignment, "Statut", chantier.statut.name.toUpperCase()),
+          _infoTile(Icons.location_on, "Localisation", widget.chantier.lieu),
+          ListTile(
+            leading: const Icon(Icons.assignment, color: Color(0xFF1A334D)),
+            title: const Text("Statut (Cliquer pour modifier)", style: TextStyle(fontSize: 12, color: Colors.grey)),
+            subtitle: Text(widget.chantier.statut.name.toUpperCase(), 
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            trailing: const Icon(Icons.edit, size: 18),
+            onTap: () => _showStatusPicker(context),
+          ),
         ],
       ),
     );
+  }
+
+  void _showStatusPicker(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: StatutChantier.values.map((s) => ListTile(
+            leading: Icon(Icons.circle, color: _getStatusColor(s)),
+            title: Text(s.name.toUpperCase()),
+            onTap: () {
+              setState(() => widget.chantier.statut = s);
+              Navigator.pop(context);
+            },
+          )).toList(),
+        ),
+      ),
+    );
+  }
+
+  Color _getStatusColor(StatutChantier statut) {
+    switch (statut) {
+      case StatutChantier.enRetard: return Colors.red;
+      case StatutChantier.termine: return Colors.green;
+      default: return Colors.blue;
+    }
   }
 
   Widget _infoTile(IconData icon, String title, String subtitle) {
@@ -73,11 +148,12 @@ class ChantierDetailScreen extends StatelessWidget {
       subtitle: Text(subtitle, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
     );
   }
-  
 }
 
+// --- 2. JOURNAL (AVEC CALLBACK PHOTO) ---
 class JournalTab extends StatefulWidget {
-  const JournalTab({super.key});
+  final Function(String) onPhotoAdded;
+  const JournalTab({super.key, required this.onPhotoAdded});
 
   @override
   State<JournalTab> createState() => _JournalTabState();
@@ -89,18 +165,18 @@ class _JournalTabState extends State<JournalTab> {
   final ImagePicker _picker = ImagePicker();
   File? _selectedImage;
 
-  // Fonction pour prendre une photo
   Future<void> _takePhoto() async {
     final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
     if (photo != null) {
-      setState(() {
-        _selectedImage = File(photo.path);
-      });
+      setState(() => _selectedImage = File(photo.path));
     }
   }
 
   void _addEntry() {
     if (_textController.text.isNotEmpty || _selectedImage != null) {
+      if (_selectedImage != null) {
+        widget.onPhotoAdded(_selectedImage!.path); // Envoi à la Galerie
+      }
       setState(() {
         _notes.insert(0, JournalEntry(
           id: DateTime.now().toString(),
@@ -110,80 +186,42 @@ class _JournalTabState extends State<JournalTab> {
           imagePath: _selectedImage?.path,
         ));
         _textController.clear();
-        _selectedImage = null; // Reset l'image après envoi
+        _selectedImage = null;
       });
     }
-  }
-  @override
-  void dispose() {
-    _textController.dispose(); // Libère la mémoire quand on quitte l'écran
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // --- ZONE DE SAISIE ---
         Container(
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)]),
+          color: Colors.white,
           child: Column(
             children: [
-              if (_selectedImage != null) 
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8.0),
-                  child: Image.file(_selectedImage!, height: 100, fit: BoxFit.cover),
-                ),
+              if (_selectedImage != null) Image.file(_selectedImage!, height: 80),
               Row(
                 children: [
                   IconButton(icon: const Icon(Icons.camera_alt, color: Colors.orange), onPressed: _takePhoto),
-                  Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      decoration: const InputDecoration(hintText: "Rapport de situation...", border: InputBorder.none),
-                    ),
-                  ),
+                  Expanded(child: TextField(controller: _textController, decoration: const InputDecoration(hintText: "Rapport..."))),
                   IconButton(icon: const Icon(Icons.send, color: Color(0xFF1A334D)), onPressed: _addEntry),
                 ],
               ),
             ],
           ),
         ),
-        // --- FIL D'ACTUALITÉ ---
         Expanded(
           child: ListView.builder(
             itemCount: _notes.length,
             itemBuilder: (context, index) {
               final note = _notes[index];
               return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                margin: const EdgeInsets.all(10),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (note.imagePath != null)
-                      ClipRRect(
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                        child: Image.file(File(note.imagePath!), height: 200, width: double.infinity, fit: BoxFit.cover),
-                      ),
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(note.date, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
-                              Text(note.auteur, style: const TextStyle(fontSize: 10, fontStyle: FontStyle.italic)),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(note.contenu, style: const TextStyle(fontSize: 15)),
-                        ],
-                      ),
-                    ),
+                    if (note.imagePath != null) Image.file(File(note.imagePath!), fit: BoxFit.cover),
+                    ListTile(title: Text(note.contenu), subtitle: Text(note.date)),
                   ],
                 ),
               );
@@ -194,117 +232,66 @@ class _JournalTabState extends State<JournalTab> {
     );
   }
 }
+
+// --- 3. GALERIE ---
+class GalleryTab extends StatelessWidget {
+  final List<String> images;
+  const GalleryTab({super.key, required this.images});
+
+  @override
+  Widget build(BuildContext context) {
+    return images.isEmpty 
+      ? const Center(child: Text("Aucune photo")) 
+      : GridView.builder(
+          padding: const EdgeInsets.all(10),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 5, mainAxisSpacing: 5),
+          itemCount: images.length,
+          itemBuilder: (context, index) => Image.file(File(images[index]), fit: BoxFit.cover),
+        );
+  }
+}
+
+// --- 4. ÉQUIPE ---
 class TeamTab extends StatefulWidget {
   const TeamTab({super.key});
-
   @override
   State<TeamTab> createState() => _TeamTabState();
 }
 
 class _TeamTabState extends State<TeamTab> {
-  final List<Ouvrier> _equipe = [
-    Ouvrier(id: '1', nom: "Jean Dupont", specialite: "Maçon Expert"),
-    Ouvrier(id: '2', nom: "Marc Vasseur", specialite: "Électricien"),
-    Ouvrier(id: '3', nom: "Amine Sadek", specialite: "Conducteur d'engins"),
-  ];
+  final List<Ouvrier> _equipe = []; // Liste locale au chantier
 
   @override
   Widget build(BuildContext context) {
-    // Utilisation d'un Scaffold interne pour avoir le FloatingActionButton
     return Scaffold(
-      backgroundColor: Colors.transparent, // Pour garder le fond du parent
       floatingActionButton: FloatingActionButton(
         mini: true,
-        backgroundColor: const Color(0xFF1A334D),
         onPressed: _showAddWorkerDialog,
-        child: const Icon(Icons.person_add, color: Colors.white),
+        child: const Icon(Icons.add),
       ),
-      body: ListView.separated(
-        padding: const EdgeInsets.all(16),
+      body: ListView.builder(
         itemCount: _equipe.length,
-        separatorBuilder: (context, index) => const Divider(),
-        itemBuilder: (context, index) {
-          final worker = _equipe[index];
-          return ListTile(
-            leading: CircleAvatar(
-              backgroundColor: Colors.grey[200],
-              backgroundImage: NetworkImage(worker.photoUrl),
-            ),
-            title: Text(worker.nom, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text(worker.specialite),
-            // On regroupe le statut et la suppression dans un Row
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                GestureDetector(
-                  onTap: () => setState(() => worker.estPresent = !worker.estPresent),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: worker.estPresent ? Colors.green[100] : Colors.red[100],
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: worker.estPresent ? Colors.green : Colors.red),
-                    ),
-                    child: Text(
-                      worker.estPresent ? "PRÉSENT" : "ABSENT",
-                      style: TextStyle(
-                        color: worker.estPresent ? Colors.green[800] : Colors.red[800],
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.grey, size: 20),
-                  onPressed: () => setState(() => _equipe.removeAt(index)),
-                ),
-              ],
-            ),
-          );
-        },
+        itemBuilder: (context, index) => ListTile(
+          leading: const CircleAvatar(child: Icon(Icons.person)),
+          title: Text(_equipe[index].nom),
+          subtitle: Text(_equipe[index].specialite),
+        ),
       ),
     );
   }
 
   void _showAddWorkerDialog() {
     showDialog(
-      context: context, 
+      context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Ajouter à l'équipe"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("Sélectionner un ouvrier existant :", style: TextStyle(fontSize: 12, color: Colors.grey)),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<Ouvrier>(
-              isExpanded: true,
-              hint: const Text("Choisir un ouvrier"),
-              items: globalOuvriers.map((o) => DropdownMenuItem(
-                value: o,
-                child: Text(o.nom),
-              )).toList(),
-              onChanged: (selected) {
-                if (selected != null) {
-                  // Vérifier si l'ouvrier est déjà dans l'équipe pour éviter les doublons
-                  if (!_equipe.any((e) => e.id == selected.id)) {
-                    setState(() {
-                      _equipe.add(selected);
-                    });
-                  }
-                  Navigator.pop(context);
-                }
-              },
-            ),
-          ],
+        title: const Text("Ajouter un ouvrier"),
+        content: DropdownButtonFormField<Ouvrier>(
+          items: globalOuvriers.map((o) => DropdownMenuItem(value: o, child: Text(o.nom))).toList(),
+          onChanged: (val) {
+            if (val != null) setState(() => _equipe.add(val));
+            Navigator.pop(context);
+          },
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context), 
-            child: const Text("Annuler")
-          ),
-        ],
       ),
     );
   }
