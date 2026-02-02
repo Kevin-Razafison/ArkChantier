@@ -5,12 +5,7 @@ class InfoCard extends StatelessWidget {
   final Widget child;
   final Color? borderColor;
 
-  const InfoCard({
-    super.key, 
-    required this.title, 
-    required this.child, 
-    this.borderColor
-  });
+  const InfoCard({super.key, required this.title, required this.child, this.borderColor});
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +13,7 @@ class InfoCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(5), // Respect du design carré
         border: borderColor != null ? Border.all(color: borderColor!, width: 2) : null,
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
       ),
