@@ -3,7 +3,7 @@ import 'models/user_model.dart';
 import 'widgets/sidebar_drawer.dart';
 import 'screens/dashboard_view.dart'; 
 import 'screens/chantiers_screen.dart';
-import 'screens/ouvrier_screen.dart';
+import 'screens/ouvriers_screen.dart';
 
 void main() => runApp(const ChantierApp());
 
