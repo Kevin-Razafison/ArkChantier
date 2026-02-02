@@ -10,14 +10,14 @@ class ChantierDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3, // 3 sections : Vue d'ensemble, Équipe, Documents
+      length: 3, 
       child: Scaffold(
         appBar: AppBar(
           title: Text(chantier.nom),
           backgroundColor: const Color(0xFF1A334D),
           foregroundColor: Colors.white,
           bottom: const TabBar(
-            labelColor: Color(0xFFFFD700), // Ton Gold fétiche
+            labelColor: Color(0xFFFFD700),
             unselectedLabelColor: Colors.white70,
             indicatorColor: Color(0xFFFFD700),
             tabs: [
@@ -30,14 +30,13 @@ class ChantierDetailScreen extends StatelessWidget {
         body: TabBarView(
           children: [
             _buildOverviewTab(),
-            _buildTeamTab(),
+            const TeamTab(), 
             _buildDocsTab(),
           ],
         ),
       ),
     );
   }
-
 
   Widget _buildOverviewTab() {
     return SingleChildScrollView(
@@ -70,21 +69,34 @@ class ChantierDetailScreen extends StatelessWidget {
       subtitle: Text(subtitle, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
     );
   }
+  
+  Widget _buildDocsTab() => const Center(child: Text("Photos et PDF du chantier..."));
+}
 
-    Widget _buildTeamTab() {
-    // Données fictives pour l'exemple
-    final List<Ouvrier> equipe = [
-      Ouvrier(id: '1', nom: "Jean Dupont", specialite: "Maçon Expert"),
-      Ouvrier(id: '2', nom: "Marc Vasseur", specialite: "Électricien"),
-      Ouvrier(id: '3', nom: "Amine Sadek", specialite: "Conducteur d'engins"),
-    ];
 
+class TeamTab extends StatefulWidget {
+  const TeamTab({super.key});
+
+  @override
+  State<TeamTab> createState() => _TeamTabState();
+}
+
+class _TeamTabState extends State<TeamTab> {
+  // Liste gérée dans le State pour permettre la modification visuelle
+  final List<Ouvrier> _equipe = [
+    Ouvrier(id: '1', nom: "Jean Dupont", specialite: "Maçon Expert"),
+    Ouvrier(id: '2', nom: "Marc Vasseur", specialite: "Électricien"),
+    Ouvrier(id: '3', nom: "Amine Sadek", specialite: "Conducteur d'engins"),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
     return ListView.separated(
       padding: const EdgeInsets.all(16),
-      itemCount: equipe.length,
+      itemCount: _equipe.length,
       separatorBuilder: (context, index) => const Divider(),
       itemBuilder: (context, index) {
-        final worker = equipe[index];
+        final worker = _equipe[index];
         return ListTile(
           leading: CircleAvatar(
             backgroundColor: Colors.grey[200],
@@ -92,28 +104,34 @@ class ChantierDetailScreen extends StatelessWidget {
           ),
           title: Text(worker.nom, style: const TextStyle(fontWeight: FontWeight.bold)),
           subtitle: Text(worker.specialite),
-          trailing: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: worker.estPresent ? Colors.green[100] : Colors.red[100],
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              worker.estPresent ? "PRÉSENT" : "ABSENT",
-              style: TextStyle(
-                color: worker.estPresent ? Colors.green[800] : Colors.red[800],
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
+          trailing: GestureDetector(
+            onTap: () {
+              setState(() {
+                worker.estPresent = !worker.estPresent;
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: worker.estPresent ? Colors.green[100] : Colors.red[100],
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: worker.estPresent ? Colors.green : Colors.red,
+                ),
+              ),
+              child: Text(
+                worker.estPresent ? "PRÉSENT" : "ABSENT",
+                style: TextStyle(
+                  color: worker.estPresent ? Colors.green[800] : Colors.red[800],
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ),
-          onTap: () {
-            // Future : Voir le profil détaillé de l'ouvrier
-          },
         );
       },
     );
   }
-  
-  Widget _buildDocsTab() => const Center(child: Text("Photos et PDF du chantier..."));
 }
