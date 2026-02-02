@@ -5,12 +5,14 @@ class FinancialStatsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildStatRow("Budget Total", "1 250 000 €", Colors.blue),
+        _buildStatRow(context, "Budget Total", "1 250 000 €", Colors.blue),
         const SizedBox(height: 15),
-        _buildStatRow("Dépenses Actuelles", "845 000 €", Colors.orange),
+        _buildStatRow(context, "Dépenses Actuelles", "845 000 €", Colors.orange),
         const SizedBox(height: 20),
         const Text(
           "Utilisation du budget : 67%",
@@ -22,7 +24,7 @@ class FinancialStatsCard extends StatelessWidget {
           child: LinearProgressIndicator(
             value: 0.67,
             minHeight: 12,
-            backgroundColor: Colors.grey[200],
+            backgroundColor: isDark ? Colors.white10 : Colors.grey[200],
             valueColor: const AlwaysStoppedAnimation<Color>(Colors.green),
           ),
         ),
@@ -30,29 +32,29 @@ class FinancialStatsCard extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _miniStat("Imprévus", "+2.5%", Colors.red),
-            _miniStat("Économies", "-1.2%", Colors.green),
+            _miniStat(context, "Imprévus", "+2.5%", Colors.red),
+            _miniStat(context, "Économies", "-1.2%", Colors.green),
           ],
         )
       ],
     );
   }
 
-  Widget _buildStatRow(String label, String value, Color color) {
+  Widget _buildStatRow(BuildContext context, String label, String value, Color color) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+        Text(label, style: TextStyle(fontSize: 13, color: Theme.of(context).hintColor)),
         Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color)),
       ],
     );
   }
 
-  Widget _miniStat(String label, String value, Color color) {
+  Widget _miniStat(BuildContext context, String label, String value, Color color) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        Text(label, style: TextStyle(fontSize: 10, color: Theme.of(context).hintColor)),
         Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
       ],
     );

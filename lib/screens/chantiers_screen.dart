@@ -16,7 +16,7 @@ class _ChantiersScreenState extends State<ChantiersScreen> {
     Chantier(id: '2', nom: "Extension École B", lieu: "Lyon", progression: 0.15, statut: StatutChantier.enRetard),
   ];
 
-  StatutChantier? _filterStatut; // Null = "Tous"
+  StatutChantier? _filterStatut;
 
   void _addNewChantier(Chantier nouveauChantier) {
     setState(() {
@@ -26,13 +26,13 @@ class _ChantiersScreenState extends State<ChantiersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Application du filtre sur la liste
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final filteredChantiers = _filterStatut == null 
       ? _listChantiers 
       : _listChantiers.where((c) => c.statut == _filterStatut).toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F9),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text("Mes Chantiers", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         backgroundColor: const Color(0xFF1A334D),
@@ -40,7 +40,7 @@ class _ChantiersScreenState extends State<ChantiersScreen> {
       ),
       body: Column(
         children: [
-          // --- BARRE DE FILTRES (CHIPS) ---
+          // --- BARRE DE FILTRES ---
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -63,7 +63,6 @@ class _ChantiersScreenState extends State<ChantiersScreen> {
             ),
           ),
           
-          // --- LISTE DES CHANTIERS ---
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -93,31 +92,32 @@ class _ChantiersScreenState extends State<ChantiersScreen> {
                   },
                   child: Card(
                     elevation: 2,
+                    color: Theme.of(context).cardColor,
                     margin: const EdgeInsets.only(bottom: 20),
                     clipBehavior: Clip.antiAlias,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                     child: InkWell(
-                      onTap: () => _goToDetail(context, c),
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ChantierDetailScreen(chantier: c))),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Container(
                             height: 120,
                             width: double.infinity,
-                            color: Colors.grey[300],
-                            child: const Icon(Icons.apartment, color: Colors.white, size: 50),
+                            color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[300],
+                            child: Icon(Icons.apartment, color: isDark ? Colors.white30 : Colors.white, size: 50),
                           ),
                           ListTile(
                             title: Text(c.nom, style: const TextStyle(fontWeight: FontWeight.bold)),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(c.lieu),
+                                Text(c.lieu, style: TextStyle(color: Theme.of(context).hintColor)),
                                 const SizedBox(height: 8),
                                 LinearProgressIndicator(
                                   value: c.progression, 
                                   color: _getStatusColor(c.statut),
-                                  backgroundColor: Colors.grey[200],
+                                  backgroundColor: isDark ? Colors.white10 : Colors.grey[200],
                                 ),
                               ],
                             ),
@@ -139,7 +139,14 @@ class _ChantiersScreenState extends State<ChantiersScreen> {
           showModalBottomSheet(
             context: context,
             isScrollControlled: true,
-            builder: (context) => AddChantierForm(onAdd: _addNewChantier),
+            backgroundColor: Colors.transparent,
+            builder: (context) => Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: AddChantierForm(onAdd: _addNewChantier),
+            ),
           );
         },
         child: const Icon(Icons.add, color: Colors.white),
@@ -147,7 +154,6 @@ class _ChantiersScreenState extends State<ChantiersScreen> {
     );
   }
 
-  // --- HELPERS ---
   Color _getStatusColor(StatutChantier statut) {
     switch (statut) {
       case StatutChantier.enRetard: return Colors.red;
@@ -161,16 +167,12 @@ class _ChantiersScreenState extends State<ChantiersScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: color),
       ),
       child: Text(statut.name.toUpperCase(), style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
     );
-  }
-
-  void _goToDetail(BuildContext context, Chantier chantier) {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => ChantierDetailScreen(chantier: chantier)));
   }
 
   Future<bool?> _confirmDeletion(BuildContext context, String nom) {

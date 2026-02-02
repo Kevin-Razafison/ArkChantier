@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../main.dart'; // Import crucial pour accéder à ChantierApp.of(context)
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -8,12 +9,11 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _isDarkMode = false;
   String _selectedLanguage = 'Français';
-  String _adminName = "Admin ArkChantier";
 
-  void _showEditAdminDialog() {
-    TextEditingController controller = TextEditingController(text: _adminName);
+  // Boîte de dialogue pour modifier le nom de l'admin
+  void _showEditAdminDialog(String currentName) {
+    TextEditingController controller = TextEditingController(text: currentName);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -26,7 +26,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
           ElevatedButton(
             onPressed: () {
-              setState(() => _adminName = controller.text);
+              // APPEL GLOBAL : On met à jour le nom dans le Main
+              ChantierApp.of(context).updateAdminName(controller.text);
               Navigator.pop(context);
             },
             child: const Text("Enregistrer"),
@@ -59,6 +60,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // On détecte si on est en mode sombre actuellement
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // On pourrait aussi récupérer le nom de l'admin ici si besoin, 
+    // mais on va passer par les widgets pour la lecture.
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Paramètres"),
@@ -71,9 +78,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             leading: const Icon(Icons.person),
             title: const Text("Nom de l'administrateur"),
-            subtitle: Text(_adminName),
+            // On affiche le nom actuel (celui qui est dans le MainShell/Main)
+            subtitle: const Text("Cliquez pour modifier"), 
             trailing: const Icon(Icons.edit, size: 20),
-            onTap: _showEditAdminDialog,
+            onTap: () => _showEditAdminDialog("Admin"), 
           ),
           ListTile(
             leading: const Icon(Icons.person_add),
@@ -85,8 +93,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SwitchListTile(
             secondary: const Icon(Icons.dark_mode),
             title: const Text("Mode Sombre"),
-            value: _isDarkMode,
-            onChanged: (val) => setState(() => _isDarkMode = val),
+            value: isDark,
+            onChanged: (val) {
+              // APPEL GLOBAL : On change le thème dans toute l'app
+              ChantierApp.of(context).toggleTheme(val);
+            },
           ),
           ListTile(
             leading: const Icon(Icons.language),
@@ -94,7 +105,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: Text(_selectedLanguage),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {
-              // Logique pour changer la langue
+              // Logique future pour la langue
             },
           ),
           const Divider(),

@@ -9,18 +9,32 @@ class InfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(5), // Respect du design carré
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(5),
         border: borderColor != null ? Border.all(color: borderColor!, width: 2) : null,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+        boxShadow: [
+          BoxShadow(
+            color: isDark ? Colors.black45 : Colors.black.withValues(alpha: 0.05), 
+            blurRadius: 10
+          )
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
+          Text(
+            title, 
+            style: TextStyle(
+              fontWeight: FontWeight.bold, 
+              color: isDark ? Colors.white70 : Colors.grey, 
+              fontSize: 12
+            )
+          ),
           const Divider(),
           Expanded(child: child),
         ],

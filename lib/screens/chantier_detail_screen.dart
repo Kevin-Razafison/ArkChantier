@@ -15,11 +15,9 @@ class ChantierDetailScreen extends StatefulWidget {
 }
 
 class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
-  // On stocke désormais les objets JournalEntry complets
   final List<JournalEntry> _journalEntries = [];
   final List<Ouvrier> _equipe = []; 
 
-  // Cette fonction est le "pont" entre le Journal et la Galerie
   void _onNewJournalEntry(JournalEntry entry) {
     setState(() {
       _journalEntries.insert(0, entry);
@@ -28,9 +26,12 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return DefaultTabController(
       length: 4,
       child: Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
           title: Text(widget.chantier.nom),
           backgroundColor: const Color(0xFF1A334D),
@@ -52,8 +53,8 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
           children: [
             _buildOverviewTab(context),
             _buildTeamTab(),
-            JournalTab(onEntryAdded: _onNewJournalEntry), // Mis à jour
-            GalleryTab(entries: _journalEntries),          // Mis à jour
+            JournalTab(onEntryAdded: _onNewJournalEntry),
+            GalleryTab(entries: _journalEntries),
           ],
         ),
       ),
@@ -61,6 +62,8 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
   }
 
   Widget _buildOverviewTab(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -70,28 +73,28 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _kpiCard("Ouvriers", "${_equipe.length}", Icons.people, Colors.blue),
-              // On compte uniquement les entrées du journal qui ont une image
               _kpiCard("Photos", "${_journalEntries.where((e) => e.imagePath != null).length}", Icons.photo, Colors.orange),
               _kpiCard("Jours", "24", Icons.timer, Colors.green),
             ],
           ),
           const SizedBox(height: 20),
+          // Widget Météo
           Container(
             padding: const EdgeInsets.all(15),
             decoration: BoxDecoration(
-              color: Colors.blue[50],
+              color: isDark ? Colors.blue.withValues(alpha: 0.1) : Colors.blue[50],
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.blue[100]!),
+              border: Border.all(color: isDark ? Colors.blue.withValues(alpha: 0.3) : Colors.blue[100]!),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.wb_sunny, color: Colors.orange, size: 40),
-                SizedBox(width: 15),
+                const Icon(Icons.wb_sunny, color: Colors.orange, size: 40),
+                const SizedBox(width: 15),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Météo sur site", style: TextStyle(fontWeight: FontWeight.bold)),
-                    Text("Ensoleillé - 24°C", style: TextStyle(fontSize: 12)),
+                    const Text("Météo sur site", style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text("Ensoleillé - 24°C", style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
                   ],
                 ),
               ],
@@ -106,12 +109,13 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
             minHeight: 12,
             borderRadius: BorderRadius.circular(10),
             color: Colors.green,
+            backgroundColor: isDark ? Colors.white10 : Colors.grey[200],
           ),
           const SizedBox(height: 30),
           _infoTile(Icons.location_on, "Localisation", widget.chantier.lieu),
           ListTile(
             leading: const Icon(Icons.assignment, color: Color(0xFF1A334D)),
-            title: const Text("Statut (Cliquer pour modifier)", style: TextStyle(fontSize: 12, color: Colors.grey)),
+            title: Text("Statut (Cliquer pour modifier)", style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
             subtitle: Text(widget.chantier.statut.name.toUpperCase(), 
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             trailing: const Icon(Icons.edit, size: 18),
@@ -123,28 +127,35 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
   }
 
   Widget _kpiCard(String label, String value, IconData icon, Color color) {
-    return Container(
-      width: MediaQuery.of(context).size.width * 0.28,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)],
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 5),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-        ],
-      ),
-    );
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      return Container(
+        width: MediaQuery.of(context).size.width * 0.28,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
+              blurRadius: 5
+            )
+          ],
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(height: 5),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            Text(label, style: TextStyle(fontSize: 10, color: Theme.of(context).hintColor)),
+          ],
+        ),
+      );
   }
 
   void _showStatusPicker(BuildContext context) {
     showModalBottomSheet(
       context: context,
+      backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 20),
@@ -174,7 +185,7 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
   Widget _infoTile(IconData icon, String title, String subtitle) {
     return ListTile(
       leading: Icon(icon, color: const Color(0xFF1A334D)),
-      title: Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+      title: Text(title, style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
       subtitle: Text(subtitle, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
     );
   }
@@ -184,19 +195,23 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton(
         mini: true,
+        backgroundColor: const Color(0xFF1A334D),
         onPressed: () => _showAddWorkerDialog(),
-        child: const Icon(Icons.add),
+        child: const Icon(Icons.add, color: Colors.white),
       ),
       body: _equipe.isEmpty 
-        ? const Center(child: Text("Aucun ouvrier assigné"))
+        ? Center(child: Text("Aucun ouvrier assigné", style: TextStyle(color: Theme.of(context).hintColor)))
         : ListView.builder(
             itemCount: _equipe.length,
             itemBuilder: (context, index) => ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.person)),
-              title: Text(_equipe[index].nom),
+              leading: CircleAvatar(
+                backgroundColor: Colors.blue.withValues(alpha: 0.1),
+                child: const Icon(Icons.person, color: Colors.blue)
+              ),
+              title: Text(_equipe[index].nom, style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text(_equipe[index].specialite),
               trailing: IconButton(
-                icon: const Icon(Icons.delete_outline),
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
                 onPressed: () => setState(() => _equipe.removeAt(index)),
               ),
             ),
@@ -208,8 +223,10 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
         title: const Text("Assigner un ouvrier"),
         content: DropdownButtonFormField<Ouvrier>(
+          dropdownColor: Theme.of(context).cardColor,
           hint: const Text("Choisir"),
           items: globalOuvriers.map((o) => DropdownMenuItem(value: o, child: Text(o.nom))).toList(),
           onChanged: (val) {
@@ -224,9 +241,9 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
   }
 }
 
-// --- 3. JOURNAL MODIFIÉ ---
+// --- JOURNAL ---
 class JournalTab extends StatefulWidget {
-  final Function(JournalEntry) onEntryAdded; // Reçoit l'objet complet
+  final Function(JournalEntry) onEntryAdded;
   const JournalTab({super.key, required this.onEntryAdded});
 
   @override
@@ -254,7 +271,7 @@ class _JournalTabState extends State<JournalTab> {
           imagePath: _selectedImage?.path,
       );
 
-      widget.onEntryAdded(newEntry); // Envoie l'objet au parent pour la Galerie
+      widget.onEntryAdded(newEntry);
 
       setState(() {
         _notes.insert(0, newEntry);
@@ -266,35 +283,62 @@ class _JournalTabState extends State<JournalTab> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Column(
       children: [
         Container(
           padding: const EdgeInsets.all(12),
-          color: Colors.white,
+          color: Theme.of(context).cardColor,
           child: Column(
             children: [
-              if (_selectedImage != null) Image.file(_selectedImage!, height: 80),
+              if (_selectedImage != null) 
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(_selectedImage!, height: 100),
+                  ),
+                ),
               Row(
                 children: [
                   IconButton(icon: const Icon(Icons.camera_alt, color: Colors.orange), onPressed: _takePhoto),
-                  Expanded(child: TextField(controller: _textController, decoration: const InputDecoration(hintText: "Rapport de situation..."))),
+                  Expanded(
+                    child: TextField(
+                      controller: _textController, 
+                      decoration: const InputDecoration(
+                        hintText: "Rapport de situation...",
+                        border: InputBorder.none
+                      )
+                    )
+                  ),
                   IconButton(icon: const Icon(Icons.send, color: Color(0xFF1A334D)), onPressed: _addEntry),
                 ],
               ),
             ],
           ),
         ),
+        const Divider(height: 1),
         Expanded(
           child: ListView.builder(
             itemCount: _notes.length,
             itemBuilder: (context, index) {
               final note = _notes[index];
               return Card(
+                color: Theme.of(context).cardColor,
                 margin: const EdgeInsets.all(10),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (note.imagePath != null) Image.file(File(note.imagePath!), fit: BoxFit.cover),
-                    ListTile(title: Text(note.contenu), subtitle: Text(note.date)),
+                    if (note.imagePath != null) 
+                      ClipRRect(
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                        child: Image.file(File(note.imagePath!), fit: BoxFit.cover, width: double.infinity, height: 200)
+                      ),
+                    ListTile(
+                      title: Text(note.contenu), 
+                      subtitle: Text(note.date, style: TextStyle(color: Theme.of(context).hintColor, fontSize: 11))
+                    ),
                   ],
                 ),
               );
@@ -306,7 +350,7 @@ class _JournalTabState extends State<JournalTab> {
   }
 }
 
-// --- 4. GALERIE ---
+// --- GALERIE ---
 class GalleryTab extends StatelessWidget {
     final List<JournalEntry> entries; 
 
@@ -317,7 +361,7 @@ class GalleryTab extends StatelessWidget {
       final entriesWithImages = entries.where((e) => e.imagePath != null).toList();
 
       if (entriesWithImages.isEmpty) {
-        return const Center(child: Text("Aucune photo disponible"));
+        return Center(child: Text("Aucune photo disponible", style: TextStyle(color: Theme.of(context).hintColor)));
       }
 
       return GridView.builder(
@@ -345,6 +389,7 @@ class GalleryTab extends StatelessWidget {
       showDialog(
         context: context,
         builder: (context) => Dialog(
+          backgroundColor: Theme.of(context).cardColor,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -358,7 +403,7 @@ class GalleryTab extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(entry.date, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                    Text(entry.date, style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12)),
                     const SizedBox(height: 8),
                     Text(
                       entry.contenu.isEmpty ? "(Sans commentaire)" : entry.contenu,
@@ -366,7 +411,7 @@ class GalleryTab extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     Text("Rapporté par : ${entry.auteur}", 
-                        style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 12)),
+                        style: TextStyle(fontStyle: FontStyle.italic, fontSize: 12, color: Theme.of(context).hintColor)),
                   ],
                 ),
               ),

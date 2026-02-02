@@ -10,23 +10,68 @@ import 'screens/settings_screen.dart';
 
 void main() => runApp(const ChantierApp());
 
-class ChantierApp extends StatelessWidget {
+class ChantierApp extends StatefulWidget {
   const ChantierApp({super.key});
+
+  static _ChantierAppState of(BuildContext context) =>
+      context.findAncestorStateOfType<_ChantierAppState>()!;
+
+  @override
+  State<ChantierApp> createState() => _ChantierAppState();
+}
+
+class _ChantierAppState extends State<ChantierApp> {
+  ThemeMode _themeMode = ThemeMode.light;
+  
+  UserModel currentUser = UserModel(
+    id: '1',
+    nom: 'Admin ArkChantier',
+    email: 'admin@ark.com',
+    role: UserRole.chefChantier,
+  );
+
+  void toggleTheme(bool isDark) {
+    setState(() => _themeMode = isDark ? ThemeMode.dark : ThemeMode.light);
+  }
+
+  void updateAdminName(String newName) {
+    setState(() {
+      currentUser = UserModel(
+        id: currentUser.id,
+        nom: newName,
+        email: currentUser.email,
+        role: currentUser.role,
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      themeMode: _themeMode,
       theme: ThemeData(
         useMaterial3: true,
+        brightness: Brightness.light,
         primaryColor: const Color(0xFF1A334D),
+        scaffoldBackgroundColor: const Color(0xFFF4F7F9),
+        cardColor: Colors.white,
       ),
-      home: const MainShell(),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF0F172A),
+        cardColor: const Color(0xFF1E293B),
+      ),
+      home: MainShell(user: currentUser),
     );
   }
 }
 
 class MainShell extends StatefulWidget {
-  const MainShell({super.key});
+  final UserModel user;
+  const MainShell({super.key, required this.user});
+
   @override
   State<MainShell> createState() => _MainShellState();
 }
@@ -34,40 +79,33 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
 
-  final UserModel currentUser = UserModel(
-    id: '1',
-    nom: 'Admin ArkChantier',
-    email: 'admin@ark.com',
-    role: UserRole.chefChantier,
-  );
-
   @override
   Widget build(BuildContext context) {
     bool isMobile = MediaQuery.of(context).size.width < 800;
-    
-    // Définition des pages (L'ordre ici doit correspondre exactement au Sidebar)
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     final List<Widget> pages = [
-      DashboardView(user: currentUser),             // Index 0
-      const ChantiersScreen(),                     // Index 1
-      const OuvriersScreen(),                      // Index 2
-      const StatsScreen(),                         // Index 3
-      const MaterielScreen(),                      // Index 4
-      const SettingsScreen(),                      // Index 5
+      DashboardView(user: widget.user),
+      const ChantiersScreen(),
+      const OuvriersScreen(),
+      const StatsScreen(),
+      const MaterielScreen(),
+      const SettingsScreen(),
     ];
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F9),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: isMobile 
         ? AppBar(
-            title: const Text("ArkChantier", style: TextStyle(color: Colors.white, fontSize: 18)),
+            title: const Text("ArkChantier", style: TextStyle(fontSize: 18)),
             backgroundColor: const Color(0xFF1A334D),
-            iconTheme: const IconThemeData(color: Colors.white),
+            foregroundColor: Colors.white,
           ) 
         : null,
       drawer: isMobile 
         ? Drawer(
             child: SidebarDrawer(
-              role: currentUser.role, 
+              role: widget.user.role, 
               currentIndex: _selectedIndex, 
               onDestinationSelected: (i) {
                 setState(() => _selectedIndex = i);
@@ -80,7 +118,7 @@ class _MainShellState extends State<MainShell> {
         children: [
           if (!isMobile) 
             SidebarDrawer(
-              role: currentUser.role, 
+              role: widget.user.role, 
               currentIndex: _selectedIndex, 
               onDestinationSelected: (i) => setState(() => _selectedIndex = i)
             ),

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../data/mock_data.dart'; // Import crucial !
+import '../data/mock_data.dart';
 import '../models/chantier_model.dart';
 
 class StatsScreen extends StatelessWidget {
@@ -7,7 +7,7 @@ class StatsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // On utilise maintenant globalChantiers partout
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final total = globalChantiers.length;
     final termines = globalChantiers.where((c) => c.statut == StatutChantier.termine).length;
     final retards = globalChantiers.where((c) => c.statut == StatutChantier.enRetard).length;
@@ -17,6 +17,7 @@ class StatsScreen extends StatelessWidget {
         : globalChantiers.map((c) => c.progression).reduce((a, b) => a + b) / total;
 
     return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text("Tableau de Bord"),
         backgroundColor: const Color(0xFF1A334D),
@@ -35,7 +36,11 @@ class StatsScreen extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Color(0xFF1A334D), Color(0xFF2E5A88)]),
+                gradient: LinearGradient(
+                  colors: isDark 
+                    ? [const Color(0xFF1E293B), const Color(0xFF0F172A)] 
+                    : [const Color(0xFF1A334D), const Color(0xFF2E5A88)]
+                ),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Column(
@@ -65,10 +70,10 @@ class StatsScreen extends StatelessWidget {
               mainAxisSpacing: 15,
               childAspectRatio: 1.5,
               children: [
-                _statCard("Chantiers", "$total", Icons.business, Colors.blue),
-                _statCard("Terminés", "$termines", Icons.check_circle, Colors.green),
-                _statCard("Alertes", "$retards", Icons.warning, Colors.red),
-                _statCard("Effectif", "${globalOuvriers.length}", Icons.people, Colors.orange),
+                _statCard(context, "Chantiers", "$total", Icons.business, Colors.blue),
+                _statCard(context, "Terminés", "$termines", Icons.check_circle, Colors.green),
+                _statCard(context, "Alertes", "$retards", Icons.warning, Colors.red),
+                _statCard(context, "Effectif", "${globalOuvriers.length}", Icons.people, Colors.orange),
               ],
             ),
             
@@ -76,16 +81,15 @@ class StatsScreen extends StatelessWidget {
             if (retards > 0) ...[
               const Text("Chantiers en retard", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red)),
               const SizedBox(height: 10),
-              // On affiche dynamiquement la liste des retardataires
               ...globalChantiers.where((c) => c.statut == StatutChantier.enRetard).map((c) => 
                 Card(
                   elevation: 0,
-                  color: Colors.red[50],
+                  color: isDark ? Colors.red.withValues(alpha: 0.1) : Colors.red[50],
                   margin: const EdgeInsets.only(bottom: 10),
                   child: ListTile(
                     leading: const Icon(Icons.error_outline, color: Colors.red),
                     title: Text(c.nom, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text(c.lieu),
+                    subtitle: Text(c.lieu, style: TextStyle(color: isDark ? Colors.white70 : Colors.black54)),
                   ),
                 )
               ).toList(),
@@ -96,14 +100,19 @@ class StatsScreen extends StatelessWidget {
     );
   }
 
-  Widget _statCard(String title, String value, IconData icon, Color color) {
+  Widget _statCard(BuildContext context, String title, String value, IconData icon, Color color) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(15),
-        // Remplacement de withOpacity par withValues pour Flutter 2026
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05), 
+            blurRadius: 10
+          )
+        ],
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -111,7 +120,7 @@ class StatsScreen extends StatelessWidget {
           Icon(icon, color: color, size: 24),
           const SizedBox(height: 5),
           Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          Text(title, style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
         ],
       ),
     );

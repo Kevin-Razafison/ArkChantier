@@ -24,6 +24,7 @@ class _MaterielScreenState extends State<MaterielScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: Theme.of(context).cardColor, // Adaptatif
           title: const Text("Ajouter du matériel"),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -37,19 +38,31 @@ class _MaterielScreenState extends State<MaterielScreen> {
                 keyboardType: TextInputType.number,
                 onChanged: (val) => quantite = int.tryParse(val) ?? 0,
               ),
+              const SizedBox(height: 15),
               DropdownButton<CategorieMateriel>(
                 value: categorie,
                 isExpanded: true,
+                dropdownColor: Theme.of(context).cardColor, // Fond du menu adaptatif
                 items: CategorieMateriel.values.map((cat) {
-                  return DropdownMenuItem(value: cat, child: Text(cat.name.toUpperCase()));
+                  return DropdownMenuItem(
+                    value: cat, 
+                    child: Text(cat.name.toUpperCase())
+                  );
                 }).toList(),
                 onChanged: (val) => setDialogState(() => categorie = val!),
               ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
+            TextButton(
+              onPressed: () => Navigator.pop(context), 
+              child: const Text("Annuler")
+            ),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1A334D),
+                foregroundColor: Colors.white,
+              ),
               onPressed: () {
                 if (nom.isNotEmpty) {
                   setState(() => inventaire.add(Materiel(
@@ -72,14 +85,22 @@ class _MaterielScreenState extends State<MaterielScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text("Gestion du Matériel"),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
       ),
       body: inventaire.isEmpty 
-        ? const Center(child: Text("Aucun matériel en stock"))
+        ? Center(
+            child: Text(
+              "Aucun matériel en stock",
+              style: TextStyle(color: Theme.of(context).hintColor),
+            ),
+          )
         : ListView.builder(
             padding: const EdgeInsets.all(12),
             itemCount: inventaire.length,
@@ -88,7 +109,7 @@ class _MaterielScreenState extends State<MaterielScreen> {
 
               return Dismissible(
                 key: Key(item.id),
-                direction: DismissDirection.endToStart, // Swipe de droite à gauche
+                direction: DismissDirection.endToStart,
                 background: Container(
                   alignment: Alignment.centerRight,
                   padding: const EdgeInsets.only(right: 20),
@@ -104,24 +125,47 @@ class _MaterielScreenState extends State<MaterielScreen> {
                     inventaire.removeAt(index);
                   });
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("${item.nom} supprimé")),
+                    SnackBar(
+                      content: Text("${item.nom} supprimé"),
+                      behavior: SnackBarBehavior.floating,
+                    ),
                   );
                 },
                 child: Card(
                   elevation: 0,
+                  color: Theme.of(context).cardColor, // Adaptatif
                   shape: RoundedRectangleBorder(
-                    side: BorderSide(color: Colors.grey[200]!),
+                    side: BorderSide(
+                      color: isDark ? Colors.white12 : Colors.grey[200]!
+                    ),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   margin: const EdgeInsets.only(bottom: 10),
                   child: ListTile(
-                    leading: Icon(
-                      item.categorie == CategorieMateriel.outillage ? Icons.build : Icons.inventory_2,
-                      color: item.categorie == CategorieMateriel.outillage ? Colors.blue : Colors.orange,
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: (item.categorie == CategorieMateriel.outillage ? Colors.blue : Colors.orange)
+                            .withValues(alpha: 0.1), // Nouvelle syntaxe Flutter
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        item.categorie == CategorieMateriel.outillage ? Icons.build : Icons.inventory_2,
+                        color: item.categorie == CategorieMateriel.outillage ? Colors.blue : Colors.orange,
+                      ),
                     ),
-                    title: Text(item.nom, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    trailing: Text("${item.quantite} ${item.unite}", 
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                    title: Text(
+                      item.nom, 
+                      style: const TextStyle(fontWeight: FontWeight.bold)
+                    ),
+                    subtitle: Text(
+                      item.categorie.name.toUpperCase(),
+                      style: TextStyle(fontSize: 10, color: Theme.of(context).hintColor),
+                    ),
+                    trailing: Text(
+                      "${item.quantite} ${item.unite}", 
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)
+                    ),
                   ),
                 ),
               );
