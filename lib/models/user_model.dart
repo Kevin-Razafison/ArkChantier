@@ -1,4 +1,9 @@
-enum UserRole { client, chefChantier, chefProjet }
+enum UserRole {
+  client,
+  ouvrier, // Ajouté pour correspondre à ton Login et Main
+  chefChantier,
+  chefProjet,
+}
 
 class UserModel {
   final String id;
@@ -15,7 +20,6 @@ class UserModel {
     this.chantierId,
   });
 
-  // Pour la sérialisation future si besoin
   Map<String, dynamic> toJson() => {
     'id': id,
     'nom': nom,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../main.dart';
+import '../models/user_model.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -16,7 +17,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Modifier le nom de l'admin"),
+        title: const Text("Modifier le nom"),
         content: TextField(
           controller: controller,
           decoration: const InputDecoration(hintText: "Nouveau nom"),
@@ -28,8 +29,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           ElevatedButton(
             onPressed: () {
+              // On accède à l'état global de l'app pour mettre à jour le profil
               ChantierApp.of(context).updateAdminName(controller.text);
               Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Profil mis à jour")),
+              );
             },
             child: const Text("Enregistrer"),
           ),
@@ -38,38 +43,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showAddUserDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Ajouter un utilisateur"),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(decoration: InputDecoration(labelText: "Nom complet")),
-            TextField(decoration: InputDecoration(labelText: "Email")),
-            TextField(
-              decoration: InputDecoration(labelText: "Rôle (Chef, Ouvrier...)"),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Annuler"),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Créer"),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    // On récupère l'utilisateur actuel via le state global
+    final user = ChantierApp.of(context).currentUser;
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final bool isAdmin = user.role == UserRole.chefProjet;
 
     return Scaffold(
       appBar: AppBar(
@@ -79,19 +58,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       body: ListView(
         children: [
-          _buildSectionTitle("Profil & Utilisateurs"),
+          _buildSectionTitle("Profil"),
           ListTile(
             leading: const Icon(Icons.person),
-            title: const Text("Nom de l'administrateur"),
-            subtitle: const Text("Cliquez pour modifier"),
-            trailing: const Icon(Icons.edit, size: 20),
-            onTap: () => _showEditAdminDialog("Admin"),
+            title: Text(user.nom),
+            subtitle: Text(user.role.name.toUpperCase()),
+            trailing: isAdmin ? const Icon(Icons.edit, size: 20) : null,
+            onTap: isAdmin ? () => _showEditAdminDialog(user.nom) : null,
           ),
-          ListTile(
-            leading: const Icon(Icons.person_add),
-            title: const Text("Ajouter un nouvel utilisateur"),
-            onTap: _showAddUserDialog,
-          ),
+
+          if (isAdmin) ...[
+            const Divider(),
+            _buildSectionTitle("Gestion Utilisateurs"),
+            ListTile(
+              leading: const Icon(Icons.person_add),
+              title: const Text("Ajouter un nouvel collaborateur"),
+              onTap: () {
+                // Ta logique d'ajout ici
+              },
+            ),
+          ],
+
           const Divider(),
           _buildSectionTitle("Apparence & Système"),
           SwitchListTile(
@@ -107,13 +94,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text("Langue de l'application"),
             subtitle: Text(_selectedLanguage),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {},
           ),
+
           const Divider(),
           _buildSectionTitle("À propos"),
           const ListTile(
             leading: Icon(Icons.info_outline),
-            title: Text("Version de l'application"),
+            title: Text("Version"),
             subtitle: Text("1.0.2-stable"),
           ),
         ],

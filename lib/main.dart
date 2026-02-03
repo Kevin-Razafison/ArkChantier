@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'models/user_model.dart';
 import 'models/projet_model.dart';
 import 'widgets/sidebar_drawer.dart';
@@ -9,8 +10,10 @@ import 'screens/stats_screen.dart';
 import 'screens/materiel_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/project_launcher_screen.dart';
+import 'screens/login_screen.dart';
 
 void main() async {
+  // Indispensable pour initialiser les SharedPreferences avant le runApp
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const ChantierApp());
 }
@@ -27,19 +30,50 @@ class ChantierApp extends StatefulWidget {
 
 class ChantierAppState extends State<ChantierApp> {
   ThemeMode _themeMode = ThemeMode.light;
-
   UserModel currentUser = UserModel(
-    id: '1',
-    nom: 'Admin ArkChantier',
-    email: 'admin@ark.com',
+    id: '0',
+    nom: 'Admin',
+    email: 'admin@chantier.com',
     role: UserRole.chefProjet,
   );
 
-  void toggleTheme(bool isDark) {
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings(); // Charge les données dès l'ouverture de l'app
+  }
+
+  // --- PERSISTANCE DES DONNÉES ---
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      // 1. Charger le Thème
+      final isDark = prefs.getBool('isDarkMode') ?? false;
+      _themeMode = isDark ? ThemeMode.dark : ThemeMode.light;
+
+      // 2. Charger le Nom
+      final savedName = prefs.getString('userName');
+      if (savedName != null) {
+        currentUser = UserModel(
+          id: currentUser.id,
+          nom: savedName,
+          email: currentUser.email,
+          role: currentUser.role,
+        );
+      }
+    });
+  }
+
+  Future<void> toggleTheme(bool isDark) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isDarkMode', isDark);
     setState(() => _themeMode = isDark ? ThemeMode.dark : ThemeMode.light);
   }
 
-  void updateAdminName(String newName) {
+  Future<void> updateAdminName(String newName) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('userName', newName);
     setState(() {
       currentUser = UserModel(
         id: currentUser.id,
@@ -68,10 +102,18 @@ class ChantierAppState extends State<ChantierApp> {
         scaffoldBackgroundColor: const Color(0xFF0F172A),
         cardColor: const Color(0xFF1E293B),
       ),
-      home: ProjectLauncherScreen(user: currentUser),
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const LoginScreen(),
+        '/login': (context) => const LoginScreen(),
+        '/project_launcher': (context) =>
+            ProjectLauncherScreen(user: currentUser),
+      },
     );
   }
 }
+
+// --- STRUCTURE PRINCIPALE (NAVIGATION) ---
 
 class MainShell extends StatefulWidget {
   final UserModel user;
@@ -114,34 +156,29 @@ class _MainShellState extends State<MainShell> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text(
-          "Projet : ${widget.currentProject.nom}",
-          style: const TextStyle(fontSize: 16),
-        ),
+        title: Text(widget.currentProject.nom),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
-        leading: isMobile
+        centerTitle: isMobile,
+        elevation: 0,
+        leading: (isMobile || widget.user.role == UserRole.client)
             ? null
             : IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.pushReplacement(
+                icon: const Icon(Icons.apps_rounded),
+                onPressed: () => Navigator.pushReplacementNamed(
                   context,
-                  MaterialPageRoute(
-                    builder: (ctx) => ProjectLauncherScreen(user: widget.user),
-                  ),
+                  '/project_launcher',
                 ),
               ),
       ),
       drawer: isMobile
-          ? Drawer(
-              child: SidebarDrawer(
-                role: widget.user.role,
-                currentIndex: _selectedIndex,
-                onDestinationSelected: (i) {
-                  setState(() => _selectedIndex = i);
-                  Navigator.pop(context);
-                },
-              ),
+          ? SidebarDrawer(
+              role: widget.user.role,
+              currentIndex: _selectedIndex,
+              onDestinationSelected: (i) {
+                setState(() => _selectedIndex = i);
+                Navigator.pop(context);
+              },
             )
           : null,
       body: Row(

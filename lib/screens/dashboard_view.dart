@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../models/user_model.dart';
 import '../models/chantier_model.dart';
-import '../models/projet_model.dart'; // Import ajouté
+import '../models/projet_model.dart';
 import '../services/data_storage.dart';
 import '../widgets/info_card.dart';
 import '../widgets/chantier_map_preview.dart';
@@ -19,7 +19,7 @@ class ChecklistTask {
 
 class DashboardView extends StatefulWidget {
   final UserModel user;
-  final Projet projet; // Ajouté pour l'isolation par projet
+  final Projet projet;
 
   const DashboardView({super.key, required this.user, required this.projet});
 
@@ -45,34 +45,35 @@ class _DashboardViewState extends State<DashboardView> {
     _loadDashboardData();
   }
 
-  // --- LOGIQUE DE CHARGEMENT FILTRÉE PAR PROJET ---
+  // --- LOGIQUE DE CHARGEMENT OPTIMISÉE ---
   Future<void> _loadDashboardData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
 
-    // Au lieu de charger tous les chantiers globaux, on utilise ceux du projet actuel
     final data = widget.projet.chantiers;
-
     double tempMO = 0;
     double tempMat = 0;
 
-    for (var c in data) {
-      // Calcul Auto : Équipe (Main d'œuvre)
-      final equipe = await DataStorage.loadTeam(c.id);
-      for (var o in equipe) {
-        tempMO += (o.joursPointes.length * o.salaireJournalier);
-      }
+    // On ne calcule les finances que si l'utilisateur n'est PAS un client
+    if (widget.user.role != UserRole.client) {
+      for (var c in data) {
+        // Calcul Auto : Équipe
+        final equipe = await DataStorage.loadTeam(c.id);
+        for (var o in equipe) {
+          tempMO += (o.joursPointes.length * o.salaireJournalier);
+        }
 
-      // Calcul Auto : Inventaire (Matériel)
-      final inventaire = await DataStorage.loadMateriels(c.id);
-      for (var m in inventaire) {
-        tempMat += (m.quantite * m.prixUnitaire);
-      }
+        // Calcul Auto : Inventaire
+        final inventaire = await DataStorage.loadMateriels(c.id);
+        for (var m in inventaire) {
+          tempMat += (m.quantite * m.prixUnitaire);
+        }
 
-      // Calcul Manuel : Dépenses ajoutées
-      for (var d in c.depenses) {
-        if (d.type == TypeDepense.mainOeuvre) tempMO += d.montant;
-        if (d.type == TypeDepense.materiel) tempMat += d.montant;
+        // Calcul Manuel : Dépenses
+        for (var d in c.depenses) {
+          if (d.type == TypeDepense.mainOeuvre) tempMO += d.montant;
+          if (d.type == TypeDepense.materiel) tempMat += d.montant;
+        }
       }
     }
 
@@ -86,15 +87,15 @@ class _DashboardViewState extends State<DashboardView> {
     }
   }
 
-  // --- FONCTION DE CLÔTURE DE CHANTIER ---
   Future<void> _cloturerChantier(Chantier chantier) async {
+    // Seul le chef de projet peut clôturer
+    if (widget.user.role != UserRole.chefProjet) return;
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("Clôturer le chantier ?"),
-        content: Text(
-          "Voulez-vous marquer '${chantier.nom}' comme terminé ? Cela figera sa progression à 100%.",
-        ),
+        content: Text("Voulez-vous marquer '${chantier.nom}' comme terminé ?"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -104,7 +105,7 @@ class _DashboardViewState extends State<DashboardView> {
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
             child: const Text(
-              "CONFIRMER LA CLÔTURE",
+              "CONFIRMER",
               style: TextStyle(color: Colors.white),
             ),
           ),
@@ -117,28 +118,19 @@ class _DashboardViewState extends State<DashboardView> {
         chantier.statut = StatutChantier.termine;
         chantier.progression = 1.0;
       });
-      // Sauvegarde du projet entier qui contient ce chantier
       await DataStorage.saveSingleProject(widget.projet);
       await _loadDashboardData();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Chantier ${chantier.nom} clôturé !"),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
     }
   }
 
   Chantier? _getChantierActuel() {
     if (_chantiers.isEmpty) return _dummyChantier();
     if (widget.user.chantierId != null) {
-      return _chantiers.firstWhere(
-        (c) => c.id == widget.user.chantierId,
-        orElse: () => _chantiers.first,
-      );
+      try {
+        return _chantiers.firstWhere((c) => c.id == widget.user.chantierId);
+      } catch (_) {
+        return _chantiers.first;
+      }
     }
     return _chantiers.isNotEmpty ? _chantiers.first : _dummyChantier();
   }
@@ -149,6 +141,7 @@ class _DashboardViewState extends State<DashboardView> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     bool isMobile = MediaQuery.of(context).size.width < 800;
+    bool isClient = widget.user.role == UserRole.client;
     final actuel = _getChantierActuel();
 
     return Scaffold(
@@ -169,10 +162,6 @@ class _DashboardViewState extends State<DashboardView> {
                 ),
               ),
               Text(
-                "BIENVENUE, ${widget.user.nom.toUpperCase()}",
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-              Text(
                 "ESPACE ${widget.user.role.name.toUpperCase()}",
                 style: const TextStyle(
                   fontSize: 18,
@@ -180,12 +169,14 @@ class _DashboardViewState extends State<DashboardView> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+
               const SizedBox(height: 20),
+
               GridView.count(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 crossAxisCount: isMobile ? 1 : 2,
-                childAspectRatio: isMobile ? 1.1 : 1.4,
+                childAspectRatio: isMobile ? 1.2 : 1.5,
                 crossAxisSpacing: 20,
                 mainAxisSpacing: 20,
                 children: [
@@ -193,10 +184,12 @@ class _DashboardViewState extends State<DashboardView> {
                     title: "LOCALISATION",
                     child: ChantierMapPreview(chantiers: _chantiers),
                   ),
-                  InfoCard(title: "TÂCHES", child: _listTasks()),
-                  if (widget.user.role != UserRole.client)
+
+                  if (!isClient) InfoCard(title: "TÂCHES", child: _listTasks()),
+
+                  if (!isClient)
                     InfoCard(
-                      title: "FINANCES (Appui long pour clôturer)",
+                      title: "FINANCES",
                       child: (actuel != null && actuel.id != "0")
                           ? InkWell(
                               onLongPress: () => _cloturerChantier(actuel),
@@ -206,19 +199,16 @@ class _DashboardViewState extends State<DashboardView> {
                               child: Text("Sélectionnez un chantier"),
                             ),
                     ),
-                  InfoCard(
-                    title: "RÉPARTITION GLOBALE",
-                    child: FinancialPieChart(
-                      montantMO: totalMainOeuvre,
-                      montantMat: totalMateriel,
-                    ),
-                  ),
-                  if (widget.user.role != UserRole.client)
+
+                  if (!isClient)
                     InfoCard(
-                      title: "ALERTES BUDGÉTAIRES",
-                      borderColor: Colors.orange,
-                      child: _listAlertes(),
+                      title: "RÉPARTITION GLOBALE",
+                      child: FinancialPieChart(
+                        montantMO: totalMainOeuvre,
+                        montantMat: totalMateriel,
+                      ),
                     ),
+
                   InfoCard(title: "PROGRÈS", child: _listProgres()),
                 ],
               ),
@@ -226,82 +216,34 @@ class _DashboardViewState extends State<DashboardView> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showQuickReportForm(context),
-        label: const Text(
-          "RAPPORT PHOTO",
-          style: TextStyle(color: Colors.white),
-        ),
-        icon: const Icon(Icons.add_a_photo, color: Colors.white),
-        backgroundColor: Colors.orange,
-      ),
+      // Le client ne peut pas ajouter de rapports, il les consulte via une autre vue
+      floatingActionButton: isClient
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => _showQuickReportForm(context),
+              label: const Text(
+                "RAPPORT PHOTO",
+                style: TextStyle(color: Colors.white),
+              ),
+              icon: const Icon(Icons.add_a_photo, color: Colors.white),
+              backgroundColor: Colors.orange,
+            ),
     );
   }
 
-  Widget _listAlertes() {
-    final alertesBudget = _chantiers.where((c) {
-      if (c.budgetInitial <= 0) return false;
-      return (c.depensesActuelles / c.budgetInitial) >= 0.8;
-    }).toList();
-
-    return ListView(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      children: [
-        if (alertesBudget.isEmpty &&
-            !_chantiers.any((c) => c.statut == StatutChantier.enRetard))
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.all(8.0),
-              child: Text(
-                "Aucune alerte critique",
-                style: TextStyle(fontSize: 11, color: Colors.green),
-              ),
-            ),
-          ),
-
-        ...alertesBudget.map((c) {
-          final ratio = c.depensesActuelles / c.budgetInitial;
-          return ListTile(
-            leading: Icon(
-              Icons.warning_amber_rounded,
-              color: ratio >= 1.0 ? Colors.red : Colors.orange,
-              size: 18,
-            ),
-            title: Text(
-              "${c.nom}: ${(ratio * 100).toInt()}% du budget",
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-            ),
-            dense: true,
-          );
-        }),
-
-        ..._chantiers
-            .where((c) => c.statut == StatutChantier.enRetard)
-            .map(
-              (c) => ListTile(
-                leading: const Icon(Icons.timer, color: Colors.red, size: 18),
-                title: Text(
-                  "Retard: ${c.nom}",
-                  style: const TextStyle(fontSize: 11),
-                ),
-                dense: true,
-              ),
-            ),
-      ],
-    );
-  }
+  // --- WIDGETS DE LISTES ---
 
   Widget _listProgres() {
     if (_chantiers.isEmpty) return const Center(child: Text("Aucun chantier"));
-    return Column(
+    return ListView(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       children: _chantiers
-          .take(3)
+          .take(4)
           .map(
             (c) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -313,13 +255,7 @@ class _DashboardViewState extends State<DashboardView> {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      Text(
-                        "${(c.progression * 100).toInt()}%",
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      Text("${(c.progression * 100).toInt()}%"),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -330,7 +266,6 @@ class _DashboardViewState extends State<DashboardView> {
                         : Colors.blue,
                     backgroundColor: Colors.grey[200],
                     minHeight: 6,
-                    borderRadius: BorderRadius.circular(4),
                   ),
                 ],
               ),
@@ -345,19 +280,13 @@ class _DashboardViewState extends State<DashboardView> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: _tasks.length,
-      itemBuilder: (context, index) {
-        return CheckboxListTile(
-          value: _tasks[index].isDone,
-          title: Text(
-            _tasks[index].title,
-            style: const TextStyle(fontSize: 11),
-          ),
-          onChanged: (value) => setState(() => _tasks[index].isDone = value!),
-          controlAffinity: ListTileControlAffinity.leading,
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-        );
-      },
+      itemBuilder: (context, index) => CheckboxListTile(
+        value: _tasks[index].isDone,
+        title: Text(_tasks[index].title, style: const TextStyle(fontSize: 11)),
+        onChanged: (v) => setState(() => _tasks[index].isDone = v!),
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+      ),
     );
   }
 
@@ -385,7 +314,7 @@ class _DashboardViewState extends State<DashboardView> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              "NOUVEAU RAPPORT TERRAIN",
+              "NOUVEAU RAPPORT",
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
@@ -393,11 +322,7 @@ class _DashboardViewState extends State<DashboardView> {
             const SizedBox(height: 15),
             TextField(
               controller: commentController,
-              decoration: const InputDecoration(
-                hintText: "Observations...",
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
+              decoration: const InputDecoration(hintText: "Observations..."),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
@@ -406,38 +331,21 @@ class _DashboardViewState extends State<DashboardView> {
                 backgroundColor: Colors.orange,
               ),
               onPressed: () async {
-                if (capturedImagePath != null &&
-                    actuel != null &&
-                    actuel.id != "0") {
-                  final nouveauRapport = Report(
+                if (capturedImagePath != null && actuel != null) {
+                  final report = Report(
                     id: const Uuid().v4(),
                     chantierId: actuel.id,
                     comment: commentController.text,
                     imagePath: capturedImagePath!,
                     date: DateTime.now(),
                   );
-                  await DataStorage.saveReport(nouveauRapport);
+                  await DataStorage.saveReport(report);
                   if (context.mounted) Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Rapport enregistré !"),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Erreur : Photo ou chantier manquant"),
-                    ),
-                  );
                 }
               },
               child: const Text(
                 "ENVOYER LE RAPPORT",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(color: Colors.white),
               ),
             ),
           ],

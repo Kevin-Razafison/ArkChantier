@@ -13,43 +13,64 @@ class SidebarDrawer extends StatelessWidget {
     required this.onDestinationSelected,
   });
 
+  // Méthode de déconnexion centralisée
+  void _handleLogout(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Déconnexion"),
+        content: const Text("Voulez-vous vraiment quitter l'application ?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("ANNULER"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              // On vide la pile et on retourne au login
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                '/login',
+                (route) => false,
+              );
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text(
+              "DÉCONNEXION",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // --- LOGIQUE DE SYNCHRONISATION ---
-    // Cette liste doit être strictement identique à celle du MainShell
     final List<_MenuItemData> menuItems = [];
 
-    // 0. Dashboard
     menuItems.add(_MenuItemData(Icons.dashboard, "Dashboard"));
-    // 1. Chantiers
     menuItems.add(_MenuItemData(Icons.business, "Chantiers"));
 
-    // 2. Ouvriers (Masqué pour le Client)
     if (role != UserRole.client) {
       menuItems.add(_MenuItemData(Icons.people, "Ouvriers"));
-    }
-
-    // 3. Matériel (Masqué pour le Client)
-    if (role != UserRole.client) {
       menuItems.add(_MenuItemData(Icons.inventory_2, "Matériel"));
     }
 
-    // 4. Statistiques (Uniquement Chef Projet)
     if (role == UserRole.chefProjet) {
       menuItems.add(_MenuItemData(Icons.bar_chart, "Statistiques"));
     }
 
-    // 5. Paramètres (Toujours présent)
     menuItems.add(_MenuItemData(Icons.settings, "Paramètres"));
 
     return SizedBox(
-      width: 250,
+      width: 260,
       child: Drawer(
         elevation: 0,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.only(
-            topRight: Radius.circular(2),
-            bottomRight: Radius.circular(2),
+            topRight: Radius.circular(15),
+            bottomRight: Radius.circular(15),
           ),
         ),
         child: Container(
@@ -61,8 +82,7 @@ class SidebarDrawer extends StatelessWidget {
               const Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
-                  "ArkChantier",
-                  textAlign: TextAlign.center,
+                  "ArkChantier PRO",
                   style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
@@ -71,9 +91,8 @@ class SidebarDrawer extends StatelessWidget {
                 ),
               ),
               const Divider(color: Colors.white24, indent: 20, endIndent: 20),
-              const SizedBox(height: 10),
 
-              // Génération dynamique des items
+              // Menu Principal
               Expanded(
                 child: ListView.builder(
                   padding: EdgeInsets.zero,
@@ -85,9 +104,26 @@ class SidebarDrawer extends StatelessWidget {
                 ),
               ),
 
-              // Footer avec rappel du rôle
+              // SECTION BASSE (Déconnexion + Badge)
+              const Divider(color: Colors.white10),
+
+              // Bouton Déconnexion
+              ListTile(
+                leading: const Icon(Icons.logout, color: Colors.redAccent),
+                title: const Text(
+                  "DÉCONNEXION",
+                  style: TextStyle(
+                    color: Colors.redAccent,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+                onTap: () => _handleLogout(context),
+              ),
+
+              const SizedBox(height: 10),
               _buildRoleBadge(),
-              const SizedBox(height: 20),
+              const SizedBox(height: 30),
             ],
           ),
         ),
@@ -99,12 +135,10 @@ class SidebarDrawer extends StatelessWidget {
     bool isSelected = currentIndex == index;
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+      margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 12),
       decoration: BoxDecoration(
-        color: isSelected
-            ? Colors.white.withValues(alpha: 0.1)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
+        color: isSelected ? Colors.white.withOpacity(0.1) : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
       ),
       child: ListTile(
         leading: Icon(
@@ -131,19 +165,20 @@ class SidebarDrawer extends StatelessWidget {
     if (role == UserRole.chefProjet) {
       roleLabel = "ADMIN / CP";
       roleColor = Colors.greenAccent;
-    } else if (role == UserRole.chefChantier) {
-      roleLabel = "CHEF CHANTIER";
-      roleColor = Colors.orangeAccent;
     } else if (role == UserRole.client) {
-      roleLabel = "CLIENT";
+      roleLabel = "ESPACE CLIENT";
       roleColor = Colors.blueAccent;
+    } else if (role == UserRole.ouvrier) {
+      roleLabel = "OPÉRATEUR";
+      roleColor = Colors.orangeAccent;
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white10,
+        color: Colors.black26,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: roleColor.withOpacity(0.3)),
       ),
       child: Text(
         roleLabel,
@@ -151,13 +186,13 @@ class SidebarDrawer extends StatelessWidget {
           color: roleColor,
           fontSize: 10,
           fontWeight: FontWeight.bold,
+          letterSpacing: 1.1,
         ),
       ),
     );
   }
 }
 
-// Petite classe utilitaire pour structurer nos données de menu
 class _MenuItemData {
   final IconData icon;
   final String label;
