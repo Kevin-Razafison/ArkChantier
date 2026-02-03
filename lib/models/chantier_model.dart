@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-
 enum StatutChantier { enCours, enRetard, termine }
 
 class Chantier {
@@ -14,6 +12,7 @@ class Chantier {
   // Nouveaux champs pour la vraie carte
   final double latitude;
   final double longitude;
+  List<Depense> depenses;
 
   Chantier({
     required this.id,
@@ -26,6 +25,7 @@ class Chantier {
     this.depensesActuelles = 0.0,
     this.latitude = 48.8566,
     this.longitude = 2.3522,
+    this.depenses = const [],
   });
 
   Map<String, dynamic> toJson() => {
@@ -39,6 +39,7 @@ class Chantier {
     'depensesActuelles': depensesActuelles,
     'latitude': latitude,
     'longitude': longitude,
+    'depenses': depenses,
   };
 
   factory Chantier.fromJson(Map<String, dynamic> json) => Chantier(
@@ -52,13 +53,40 @@ class Chantier {
     depensesActuelles: (json['depensesActuelles'] as num? ?? 0.0).toDouble(),
     latitude: (json['latitude'] as num? ?? 48.8566).toDouble(),
     longitude: (json['longitude'] as num? ?? 2.3522).toDouble(),
+    depenses: json['depenses'],
   );
 }
 
-class DepenseCategorie {
-  final String label;
-  final double montant;
-  final Color couleur;
+enum TypeDepense { materiel, mainOeuvre, transport, divers }
 
-  DepenseCategorie(this.label, this.montant, this.couleur);
+class Depense {
+  final String id;
+  final String titre;
+  final double montant;
+  final DateTime date;
+  final TypeDepense type;
+
+  Depense({
+    required this.id,
+    required this.titre,
+    required this.montant,
+    required this.date,
+    required this.type,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'titre': titre,
+    'montant': montant,
+    'date': date.toIso8601String(),
+    'type': type.index,
+  };
+
+  factory Depense.fromJson(Map<String, dynamic> json) => Depense(
+    id: json['id'],
+    titre: json['titre'],
+    montant: (json['montant'] as num).toDouble(),
+    date: DateTime.parse(json['date']),
+    type: TypeDepense.values[json['type'] as int],
+  );
 }

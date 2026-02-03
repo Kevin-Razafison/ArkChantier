@@ -43,10 +43,9 @@ class _DashboardViewState extends State<DashboardView> {
     _loadDashboardData();
   }
 
+  // Helper pour récupérer le chantier sur lequel travaille l'utilisateur
   Chantier? _getChantierActuel() {
-    // Si la liste est vide, on renvoie le chantier fictif pour éviter les erreurs de null
     if (_chantiers.isEmpty) return _dummyChantier();
-
     if (widget.user.chantierId != null) {
       return _chantiers.firstWhere(
         (c) => c.id == widget.user.chantierId,
@@ -56,19 +55,34 @@ class _DashboardViewState extends State<DashboardView> {
     return _chantiers.first;
   }
 
+  // --- LOGIQUE DE CHARGEMENT ET CALCUL HYBRIDE ---
   Future<void> _loadDashboardData() async {
+    setState(() => _isLoading = true);
+
+    // 1. Charger la liste des chantiers persistée (contenant les dépenses manuelles)
     final data = await DataStorage.loadChantiers();
+
     double tempMO = 0;
     double tempMat = 0;
 
     for (var c in data) {
+      // 2. Calcul Automatique : Équipe (Main d'œuvre)
       final equipe = await DataStorage.loadTeam(c.id);
       for (var o in equipe) {
         tempMO += (o.joursPointes.length * o.salaireJournalier);
       }
+
+      // 3. Calcul Automatique : Inventaire (Matériel)
       final inventaire = await DataStorage.loadMateriels(c.id);
       for (var m in inventaire) {
         tempMat += (m.quantite * m.prixUnitaire);
+      }
+
+      // 4. Calcul Manuel : Ajouter les dépenses saisies dans StatsScreen
+      for (var d in c.depenses) {
+        if (d.type == TypeDepense.mainOeuvre) tempMO += d.montant;
+        if (d.type == TypeDepense.materiel) tempMat += d.montant;
+        // Transport et Divers peuvent être répartis ou ignorés selon tes besoins
       }
     }
 
@@ -89,7 +103,7 @@ class _DashboardViewState extends State<DashboardView> {
         builder: (context) => ChantierDetailScreen(chantier: chantier),
       ),
     );
-    _loadDashboardData();
+    _loadDashboardData(); // Recharger au retour
   }
 
   void _showQuickReportForm(BuildContext context) {
@@ -147,10 +161,8 @@ class _DashboardViewState extends State<DashboardView> {
                     imagePath: capturedImagePath!,
                     date: DateTime.now(),
                   );
-
                   await DataStorage.saveReport(nouveauRapport);
                   if (context.mounted) Navigator.pop(context);
-
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text("Rapport enregistré !"),
@@ -160,7 +172,7 @@ class _DashboardViewState extends State<DashboardView> {
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text("Photo manquante ou aucun chantier actif"),
+                      content: Text("Erreur : Photo ou chantier manquant"),
                     ),
                   );
                 }
@@ -188,61 +200,68 @@ class _DashboardViewState extends State<DashboardView> {
     final actuel = _getChantierActuel();
 
     return Scaffold(
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "BIENVENUE, ${widget.user.nom.toUpperCase()}",
-              style: const TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-            Text(
-              "ESPACE ${widget.user.role.name.toUpperCase()}",
-              style: const TextStyle(
-                fontSize: 18,
-                color: Colors.orange,
-                fontWeight: FontWeight.bold,
+      // Ajout du RefreshIndicator pour forcer la mise à jour
+      body: RefreshIndicator(
+        onRefresh: _loadDashboardData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "BIENVENUE, ${widget.user.nom.toUpperCase()}",
+                style: const TextStyle(fontSize: 14, color: Colors.grey),
               ),
-            ),
-            const SizedBox(height: 20),
-            GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: isMobile ? 1 : 2,
-              childAspectRatio: isMobile ? 1.1 : 1.4,
-              crossAxisSpacing: 20,
-              mainAxisSpacing: 20,
-              children: [
-                InfoCard(
-                  title: "LOCALISATION",
-                  child: ChantierMapPreview(chantiers: _chantiers),
+              Text(
+                "ESPACE ${widget.user.role.name.toUpperCase()}",
+                style: const TextStyle(
+                  fontSize: 18,
+                  color: Colors.orange,
+                  fontWeight: FontWeight.bold,
                 ),
-                InfoCard(title: "TÂCHES", child: _listTasks()),
-                if (widget.user.role != UserRole.client)
+              ),
+              const SizedBox(height: 20),
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: isMobile ? 1 : 2,
+                childAspectRatio: isMobile ? 1.1 : 1.4,
+                crossAxisSpacing: 20,
+                mainAxisSpacing: 20,
+                children: [
                   InfoCard(
-                    title: "FINANCES",
-                    child: (actuel != null && actuel.id != "0")
-                        ? FinancialStatsCard(chantier: actuel)
-                        : const Center(child: Text("Sélectionnez un chantier")),
+                    title: "LOCALISATION",
+                    child: ChantierMapPreview(chantiers: _chantiers),
                   ),
-                InfoCard(
-                  title: "COÛTS",
-                  child: FinancialPieChart(
-                    montantMO: totalMainOeuvre,
-                    montantMat: totalMateriel,
-                  ),
-                ),
-                if (widget.user.role != UserRole.client)
+                  InfoCard(title: "TÂCHES", child: _listTasks()),
+                  if (widget.user.role != UserRole.client)
+                    InfoCard(
+                      title: "FINANCES",
+                      child: (actuel != null && actuel.id != "0")
+                          ? FinancialStatsCard(chantier: actuel)
+                          : const Center(
+                              child: Text("Sélectionnez un chantier"),
+                            ),
+                    ),
                   InfoCard(
-                    title: "ALERTES",
-                    borderColor: Colors.orange,
-                    child: _listAlertes(),
+                    title: "COÛTS",
+                    child: FinancialPieChart(
+                      montantMO: totalMainOeuvre,
+                      montantMat: totalMateriel,
+                    ),
                   ),
-                InfoCard(title: "PROGRÈS", child: _listProgres()),
-              ],
-            ),
-          ],
+                  if (widget.user.role != UserRole.client)
+                    InfoCard(
+                      title: "ALERTES",
+                      borderColor: Colors.orange,
+                      child: _listAlertes(),
+                    ),
+                  InfoCard(title: "PROGRÈS", child: _listProgres()),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -337,18 +356,30 @@ class _DashboardViewState extends State<DashboardView> {
   }
 
   Widget _listAlertes() {
+    final retards = _chantiers
+        .where((c) => c.statut == StatutChantier.enRetard)
+        .toList();
     return ListView(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      children: const [
-        ListTile(
+      children: [
+        if (retards.isNotEmpty)
+          ...retards.map(
+            (c) => ListTile(
+              leading: const Icon(Icons.timer, color: Colors.red, size: 18),
+              title: Text(
+                "Retard: ${c.nom}",
+                style: const TextStyle(fontSize: 11),
+              ),
+              dense: true,
+            ),
+          ),
+        const ListTile(
           leading: Icon(Icons.warning, color: Colors.orange, size: 18),
-          title: Text("Matériel HS", style: TextStyle(fontSize: 11)),
-          dense: true,
-        ),
-        ListTile(
-          leading: Icon(Icons.timer, color: Colors.red, size: 18),
-          title: Text("Retard Livraison", style: TextStyle(fontSize: 11)),
+          title: Text(
+            "Matériel HS (Générateur)",
+            style: TextStyle(fontSize: 11),
+          ),
           dense: true,
         ),
       ],

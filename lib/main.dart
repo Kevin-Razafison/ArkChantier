@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'models/user_model.dart';
+import 'data/mock_data.dart'; // Import nécessaire pour globalChantiers
+import 'services/data_storage.dart';
 import 'widgets/sidebar_drawer.dart';
 import 'screens/dashboard_view.dart';
 import 'screens/chantiers_screen.dart';
@@ -8,7 +10,18 @@ import 'screens/stats_screen.dart';
 import 'screens/materiel_screen.dart';
 import 'screens/settings_screen.dart';
 
-void main() => runApp(const ChantierApp());
+void main() async {
+  // 1. Initialisation obligatoire pour les services asynchrones (SharedPreferences)
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 2. Chargement des données sauvegardées avant de lancer l'interface
+  final savedChantiers = await DataStorage.loadChantiers();
+  if (savedChantiers.isNotEmpty) {
+    globalChantiers = savedChantiers;
+  }
+
+  runApp(const ChantierApp());
+}
 
 class ChantierApp extends StatefulWidget {
   const ChantierApp({super.key});
@@ -83,6 +96,8 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     bool isMobile = MediaQuery.of(context).size.width < 800;
 
+    // Utilisation d'une liste dynamique pour s'assurer que les écrans
+    // récupèrent les données à jour lors du changement d'onglet
     final List<Widget> pages = [
       DashboardView(user: widget.user),
       const ChantiersScreen(),
