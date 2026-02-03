@@ -4,14 +4,18 @@ import '../models/chantier_model.dart';
 import '../models/journal_model.dart';
 import '../models/ouvrier_model.dart';
 import '../models/materiel_model.dart';
+import '../models/report_model.dart'; // Import crucial ajouté
 
 class DataStorage {
   static const String _keyChantiers = 'chantiers_list';
+  static const String _reportsKey = 'reports_data';
 
   // --- GESTION DES CHANTIERS ---
   static Future<void> saveChantiers(List<Chantier> chantiers) async {
     final prefs = await SharedPreferences.getInstance();
-    final String encodedData = jsonEncode(chantiers.map((c) => c.toJson()).toList());
+    final String encodedData = jsonEncode(
+      chantiers.map((c) => c.toJson()).toList(),
+    );
     await prefs.setString(_keyChantiers, encodedData);
   }
 
@@ -24,10 +28,15 @@ class DataStorage {
   }
 
   // --- GESTION DU JOURNAL ---
-  static Future<void> saveJournal(String chantierId, List<JournalEntry> entries) async {
+  static Future<void> saveJournal(
+    String chantierId,
+    List<JournalEntry> entries,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     final String key = 'journal_$chantierId';
-    final String encodedData = jsonEncode(entries.map((e) => e.toJson()).toList());
+    final String encodedData = jsonEncode(
+      entries.map((e) => e.toJson()).toList(),
+    );
     await prefs.setString(key, encodedData);
   }
 
@@ -44,7 +53,9 @@ class DataStorage {
   static Future<void> saveTeam(String chantierId, List<Ouvrier> equipe) async {
     final prefs = await SharedPreferences.getInstance();
     final String key = 'team_$chantierId';
-    final String encodedData = jsonEncode(equipe.map((o) => o.toJson()).toList());
+    final String encodedData = jsonEncode(
+      equipe.map((o) => o.toJson()).toList(),
+    );
     await prefs.setString(key, encodedData);
   }
 
@@ -58,10 +69,15 @@ class DataStorage {
   }
 
   // --- GESTION DES MATÉRIELS ---
-  static Future<void> saveMateriels(String chantierId, List<Materiel> materiels) async {
+  static Future<void> saveMateriels(
+    String chantierId,
+    List<Materiel> materiels,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     final String key = 'materiels_$chantierId';
-    final String encodedData = jsonEncode(materiels.map((m) => m.toJson()).toList());
+    final String encodedData = jsonEncode(
+      materiels.map((m) => m.toJson()).toList(),
+    );
     await prefs.setString(key, encodedData);
   }
 
@@ -72,5 +88,35 @@ class DataStorage {
     if (savedData == null) return [];
     final List<dynamic> decodedData = jsonDecode(savedData);
     return decodedData.map((item) => Materiel.fromJson(item)).toList();
+  }
+
+  // --- GESTION DES RAPPORTS PHOTOS ---
+  static Future<void> saveReport(Report report) async {
+    final reports = await loadReports();
+    reports.add(report);
+
+    final prefs = await SharedPreferences.getInstance();
+    final String encodedData = jsonEncode(
+      reports.map((r) => r.toJson()).toList(),
+    );
+    await prefs.setString(_reportsKey, encodedData);
+  }
+
+  static Future<List<Report>> loadReports() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? reportsData = prefs.getString(_reportsKey);
+
+    if (reportsData == null) return [];
+
+    final List<dynamic> decodedData = jsonDecode(reportsData);
+    // Correction du typage ici pour éviter "Report isn't a type"
+    return decodedData
+        .map((item) => Report.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<List<Report>> loadReportsByChantier(String chantierId) async {
+    final all = await loadReports();
+    return all.where((r) => r.chantierId == chantierId).toList();
   }
 }

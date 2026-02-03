@@ -51,5 +51,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Nous avons besoin de la caméra pour documenter l'avancement du chantier.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Nous avons besoin d'accéder à vos photos pour joindre des documents au rapport.</string>
 </dict>
 </plist>

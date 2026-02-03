@@ -7,13 +7,18 @@ import '../models/journal_model.dart';
 import '../models/materiel_model.dart';
 import '../data/mock_data.dart';
 import '../services/data_storage.dart';
+import '../models/report_model.dart';
 
 // Modèle pour les tâches de construction dynamiques
 class ConstructionTask {
   String id;
   String label;
   bool isDone;
-  ConstructionTask({required this.id, required this.label, this.isDone = false});
+  ConstructionTask({
+    required this.id,
+    required this.label,
+    this.isDone = false,
+  });
 }
 
 class ChantierDetailScreen extends StatefulWidget {
@@ -25,19 +30,20 @@ class ChantierDetailScreen extends StatefulWidget {
 }
 
 class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
+  List<Report> _quickReports = [];
   List<JournalEntry> _journalEntries = [];
   List<Ouvrier> _equipe = [];
   List<Materiel> _materiels = [];
-  
+
   // Liste des tâches modifiée pour être dynamique
-  List<ConstructionTask> _tasks = [
+  final List<ConstructionTask> _tasks = [
     ConstructionTask(id: "1", label: "Terrassement"),
     ConstructionTask(id: "2", label: "Fondations"),
     ConstructionTask(id: "3", label: "Dalle RDC"),
     ConstructionTask(id: "4", label: "Murs"),
     ConstructionTask(id: "5", label: "Toiture"),
   ];
-  
+
   bool _isLoading = true;
 
   @override
@@ -50,13 +56,17 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
     final savedJournal = await DataStorage.loadJournal(widget.chantier.id);
     final savedTeam = await DataStorage.loadTeam(widget.chantier.id);
     final savedMat = await DataStorage.loadMateriels(widget.chantier.id);
-    
+    final savedReports = await DataStorage.loadReportsByChantier(
+      widget.chantier.id,
+    );
+
     setState(() {
       _journalEntries = savedJournal;
       _equipe = savedTeam;
       _materiels = savedMat;
+      _quickReports = savedReports; // Stockage
       _isLoading = false;
-      _updateProgression(); 
+      _updateProgression();
     });
   }
 
@@ -76,7 +86,7 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
     await DataStorage.saveJournal(widget.chantier.id, _journalEntries);
     await DataStorage.saveTeam(widget.chantier.id, _equipe);
     await DataStorage.saveMateriels(widget.chantier.id, _materiels);
-    
+
     final list = await DataStorage.loadChantiers();
     final index = list.indexWhere((c) => c.id == widget.chantier.id);
     if (index != -1) {
@@ -92,10 +102,11 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_isLoading)
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     return DefaultTabController(
-      length: 6, 
+      length: 6,
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
@@ -103,14 +114,14 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
           backgroundColor: const Color(0xFF1A334D),
           foregroundColor: Colors.white,
           bottom: const TabBar(
-            isScrollable: true, 
+            isScrollable: true,
             tabAlignment: TabAlignment.start,
             labelColor: Color(0xFFFFD700),
             unselectedLabelColor: Colors.white70,
             indicatorColor: Color(0xFFFFD700),
             tabs: [
               Tab(icon: Icon(Icons.info), text: "Infos"),
-              Tab(icon: Icon(Icons.checklist), text: "Tâches"), 
+              Tab(icon: Icon(Icons.checklist), text: "Tâches"),
               Tab(icon: Icon(Icons.group), text: "Équipe"),
               Tab(icon: Icon(Icons.build), text: "Matériels"),
               Tab(icon: Icon(Icons.history), text: "Journal"),
@@ -119,14 +130,17 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
           ),
         ),
         body: TabBarView(
-          physics: const BouncingScrollPhysics(), 
+          physics: const BouncingScrollPhysics(),
           children: [
             _buildOverviewTab(context),
-            _buildTasksTab(), 
+            _buildTasksTab(),
             _buildTeamTab(),
             _buildMaterialsTab(),
-            JournalTab(onEntryAdded: _onNewJournalEntry, entries: _journalEntries),
-            GalleryTab(entries: _journalEntries),
+            JournalTab(
+              onEntryAdded: _onNewJournalEntry,
+              entries: _journalEntries,
+            ),
+            GalleryTab(entries: _journalEntries, quickReports: _quickReports),
           ],
         ),
       ),
@@ -152,10 +166,15 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
                 final task = _tasks[index];
                 return Card(
                   child: CheckboxListTile(
-                    title: Text(task.label, style: TextStyle(
-                      decoration: task.isDone ? TextDecoration.lineThrough : null,
-                      color: task.isDone ? Colors.grey : null,
-                    )),
+                    title: Text(
+                      task.label,
+                      style: TextStyle(
+                        decoration: task.isDone
+                            ? TextDecoration.lineThrough
+                            : null,
+                        color: task.isDone ? Colors.grey : null,
+                      ),
+                    ),
                     value: task.isDone,
                     activeColor: Colors.green,
                     onChanged: (val) {
@@ -164,7 +183,10 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
                       _persistAll();
                     },
                     secondary: IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.redAccent,
+                      ),
                       onPressed: () {
                         setState(() => _tasks.removeAt(index));
                         _updateProgression();
@@ -186,19 +208,26 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
         title: const Text("Nouvelle tâche"),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(hintText: "Nom de la tâche (ex: Carrelage)"),
+          decoration: const InputDecoration(
+            hintText: "Nom de la tâche (ex: Carrelage)",
+          ),
           autofocus: true,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Annuler"),
+          ),
           ElevatedButton(
             onPressed: () {
               if (controller.text.isNotEmpty) {
                 setState(() {
-                  _tasks.add(ConstructionTask(
-                    id: DateTime.now().toString(),
-                    label: controller.text,
-                  ));
+                  _tasks.add(
+                    ConstructionTask(
+                      id: DateTime.now().toString(),
+                      label: controller.text,
+                    ),
+                  );
                   _updateProgression();
                 });
                 _persistAll();
@@ -214,8 +243,8 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
 
   Widget _buildOverviewTab(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    double ratio = widget.chantier.budgetInitial > 0 
-        ? widget.chantier.depensesActuelles / widget.chantier.budgetInitial 
+    double ratio = widget.chantier.budgetInitial > 0
+        ? widget.chantier.depensesActuelles / widget.chantier.budgetInitial
         : 0;
 
     return SingleChildScrollView(
@@ -228,14 +257,31 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _kpiCard("Ouvriers", "${_equipe.length}", Icons.people, Colors.blue),
-              _kpiCard("Photos", "${_journalEntries.where((e) => e.imagePath != null).length}", Icons.photo, Colors.orange),
-              _kpiCard("Tâches", "${_tasks.where((t)=>t.isDone).length}/${_tasks.length}", Icons.done_all, Colors.green),
+              _kpiCard(
+                "Ouvriers",
+                "${_equipe.length}",
+                Icons.people,
+                Colors.blue,
+              ),
+              _kpiCard(
+                "Photos",
+                "${_journalEntries.where((e) => e.imagePath != null).length + _quickReports.length}",
+                Icons.photo,
+                Colors.orange,
+              ),
+              _kpiCard(
+                "Tâches",
+                "${_tasks.where((t) => t.isDone).length}/${_tasks.length}",
+                Icons.done_all,
+                Colors.green,
+              ),
             ],
           ),
           const SizedBox(height: 25),
-          Text("Progression Physique : ${(widget.chantier.progression * 100).toInt()}%",
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(
+            "Progression Physique : ${(widget.chantier.progression * 100).toInt()}%",
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 10),
           Stack(
             alignment: Alignment.center,
@@ -249,7 +295,11 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
               ),
               Text(
                 "${(widget.chantier.progression * 100).toInt()}%",
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
               ),
             ],
           ),
@@ -257,9 +307,17 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
           _infoTile(Icons.location_on, "Localisation", widget.chantier.lieu),
           ListTile(
             leading: const Icon(Icons.assignment, color: Color(0xFF1A334D)),
-            title: Text("Statut", style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
-            subtitle: Text(widget.chantier.statut.name.toUpperCase(), 
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            title: Text(
+              "Statut",
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).hintColor,
+              ),
+            ),
+            subtitle: Text(
+              widget.chantier.statut.name.toUpperCase(),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
             trailing: const Icon(Icons.edit, size: 18),
             onTap: () => _showStatusPicker(context),
           ),
@@ -274,12 +332,17 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4)],
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Suivi Budgétaire", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const Text(
+            "Suivi Budgétaire",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
           const SizedBox(height: 12),
           LinearProgressIndicator(
             value: ratio > 1.0 ? 1.0 : ratio,
@@ -291,9 +354,16 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text("${widget.chantier.depensesActuelles.toStringAsFixed(0)} €", 
-                style: TextStyle(fontWeight: FontWeight.bold, color: ratio > 1.0 ? Colors.red : Colors.green)),
-              Text("Budget: ${widget.chantier.budgetInitial.toStringAsFixed(0)} €"),
+              Text(
+                "${widget.chantier.depensesActuelles.toStringAsFixed(0)} €",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: ratio > 1.0 ? Colors.red : Colors.green,
+                ),
+              ),
+              Text(
+                "Budget: ${widget.chantier.budgetInitial.toStringAsFixed(0)} €",
+              ),
             ],
           ),
         ],
@@ -302,49 +372,55 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
   }
 
   Widget _kpiCard(String label, String value, IconData icon, Color color) {
-      return Container(
-        width: MediaQuery.of(context).size.width * 0.28,
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(height: 5),
-            Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            Text(label, style: TextStyle(fontSize: 9, color: Colors.grey[500])),
-          ],
-        ),
-      );
+    return Container(
+      width: MediaQuery.of(context).size.width * 0.28,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+          Text(label, style: TextStyle(fontSize: 9, color: Colors.grey[500])),
+        ],
+      ),
+    );
   }
 
   Widget _buildTeamTab() {
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton(
-        mini: true, backgroundColor: const Color(0xFF1A334D),
+        mini: true,
+        backgroundColor: const Color(0xFF1A334D),
         onPressed: () => _showAddWorkerDialog(),
         child: const Icon(Icons.add, color: Colors.white),
       ),
-      body: _equipe.isEmpty 
-        ? const Center(child: Text("Aucun ouvrier"))
-        : ListView.builder(
-            itemCount: _equipe.length,
-            itemBuilder: (context, index) => ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.person)),
-              title: Text(_equipe[index].nom),
-              subtitle: Text("${_equipe[index].specialite} • ${_equipe[index].salaireJournalier}€/j"),
-              trailing: IconButton(
-                icon: const Icon(Icons.delete, color: Colors.red),
-                onPressed: () {
-                  setState(() => _equipe.removeAt(index));
-                  _persistAll();
-                },
+      body: _equipe.isEmpty
+          ? const Center(child: Text("Aucun ouvrier"))
+          : ListView.builder(
+              itemCount: _equipe.length,
+              itemBuilder: (context, index) => ListTile(
+                leading: const CircleAvatar(child: Icon(Icons.person)),
+                title: Text(_equipe[index].nom),
+                subtitle: Text(
+                  "${_equipe[index].specialite} • ${_equipe[index].salaireJournalier}€/j",
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  onPressed: () {
+                    setState(() => _equipe.removeAt(index));
+                    _persistAll();
+                  },
+                ),
               ),
             ),
-          ),
     );
   }
 
@@ -352,24 +428,30 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton(
-        mini: true, backgroundColor: Colors.orange,
+        mini: true,
+        backgroundColor: Colors.orange,
         onPressed: () => _showAddMaterialDialog(),
         child: const Icon(Icons.add, color: Colors.white),
       ),
-      body: _materiels.isEmpty 
-        ? const Center(child: Text("Aucun matériel"))
-        : ListView.builder(
-            itemCount: _materiels.length,
-            itemBuilder: (context, index) {
-              final m = _materiels[index];
-              return ListTile(
-                leading: const Icon(Icons.inventory, color: Colors.blue),
-                title: Text(m.nom),
-                subtitle: Text("${m.quantite} ${m.unite} x ${m.prixUnitaire}€"),
-                trailing: Text("${(m.quantite * m.prixUnitaire).toStringAsFixed(0)} €", style: const TextStyle(fontWeight: FontWeight.bold)),
-              );
-            },
-          ),
+      body: _materiels.isEmpty
+          ? const Center(child: Text("Aucun matériel"))
+          : ListView.builder(
+              itemCount: _materiels.length,
+              itemBuilder: (context, index) {
+                final m = _materiels[index];
+                return ListTile(
+                  leading: const Icon(Icons.inventory, color: Colors.blue),
+                  title: Text(m.nom),
+                  subtitle: Text(
+                    "${m.quantite} ${m.unite} x ${m.prixUnitaire}€",
+                  ),
+                  trailing: Text(
+                    "${(m.quantite * m.prixUnitaire).toStringAsFixed(0)} €",
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                );
+              },
+            ),
     );
   }
 
@@ -379,7 +461,9 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
       builder: (context) => AlertDialog(
         title: const Text("Ajouter à l'équipe"),
         content: DropdownButtonFormField<Ouvrier>(
-          items: globalOuvriers.map((o) => DropdownMenuItem(value: o, child: Text(o.nom))).toList(),
+          items: globalOuvriers
+              .map((o) => DropdownMenuItem(value: o, child: Text(o.nom)))
+              .toList(),
           onChanged: (val) {
             if (val != null && !_equipe.any((o) => o.id == val.id)) {
               setState(() {
@@ -406,9 +490,20 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: nomCtrl, decoration: const InputDecoration(labelText: "Nom")),
-            TextField(controller: qteCtrl, decoration: const InputDecoration(labelText: "Quantité"), keyboardType: TextInputType.number),
-            TextField(controller: prixCtrl, decoration: const InputDecoration(labelText: "Prix Unitaire"), keyboardType: TextInputType.number),
+            TextField(
+              controller: nomCtrl,
+              decoration: const InputDecoration(labelText: "Nom"),
+            ),
+            TextField(
+              controller: qteCtrl,
+              decoration: const InputDecoration(labelText: "Quantité"),
+              keyboardType: TextInputType.number,
+            ),
+            TextField(
+              controller: prixCtrl,
+              decoration: const InputDecoration(labelText: "Prix Unitaire"),
+              keyboardType: TextInputType.number,
+            ),
           ],
         ),
         actions: [
@@ -417,14 +512,23 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
               final qte = int.tryParse(qteCtrl.text) ?? 0;
               final prix = double.tryParse(prixCtrl.text) ?? 0;
               setState(() {
-                _materiels.add(Materiel(id: DateTime.now().toString(), nom: nomCtrl.text, quantite: qte, prixUnitaire: prix, unite: "Unités", categorie: CategorieMateriel.consommable));
+                _materiels.add(
+                  Materiel(
+                    id: DateTime.now().toString(),
+                    nom: nomCtrl.text,
+                    quantite: qte,
+                    prixUnitaire: prix,
+                    unite: "Unités",
+                    categorie: CategorieMateriel.consommable,
+                  ),
+                );
                 widget.chantier.depensesActuelles += (qte * prix);
               });
               _persistAll();
               Navigator.pop(context);
             },
             child: const Text("Ajouter"),
-          )
+          ),
         ],
       ),
     );
@@ -435,14 +539,18 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
       context: context,
       builder: (context) => Column(
         mainAxisSize: MainAxisSize.min,
-        children: StatutChantier.values.map((s) => ListTile(
-          title: Text(s.name.toUpperCase()),
-          onTap: () {
-            setState(() => widget.chantier.statut = s);
-            _persistAll();
-            Navigator.pop(context);
-          },
-        )).toList(),
+        children: StatutChantier.values
+            .map(
+              (s) => ListTile(
+                title: Text(s.name.toUpperCase()),
+                onTap: () {
+                  setState(() => widget.chantier.statut = s);
+                  _persistAll();
+                  Navigator.pop(context);
+                },
+              ),
+            )
+            .toList(),
       ),
     );
   }
@@ -451,7 +559,10 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
     return ListTile(
       leading: Icon(icon, color: const Color(0xFF1A334D)),
       title: Text(title, style: const TextStyle(fontSize: 12)),
-      subtitle: Text(subtitle, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+      subtitle: Text(
+        subtitle,
+        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+      ),
     );
   }
 }
@@ -461,7 +572,11 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
 class JournalTab extends StatefulWidget {
   final Function(JournalEntry) onEntryAdded;
   final List<JournalEntry> entries;
-  const JournalTab({super.key, required this.onEntryAdded, required this.entries});
+  const JournalTab({
+    super.key,
+    required this.onEntryAdded,
+    required this.entries,
+  });
   @override
   State<JournalTab> createState() => _JournalTabState();
 }
@@ -479,14 +594,18 @@ class _JournalTabState extends State<JournalTab> {
   void _addEntry() {
     if (_textController.text.isNotEmpty || _selectedImage != null) {
       final newEntry = JournalEntry(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          date: "Le ${DateTime.now().day}/${DateTime.now().month} à ${DateTime.now().hour}:${DateTime.now().minute}",
-          contenu: _textController.text,
-          auteur: "Chef de chantier",
-          imagePath: _selectedImage?.path,
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        date:
+            "Le ${DateTime.now().day}/${DateTime.now().month} à ${DateTime.now().hour}:${DateTime.now().minute}",
+        contenu: _textController.text,
+        auteur: "Chef de chantier",
+        imagePath: _selectedImage?.path,
       );
       widget.onEntryAdded(newEntry);
-      setState(() { _textController.clear(); _selectedImage = null; });
+      setState(() {
+        _textController.clear();
+        _selectedImage = null;
+      });
     }
   }
 
@@ -499,16 +618,33 @@ class _JournalTabState extends State<JournalTab> {
           color: Theme.of(context).cardColor,
           child: Column(
             children: [
-              if (_selectedImage != null) 
+              if (_selectedImage != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8.0),
-                  child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(_selectedImage!, height: 100)),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(_selectedImage!, height: 100),
+                  ),
                 ),
               Row(
                 children: [
-                  IconButton(icon: const Icon(Icons.camera_alt, color: Colors.orange), onPressed: _takePhoto),
-                  Expanded(child: TextField(controller: _textController, decoration: const InputDecoration(hintText: "Rapport...", border: InputBorder.none))),
-                  IconButton(icon: const Icon(Icons.send, color: Color(0xFF1A334D)), onPressed: _addEntry),
+                  IconButton(
+                    icon: const Icon(Icons.camera_alt, color: Colors.orange),
+                    onPressed: _takePhoto,
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: _textController,
+                      decoration: const InputDecoration(
+                        hintText: "Rapport...",
+                        border: InputBorder.none,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.send, color: Color(0xFF1A334D)),
+                    onPressed: _addEntry,
+                  ),
                 ],
               ),
             ],
@@ -525,12 +661,25 @@ class _JournalTabState extends State<JournalTab> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (note.imagePath != null) 
+                    if (note.imagePath != null)
                       ClipRRect(
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                        child: Image.file(File(note.imagePath!), fit: BoxFit.cover, width: double.infinity, height: 200)
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(12),
+                        ),
+                        child: Image.file(
+                          File(note.imagePath!),
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: 200,
+                        ),
                       ),
-                    ListTile(title: Text(note.contenu), subtitle: Text(note.date, style: const TextStyle(fontSize: 11))),
+                    ListTile(
+                      title: Text(note.contenu),
+                      subtitle: Text(
+                        note.date,
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                    ),
                   ],
                 ),
               );
@@ -543,41 +692,71 @@ class _JournalTabState extends State<JournalTab> {
 }
 
 class GalleryTab extends StatelessWidget {
-    final List<JournalEntry> entries; 
-    const GalleryTab({super.key, required this.entries});
+  final List<JournalEntry> entries;
+  final List<Report> quickReports; // Ajouté
+  const GalleryTab({
+    super.key,
+    required this.entries,
+    required this.quickReports,
+  });
 
-    @override
-    Widget build(BuildContext context) {
-      final imgs = entries.where((e) => e.imagePath != null).toList();
-      if (imgs.isEmpty) return const Center(child: Text("Aucune photo"));
+  @override
+  Widget build(BuildContext context) {
+    // On combine les deux sources d'images
+    final List<dynamic> allPhotos = [
+      ...entries.where((e) => e.imagePath != null),
+      ...quickReports,
+    ];
 
-      return GridView.builder(
-        padding: const EdgeInsets.all(10),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 8, mainAxisSpacing: 8),
-        itemCount: imgs.length,
-        itemBuilder: (context, index) {
-          final entry = imgs[index];
-          return GestureDetector(
-            onTap: () => _showPhotoDetail(context, entry),
-            child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(File(entry.imagePath!), fit: BoxFit.cover)),
-          );
-        },
-      );
-    }
+    if (allPhotos.isEmpty) return const Center(child: Text("Aucune photo"));
 
-    void _showPhotoDetail(BuildContext context, JournalEntry entry) {
-      showDialog(
-        context: context,
-        builder: (context) => Dialog(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Image.file(File(entry.imagePath!)),
-              Padding(padding: const EdgeInsets.all(16), child: Text(entry.contenu)),
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text("Fermer"))
-            ],
+    return GridView.builder(
+      padding: const EdgeInsets.all(10),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+      ),
+      itemCount: allPhotos.length,
+      itemBuilder: (context, index) {
+        final item = allPhotos[index];
+        final String path = item is JournalEntry
+            ? item.imagePath!
+            : (item as Report).imagePath;
+        final String text = item is JournalEntry
+            ? item.contenu
+            : (item as Report).comment;
+
+        return GestureDetector(
+          onTap: () => _showPhotoDetail(context, path, text),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.file(File(path), fit: BoxFit.cover),
           ),
+        );
+      },
+    );
+  }
+
+  void _showPhotoDetail(BuildContext context, String path, String comment) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.file(File(path)),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(comment.isEmpty ? "Pas de commentaire" : comment),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Fermer"),
+            ),
+          ],
         ),
-      );
-    }
+      ),
+    );
+  }
 }
