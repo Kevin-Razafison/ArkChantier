@@ -205,12 +205,25 @@ class StatsScreen extends StatelessWidget {
               icon: Icons.assignment_late,
               iconColor: Colors.orange,
               bgColor: const Color(0xFFFFF3E0),
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Fonctionnalité bientôt disponible"),
-                  ),
-                );
+              onTap: () async {
+                // 1. Filtrer les chantiers en retard
+                final retards = globalChantiers
+                    .where((c) => c.statut == StatutChantier.enRetard)
+                    .toList();
+
+                if (retards.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        "Excellente nouvelle : aucun retard détecté !",
+                      ),
+                    ),
+                  );
+                  return;
+                }
+
+                // 2. Lancer le PDF
+                await PdfService.generateDelayReport(retards);
               },
             ),
 

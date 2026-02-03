@@ -298,4 +298,77 @@ class PdfService {
       name: 'Rapport_${chantier.nom}.pdf',
     );
   }
+
+  // --- 4. GÉNÉRATION RAPPORT DE RETARDS ---
+  static Future<void> generateDelayReport(
+    List<Chantier> chantiersEnRetard,
+  ) async {
+    final pdf = pw.Document();
+    final now = DateTime.now();
+    final logo = await _getLogo();
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) => [
+          _buildHeader(logo, "RAPPORT D'ALERTE : CHANTIERS EN RETARD", now),
+
+          pw.Text(
+            "Ce document liste les projets nécessitant une intervention immédiate ou une révision du planning.",
+            style: pw.TextStyle(
+              fontStyle: pw.FontStyle.italic,
+              color: PdfColors.grey700,
+            ),
+          ),
+          pw.SizedBox(height: 20),
+
+          pw.TableHelper.fromTextArray(
+            border: pw.TableBorder.all(color: PdfColors.red200),
+            headerStyle: pw.TextStyle(
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.white,
+            ),
+            headerDecoration: const pw.BoxDecoration(color: PdfColors.red800),
+            headers: [
+              'Chantier',
+              'Localisation',
+              'Progression',
+              'Budget Consommé',
+            ],
+            data: chantiersEnRetard
+                .map(
+                  (c) => [
+                    c.nom,
+                    c.lieu,
+                    "${(c.progression * 100).toInt()}%",
+                    "${c.depensesActuelles.toStringAsFixed(0)} €",
+                  ],
+                )
+                .toList(),
+          ),
+
+          pw.SizedBox(height: 40),
+          pw.Text(
+            "Notes de direction :",
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+          ),
+          pw.Padding(
+            padding: const pw.EdgeInsets.only(top: 10),
+            child: pw.Container(
+              height: 100,
+              width: double.infinity,
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey300),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (format) async => pdf.save(),
+      name: 'Rapport_Retards.pdf',
+    );
+  }
 }
