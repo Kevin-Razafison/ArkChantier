@@ -3,9 +3,29 @@ import '../data/mock_data.dart';
 import '../models/chantier_model.dart';
 import '../services/pdf_service.dart';
 import '../services/data_storage.dart';
+import '../models/materiel_model.dart';
 
 class StatsScreen extends StatelessWidget {
   const StatsScreen({super.key});
+  List<Materiel> aggregateMateriels(List<Materiel> brute) {
+    final Map<String, Materiel> aggregated = {};
+
+    for (var item in brute) {
+      if (aggregated.containsKey(item.nom)) {
+        aggregated[item.nom] = Materiel(
+          id: aggregated[item.nom]!.id,
+          nom: item.nom,
+          categorie: item.categorie,
+          quantite: aggregated[item.nom]!.quantite + item.quantite,
+          prixUnitaire: item.prixUnitaire,
+          unite: item.unite,
+        );
+      } else {
+        aggregated[item.nom] = item;
+      }
+    }
+    return aggregated.values.toList();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -149,30 +169,30 @@ class StatsScreen extends StatelessWidget {
               iconColor: Colors.redAccent,
               bgColor: const Color(0xFFFFEBEE),
               onTap: () async {
-                // Affichage d'un indicateur de chargement si nécessaire
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text("Préparation de l'inventaire..."),
+                    content: Text("Calcul de l'inventaire consolidé..."),
                     duration: Duration(seconds: 1),
                   ),
                 );
 
-                // 1. Récupération de toutes les données via la nouvelle méthode
-                final inventaireComplet = await DataStorage.loadAllMateriels();
+                // 1. Récupération brute
+                final List<Materiel> brute =
+                    await DataStorage.loadAllMateriels();
 
-                if (inventaireComplet.isEmpty) {
+                if (brute.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        "Aucun matériel enregistré dans les chantiers.",
-                      ),
-                    ),
+                    const SnackBar(content: Text("Aucun matériel trouvé.")),
                   );
                   return;
                 }
 
-                // 2. Génération du PDF avec PdfService
-                await PdfService.generateInventoryReport(inventaireComplet);
+                // 2. Fusion (Appel de la fonction que nous venons de corriger)
+                final List<Materiel> fusionnee = aggregateMateriels(brute);
+
+                // 3. Génération du PDF
+                fusionnee.sort((a, b) => a.nom.compareTo(b.nom));
+                await PdfService.generateInventoryReport(fusionnee);
               },
             ),
 
