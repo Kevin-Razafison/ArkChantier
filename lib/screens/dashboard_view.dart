@@ -37,12 +37,36 @@ class _DashboardViewState extends State<DashboardView> {
     _loadDashboardData();
   }
 
-  /// Charge les données et force le rafraîchissement de l'UI
+
+  double totalMainOeuvre = 0;
+  double totalMateriel = 0;
+
   Future<void> _loadDashboardData() async {
     final data = await DataStorage.loadChantiers();
+    
+    double tempMO = 0;
+    double tempMat = 0;
+
+    // On calcule les dépenses pour chaque chantier
+    for (var c in data) {
+      // 1. Somme des salaires ouvriers
+      final equipe = await DataStorage.loadTeam(c.id);
+      for (var o in equipe) {
+        tempMO += (o.joursPointes.length * o.salaireJournalier);
+      }
+
+      // 2. Somme de la valeur du matériel
+      final inventaire = await DataStorage.loadMateriels(c.id);
+      for (var m in inventaire) {
+        tempMat += (m.quantite * m.prixUnitaire);
+      }
+    }
+
     if (mounted) {
       setState(() {
         _chantiers = data;
+        totalMainOeuvre = tempMO;
+        totalMateriel = tempMat;
         _isLoading = false;
       });
     }
