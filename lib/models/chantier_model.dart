@@ -9,6 +9,9 @@ class Chantier {
   final String imageAppercu;
   final double budgetInitial;
   double depensesActuelles;
+  // Nouveaux champs pour la vraie carte
+  final double latitude;
+  final double longitude;
 
   Chantier({
     required this.id,
@@ -19,6 +22,8 @@ class Chantier {
     this.imageAppercu = 'assets/chantier_placeholder.jpg',
     this.budgetInitial = 0.0,
     this.depensesActuelles = 0.0,
+    this.latitude = 48.8566,
+    this.longitude = 2.3522,
   });
 
   Map<String, dynamic> toJson() => {
@@ -29,7 +34,9 @@ class Chantier {
     'statut': statut.index,
     'imageAppercu': imageAppercu,
     'budgetInitial': budgetInitial,
-    'depensesActuelles': depensesActuelles
+    'depensesActuelles': depensesActuelles,
+    'latitude': latitude,
+    'longitude': longitude,
   };
 
   factory Chantier.fromJson(Map<String, dynamic> json) => Chantier(
@@ -41,5 +48,7 @@ class Chantier {
     imageAppercu: json['imageAppercu'] ?? 'assets/chantier_placeholder.jpg',
     budgetInitial: (json['budgetInitial'] as num? ?? 0.0).toDouble(),
     depensesActuelles: (json['depensesActuelles'] as num? ?? 0.0).toDouble(),
+    latitude: (json['latitude'] as num? ?? 48.8566).toDouble(),
+    longitude: (json['longitude'] as num? ?? 2.3522).toDouble(),
   );
 }
