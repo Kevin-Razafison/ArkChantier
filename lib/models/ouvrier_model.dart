@@ -2,34 +2,42 @@ class Ouvrier {
   final String id;
   final String nom;
   final String specialite;
+  final String telephone; // <--- Nouveau champ
   final String photoUrl;
   bool estPresent;
   final double salaireJournalier;
+  List<String> joursPointes;
 
   Ouvrier({
     required this.id,
     required this.nom,
     required this.specialite,
+    required this.telephone, // <--- Requis à la création
     this.photoUrl = 'https://via.placeholder.com/150',
     this.estPresent = true,
     this.salaireJournalier = 0.0,
-  });
+    List<String>? joursPointes,
+  }) : joursPointes = joursPointes ?? [];
 
   Map<String, dynamic> toJson() => {
     'id': id,
     'nom': nom,
     'specialite': specialite,
+    'telephone': telephone, // <--- Ajout au JSON
     'photoUrl': photoUrl,
     'estPresent': estPresent,
-    'salaireJournalier':salaireJournalier
+    'salaireJournalier': salaireJournalier,
+    'joursPointes': joursPointes,
   };
 
   factory Ouvrier.fromJson(Map<String, dynamic> json) => Ouvrier(
     id: json['id'],
     nom: json['nom'],
     specialite: json['specialite'],
+    telephone: json['telephone'] ?? '', // <--- Lecture du JSON
     photoUrl: json['photoUrl'],
-    estPresent: json['estPresent'],
-    salaireJournalier: (json['salaireJournalier'] as num).toDouble()
+    estPresent: json['estPresent'] ?? false,
+    salaireJournalier: (json['salaireJournalier'] as num).toDouble(),
+    joursPointes: List<String>.from(json['joursPointes'] ?? []),
   );
 }

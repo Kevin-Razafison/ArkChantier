@@ -1,0 +1,310 @@
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart'; 
+import '../models/ouvrier_model.dart';
+import '../services/pdf_service.dart';
+
+class OuvrierDetailScreen extends StatefulWidget {
+  final Ouvrier worker;
+
+  const OuvrierDetailScreen({super.key, required this.worker});
+
+  @override
+  State<OuvrierDetailScreen> createState() => _OuvrierDetailScreenState();
+}
+
+class _OuvrierDetailScreenState extends State<OuvrierDetailScreen> {
+  
+  /// Fonction dynamique pour lancer l'appel téléphonique
+  Future<void> _makePhoneCall() async {
+    final String phoneNumber = widget.worker.telephone;
+    
+    if (phoneNumber.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Aucun numéro de téléphone enregistré pour cet ouvrier.")),
+      );
+      return;
+    }
+
+    final Uri launchUri = Uri(
+      scheme: 'tel',
+      path: phoneNumber,
+    );
+
+    try {
+      if (await canLaunchUrl(launchUri)) {
+        await launchUrl(launchUri);
+      } else {
+        throw 'Impossible d\'ouvrir l\'application de téléphone.';
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Erreur : $e")),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final List<String> moisFr = [
+      "", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin", 
+      "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+    ];
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Profil Ouvrier"),
+        backgroundColor: const Color(0xFF1A334D),
+        foregroundColor: Colors.white,
+      ),
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            const SizedBox(height: 20),
+            _buildHeader(),
+            const Divider(height: 40, indent: 40, endIndent: 40),
+            
+            _buildSectionTitle("Informations Générales"),
+            _buildDetailItem(Icons.payments, "Salaire Journalier", "${widget.worker.salaireJournalier} € / jour"),
+            // Affichage du numéro de téléphone dynamique
+            _buildDetailItem(Icons.phone, "Téléphone", widget.worker.telephone.isNotEmpty ? widget.worker.telephone : "Non renseigné"),
+            _buildDetailItem(Icons.badge, "ID Employé", "#${widget.worker.id.length > 8 ? widget.worker.id.substring(0, 8) : widget.worker.id}"),
+            
+            const SizedBox(height: 20),
+            _buildSectionTitle("Pointage du mois (${moisFr[now.month]})"),
+            _buildAttendanceGrid(),
+            
+            const SizedBox(height: 30),
+            _buildActionButtons(),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Column(
+      children: [
+        Hero(
+          tag: "avatar-${widget.worker.id}",
+          child: CircleAvatar(
+            radius: 50,
+            backgroundColor: Colors.blue[100],
+            child: Text(
+              widget.worker.nom[0], 
+              style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: Color(0xFF1A334D))
+            ),
+          ),
+        ),
+        const SizedBox(height: 15),
+        Text(widget.worker.nom, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        Text(
+          widget.worker.specialite.toUpperCase(), 
+          style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.w600, letterSpacing: 1.2)
+        ),
+      ],
+    );
+  }
+
+Widget _buildAttendanceGrid() {
+  // 1. Déterminer la date actuelle pour le calcul dynamique
+  final now = DateTime.now();
+  
+  // 2. Calculer le nombre de jours dans le mois en cours
+  // Astuce Dart : Le jour 0 du mois suivant est le dernier jour du mois actuel
+  final int daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+  
+  // 3. Créer le préfixe de la clé (ex: "2026-02-") pour correspondre au format du modèle
+  final String monthPrefix = "${now.year}-${now.month.toString().padLeft(2, '0')}-";
+
+  // Optionnel : Pour l'affichage du nom du mois en français
+  final List<String> mois = [
+    "", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin", 
+    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+  ];
+
+  return Container(
+    margin: const EdgeInsets.symmetric(horizontal: 20),
+    padding: const EdgeInsets.all(15),
+    decoration: BoxDecoration(
+      color: Colors.grey.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(15),
+      border: Border.all(color: Colors.grey.withOpacity(0.2)),
+    ),
+    child: Column(
+      children: [
+        // En-tête du calendrier
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              "${mois[now.month]} ${now.year}",
+              style: const TextStyle(
+                fontSize: 16, 
+                fontWeight: FontWeight.bold, 
+                color: Color(0xFF1A334D)
+              ),
+            ),
+            Text(
+              "${widget.worker.joursPointes.where((d) => d.startsWith(monthPrefix)).length} j. travaillés",
+              style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        const SizedBox(height: 15),
+        
+        // La Grille de pointage
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 7, // 7 jours par semaine
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+          ),
+          itemCount: daysInMonth,
+          itemBuilder: (context, index) {
+            final int day = index + 1;
+            // Génère la clé unique pour ce jour : "2026-02-05"
+            final String dateKey = "$monthPrefix${day.toString().padLeft(2, '0')}";
+            final bool isPointed = widget.worker.joursPointes.contains(dateKey);
+
+            return GestureDetector(
+              onTap: () {
+                setState(() {
+                  if (isPointed) {
+                    widget.worker.joursPointes.remove(dateKey);
+                  } else {
+                    widget.worker.joursPointes.add(dateKey);
+                  }
+                });
+                // Ici tu pourrais ajouter un appel à un service de sauvegarde
+                // ex: StorageService.saveOuvriers(globalOuvriers);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                decoration: BoxDecoration(
+                  color: isPointed ? Colors.green : Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isPointed ? Colors.green : Colors.grey.withOpacity(0.3),
+                    width: 1,
+                  ),
+                  boxShadow: isPointed 
+                    ? [BoxShadow(color: Colors.green.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2))] 
+                    : [],
+                ),
+                child: Center(
+                  child: Text(
+                    "$day",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isPointed ? Colors.white : Colors.black87,
+                      fontWeight: isPointed ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 15),
+        
+        // Légende rapide
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildLegendItem(Colors.green, "Présent"),
+            const SizedBox(width: 20),
+            _buildLegendItem(Colors.white, "Absent"),
+          ],
+        )
+      ],
+    ),
+  );
+}
+
+// Widget d'aide pour la légende
+Widget _buildLegendItem(Color color, String text) {
+  return Row(
+    children: [
+      Container(
+        width: 12,
+        height: 12,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(3),
+          border: Border.all(color: Colors.grey.withOpacity(0.5)),
+        ),
+      ),
+      const SizedBox(width: 5),
+      Text(text, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+    ],
+  );
+}
+
+  Widget _buildActionButtons() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 15),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.call),
+                  label: const Text("Appeler"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green, 
+                    foregroundColor: Colors.white
+                  ),
+                  onPressed: _makePhoneCall,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.edit),
+                  label: const Text("Modifier"),
+                  onPressed: () {
+                    // Logique de modification à venir
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.picture_as_pdf, color: Colors.red),
+              label: const Text("Exporter la fiche de paie (PDF)"),
+              onPressed: () => PdfService.generateOuvrierReport(widget.worker),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          title, 
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailItem(IconData icon, String label, String value) {
+    return ListTile(
+      leading: Icon(icon, color: const Color(0xFF1A334D)),
+      title: Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+      subtitle: Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+    );
+  }
+}

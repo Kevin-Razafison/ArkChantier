@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/ouvrier_model.dart';
 import '../data/mock_data.dart';
+import 'ouvrier_detail_screen.dart';
 
 class OuvriersScreen extends StatefulWidget {
   const OuvriersScreen({super.key});
@@ -10,14 +11,13 @@ class OuvriersScreen extends StatefulWidget {
 }
 
 class _OuvriersScreenState extends State<OuvriersScreen> {
-  // Liste filtrée pour la recherche
   List<Ouvrier> _filteredOuvriers = [];
   final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _filteredOuvriers = globalOuvriers; // Au début, on affiche tout le monde
+    _filteredOuvriers = globalOuvriers; 
   }
 
   void _filterOuvriers(String query) {
@@ -43,7 +43,6 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: TextField(
@@ -54,13 +53,11 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
-                // Couleur de fond adaptative pour le champ de recherche
                 fillColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[100],
               ),
             ),
           ),
           
-          // Liste des ouvriers
           Expanded(
             child: _filteredOuvriers.isEmpty 
               ? const Center(child: Text("Aucun ouvrier trouvé"))
@@ -72,9 +69,6 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
                     return Dismissible(
                       key: Key(worker.id),
                       direction: DismissDirection.endToStart,
-                      confirmDismiss: (direction) async {
-                        return true;
-                      },
                       onDismissed: (direction) {
                         setState(() {
                           globalOuvriers.removeWhere((o) => o.id == worker.id);
@@ -106,16 +100,19 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
                           borderRadius: BorderRadius.circular(12)
                         ),
                         child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: isDark 
-                                ? Colors.blue.withValues(alpha: 0.2) 
-                                : Colors.blue[50],
-                            child: Text(
-                              worker.nom[0], 
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: isDark ? Colors.blue[200] : Colors.blue[800]
-                              )
+                          leading: Hero(
+                            tag: "avatar-${worker.id}", // Tag ajouté pour l'animation
+                            child: CircleAvatar(
+                              backgroundColor: isDark 
+                                  ? Colors.blue.withValues(alpha: 0.2) 
+                                  : Colors.blue[50],
+                              child: Text(
+                                worker.nom[0], 
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? Colors.blue[200] : Colors.blue[800]
+                                )
+                              ),
                             ),
                           ),
                           title: Text(
@@ -128,7 +125,12 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
                           ),
                           trailing: _buildSpecialtyChip(worker.specialite),
                           onTap: () {
-                            // Future fonctionnalité : Profil détaillé
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => OuvrierDetailScreen(worker: worker),
+                              ),
+                            );
                           },
                         ),
                       ),
@@ -146,7 +148,6 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
     );
   }
 
-  // Petit badge coloré selon la spécialité avec compatibilité withValues
   Widget _buildSpecialtyChip(String label) {
     Color chipColor = Colors.grey;
     if (label.contains("Maçon")) chipColor = Colors.orange;
@@ -162,11 +163,7 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
       ),
       child: Text(
         label.split(' ')[0], 
-        style: TextStyle(
-          color: chipColor, 
-          fontSize: 10, 
-          fontWeight: FontWeight.bold
-        ),
+        style: TextStyle(color: chipColor, fontSize: 10, fontWeight: FontWeight.bold),
       ),
     );
   }
@@ -174,25 +171,50 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
   void _showAddWorkerDialog() {
     final nomController = TextEditingController();
     final specialiteController = TextEditingController();
+    final telephoneController = TextEditingController(); // Nouveau contrôleur
+    final salaireController = TextEditingController(text: "50");
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Theme.of(context).cardColor,
         title: const Text("Nouvel Ouvrier"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nomController,
-              decoration: const InputDecoration(labelText: "Nom complet"),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: specialiteController,
-              decoration: const InputDecoration(labelText: "Spécialité (ex: Plombier)"),
-            ),
-          ],
+        content: SingleChildScrollView( // Sécurité si le clavier cache les champs
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nomController,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: "Nom complet"),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: specialiteController,
+                decoration: const InputDecoration(labelText: "Spécialité (ex: Maçon)"),
+              ),
+              const SizedBox(height: 10),
+              // --- NOUVEAU CHAMP TÉLÉPHONE ---
+              TextField(
+                controller: telephoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: "Téléphone",
+                  hintText: "0612345678",
+                  prefixIcon: Icon(Icons.phone, size: 20),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: salaireController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: "Salaire journalier (€)",
+                  prefixIcon: Icon(Icons.payments, size: 20),
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -205,12 +227,17 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
               foregroundColor: Colors.white,
             ),
             onPressed: () {
-              if (nomController.text.isNotEmpty && specialiteController.text.isNotEmpty) {
+              if (nomController.text.isNotEmpty && 
+                  specialiteController.text.isNotEmpty &&
+                  telephoneController.text.isNotEmpty) {
                 setState(() {
                   final newWorker = Ouvrier(
-                    id: DateTime.now().toString(),
+                    id: DateTime.now().millisecondsSinceEpoch.toString(), // ID plus propre
                     nom: nomController.text,
                     specialite: specialiteController.text,
+                    telephone: telephoneController.text, // On enregistre le numéro !
+                    salaireJournalier: double.tryParse(salaireController.text) ?? 50.0,
+                    joursPointes: [], // Initialisation vide
                   );
                   globalOuvriers.add(newWorker);
                   _filterOuvriers(_searchController.text);
@@ -218,10 +245,12 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
                 Navigator.pop(context);
                 
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text("${nomController.text} ajouté à l'annuaire"),
-                    behavior: SnackBarBehavior.floating,
-                  ),
+                  SnackBar(content: Text("${nomController.text} ajouté avec succès")),
+                );
+              } else {
+                // Petit avertissement si des champs sont vides
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Veuillez remplir tous les champs")),
                 );
               }
             },

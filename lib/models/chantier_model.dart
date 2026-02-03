@@ -4,7 +4,7 @@ class Chantier {
   final String id;
   final String nom;
   final String lieu;
-  final double progression;
+  double progression;
   StatutChantier statut;
   final String imageAppercu;
   final double budgetInitial;
