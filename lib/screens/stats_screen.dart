@@ -4,12 +4,40 @@ import '../models/chantier_model.dart';
 import '../services/pdf_service.dart';
 import '../services/data_storage.dart';
 import '../models/materiel_model.dart';
+import '../widgets/financial_stats_card.dart';
+import '../widgets/financial_pie_chart.dart';
 
 class StatsScreen extends StatelessWidget {
   const StatsScreen({super.key});
+
+  // --- LOGIQUE DE CALCUL FINANCIER ---
+  Future<Map<String, double>> _calculerTotauxFinanciers() async {
+    final List<Materiel> tousLesMateriels =
+        await DataStorage.loadAllMateriels();
+
+    // Somme totale du matériel (Prix x Quantité)
+    double totalMat = tousLesMateriels.fold(
+      0,
+      (sum, item) => sum + (item.quantite * item.prixUnitaire),
+    );
+
+    // Somme totale des dépenses engagées sur tous les chantiers (venant du Mock/Storage)
+    double totalDepenses = globalChantiers.fold(
+      0,
+      (sum, c) => sum + c.depensesActuelles,
+    );
+
+    // Calcul de la Main d'œuvre par différence (Option A)
+    double totalMO = (totalDepenses - totalMat) > 0
+        ? (totalDepenses - totalMat)
+        : 0;
+
+    return {'materiel': totalMat, 'mo': totalMO, 'global': totalDepenses};
+  }
+
+  // --- AGRÉGATION POUR L'INVENTAIRE PDF ---
   List<Materiel> aggregateMateriels(List<Materiel> brute) {
     final Map<String, Materiel> aggregated = {};
-
     for (var item in brute) {
       if (aggregated.containsKey(item.nom)) {
         aggregated[item.nom] = Materiel(
@@ -31,7 +59,6 @@ class StatsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Calculs des statistiques
     final total = globalChantiers.length;
     final termines = globalChantiers
         .where((c) => c.statut == StatutChantier.termine)
@@ -65,54 +92,11 @@ class StatsScreen extends StatelessWidget {
             const SizedBox(height: 20),
 
             // --- CARTE DE PROGRESSION GLOBALE ---
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: isDark
-                      ? [const Color(0xFF1E293B), const Color(0xFF0F172A)]
-                      : [const Color(0xFF1A334D), const Color(0xFF2E5A88)],
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  const Text(
-                    "Santé Globale des Projets",
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    "${(moyenne * 100).toInt()}%",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 48,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  LinearProgressIndicator(
-                    value: moyenne,
-                    backgroundColor: Colors.white24,
-                    color: Colors.greenAccent,
-                    minHeight: 8,
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                ],
-              ),
-            ),
+            _buildGlobalProgressCard(isDark, moyenne),
 
             const SizedBox(height: 25),
 
-            // --- GRILLE DE STATS (KPIs) ---
+            // --- GRILLE DE KPIs ---
             GridView.count(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -154,13 +138,80 @@ class StatsScreen extends StatelessWidget {
 
             const SizedBox(height: 30),
 
-            // --- NOUVELLE SECTION : RAPPORTS & EXPORTS ---
+            // --- SECTION ANALYSE FINANCIÈRE ---
+            const Text(
+              "Analyse Financière Globale",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 15),
+
+            FutureBuilder<Map<String, double>>(
+              future: _calculerTotauxFinanciers(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(20),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                }
+
+                final data =
+                    snapshot.data ??
+                    {'materiel': 0.0, 'mo': 0.0, 'global': 0.0};
+                final budgetGlobal = globalChantiers.fold(
+                  0.0,
+                  (sum, c) => sum + c.budgetInitial,
+                );
+
+                final chantierGlobal = Chantier(
+                  id: 'global',
+                  nom: 'Global',
+                  lieu: 'Tous chantiers',
+                  progression: moyenne,
+                  statut: StatutChantier.enCours,
+                  budgetInitial: budgetGlobal,
+                  depensesActuelles: data['global']!,
+                );
+
+                return Column(
+                  children: [
+                    Container(
+                      height: 250,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).cardColor,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: FinancialStatsCard(chantier: chantierGlobal),
+                    ),
+                    const SizedBox(height: 20),
+                    Container(
+                      height: 280, // Un peu plus haut pour la légende
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).cardColor,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: FinancialPieChart(
+                        montantMO: data['mo']!,
+                        montantMat: data['materiel']!,
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+
+            const SizedBox(height: 30),
+
+            // --- SECTION RAPPORTS ---
             const Text(
               "Documents & Rapports",
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 15),
-
             _buildReportCard(
               context,
               title: "Inventaire Global",
@@ -169,35 +220,15 @@ class StatsScreen extends StatelessWidget {
               iconColor: Colors.redAccent,
               bgColor: const Color(0xFFFFEBEE),
               onTap: () async {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Calcul de l'inventaire consolidé..."),
-                    duration: Duration(seconds: 1),
-                  ),
-                );
-
-                // 1. Récupération brute
                 final List<Materiel> brute =
                     await DataStorage.loadAllMateriels();
-
-                if (brute.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Aucun matériel trouvé.")),
-                  );
-                  return;
-                }
-
-                // 2. Fusion (Appel de la fonction que nous venons de corriger)
+                if (brute.isEmpty) return;
                 final List<Materiel> fusionnee = aggregateMateriels(brute);
-
-                // 3. Génération du PDF
                 fusionnee.sort((a, b) => a.nom.compareTo(b.nom));
                 await PdfService.generateInventoryReport(fusionnee);
               },
             ),
-
             const SizedBox(height: 10),
-
             _buildReportCard(
               context,
               title: "Rapport de Retards",
@@ -206,30 +237,17 @@ class StatsScreen extends StatelessWidget {
               iconColor: Colors.orange,
               bgColor: const Color(0xFFFFF3E0),
               onTap: () async {
-                // 1. Filtrer les chantiers en retard
-                final retards = globalChantiers
+                final retardsList = globalChantiers
                     .where((c) => c.statut == StatutChantier.enRetard)
                     .toList();
-
-                if (retards.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        "Excellente nouvelle : aucun retard détecté !",
-                      ),
-                    ),
-                  );
-                  return;
-                }
-
-                // 2. Lancer le PDF
-                await PdfService.generateDelayReport(retards);
+                if (retardsList.isEmpty) return;
+                await PdfService.generateDelayReport(retardsList);
               },
             ),
 
             const SizedBox(height: 30),
 
-            // --- SECTION ALERTES ---
+            // --- ALERTES LIST ---
             if (retards > 0) ...[
               const Text(
                 "Détails des alertes",
@@ -242,35 +260,7 @@ class StatsScreen extends StatelessWidget {
               const SizedBox(height: 10),
               ...globalChantiers
                   .where((c) => c.statut == StatutChantier.enRetard)
-                  .map(
-                    (c) => Card(
-                      elevation: 0,
-                      color: isDark
-                          ? Colors.red.withOpacity(0.1)
-                          : Colors.red[50],
-                      margin: const EdgeInsets.only(bottom: 10),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: ListTile(
-                        leading: const Icon(
-                          Icons.error_outline,
-                          color: Colors.red,
-                        ),
-                        title: Text(
-                          c.nom,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(
-                          c.lieu,
-                          style: TextStyle(
-                            color: isDark ? Colors.white70 : Colors.black54,
-                          ),
-                        ),
-                        trailing: const Icon(Icons.chevron_right, size: 16),
-                      ),
-                    ),
-                  ),
+                  .map((c) => _buildAlertTile(context, c, isDark)),
             ],
           ],
         ),
@@ -278,7 +268,47 @@ class StatsScreen extends StatelessWidget {
     );
   }
 
-  // Widget pour les petites cartes de stats
+  // --- WIDGETS DE SOUTIEN ---
+  Widget _buildGlobalProgressCard(bool isDark, double moyenne) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isDark
+              ? [const Color(0xFF1E293B), const Color(0xFF0F172A)]
+              : [const Color(0xFF1A334D), const Color(0xFF2E5A88)],
+        ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          const Text(
+            "Santé Globale des Projets",
+            style: TextStyle(color: Colors.white70),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            "${(moyenne * 100).toInt()}%",
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 48,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 10),
+          LinearProgressIndicator(
+            value: moyenne,
+            backgroundColor: Colors.white24,
+            color: Colors.greenAccent,
+            minHeight: 8,
+            borderRadius: BorderRadius.circular(5),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _statCard(
     BuildContext context,
     String title,
@@ -286,18 +316,11 @@ class StatsScreen extends StatelessWidget {
     IconData icon,
     Color color,
   ) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(15),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
-            blurRadius: 10,
-          ),
-        ],
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -317,7 +340,21 @@ class StatsScreen extends StatelessWidget {
     );
   }
 
-  // Widget réutilisable pour les lignes de rapports (ListTile stylisé)
+  Widget _buildAlertTile(BuildContext context, Chantier c, bool isDark) {
+    return Card(
+      elevation: 0,
+      color: isDark ? Colors.red.withOpacity(0.1) : Colors.red[50],
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListTile(
+        leading: const Icon(Icons.error_outline, color: Colors.red),
+        title: Text(c.nom, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(c.lieu),
+        trailing: const Icon(Icons.chevron_right, size: 16),
+      ),
+    );
+  }
+
   Widget _buildReportCard(
     BuildContext context, {
     required String title,

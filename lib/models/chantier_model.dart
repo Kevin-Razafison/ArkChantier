@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 enum StatutChantier { enCours, enRetard, termine }
 
 class Chantier {
@@ -51,4 +53,12 @@ class Chantier {
     latitude: (json['latitude'] as num? ?? 48.8566).toDouble(),
     longitude: (json['longitude'] as num? ?? 2.3522).toDouble(),
   );
+}
+
+class DepenseCategorie {
+  final String label;
+  final double montant;
+  final Color couleur;
+
+  DepenseCategorie(this.label, this.montant, this.couleur);
 }
