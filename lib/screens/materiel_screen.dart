@@ -12,7 +12,7 @@ class MaterielScreen extends StatefulWidget {
 
 class _MaterielScreenState extends State<MaterielScreen> {
   List<Materiel> inventaire = [];
-  final String currentChantierId = "annuaire_global"; 
+  final String currentChantierId = "annuaire_global";
 
   @override
   void initState() {
@@ -28,8 +28,22 @@ class _MaterielScreenState extends State<MaterielScreen> {
         inventaire = storedData;
       } else {
         inventaire = [
-          Materiel(id: "1", nom: "Ciment Portland", quantite: 50, prixUnitaire: 12.50, unite: "Sacs", categorie: CategorieMateriel.consommable),
-          Materiel(id: "2", nom: "Perceuse", quantite: 3, prixUnitaire: 89.99, unite: "Unités", categorie: CategorieMateriel.outillage),
+          Materiel(
+            id: "1",
+            nom: "Ciment Portland",
+            quantite: 50,
+            prixUnitaire: 12.50,
+            unite: "Sacs",
+            categorie: CategorieMateriel.consommable,
+          ),
+          Materiel(
+            id: "2",
+            nom: "Perceuse",
+            quantite: 3,
+            prixUnitaire: 89.99,
+            unite: "Unités",
+            categorie: CategorieMateriel.outillage,
+          ),
         ];
       }
     });
@@ -62,28 +76,57 @@ class _MaterielScreenState extends State<MaterielScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(decoration: const InputDecoration(labelText: "Nom"), onChanged: (val) => nom = val),
-                TextField(decoration: const InputDecoration(labelText: "Quantité"), keyboardType: TextInputType.number, onChanged: (val) => quantite = int.tryParse(val) ?? 0),
-                TextField(decoration: const InputDecoration(labelText: "Prix Unitaire (€)"), keyboardType: TextInputType.number, onChanged: (val) => prix = double.tryParse(val) ?? 0.0),
+                TextField(
+                  decoration: const InputDecoration(labelText: "Nom"),
+                  onChanged: (val) => nom = val,
+                ),
+                TextField(
+                  decoration: const InputDecoration(labelText: "Quantité"),
+                  keyboardType: TextInputType.number,
+                  onChanged: (val) => quantite = int.tryParse(val) ?? 0,
+                ),
+                TextField(
+                  decoration: const InputDecoration(
+                    labelText: "Prix Unitaire (€)",
+                  ),
+                  keyboardType: TextInputType.number,
+                  onChanged: (val) => prix = double.tryParse(val) ?? 0.0,
+                ),
                 DropdownButton<CategorieMateriel>(
                   value: categorie,
                   isExpanded: true,
-                  items: CategorieMateriel.values.map((cat) => DropdownMenuItem(value: cat, child: Text(cat.name.toUpperCase()))).toList(),
+                  items: CategorieMateriel.values
+                      .map(
+                        (cat) => DropdownMenuItem(
+                          value: cat,
+                          child: Text(cat.name.toUpperCase()),
+                        ),
+                      )
+                      .toList(),
                   onChanged: (val) => setDialogState(() => categorie = val!),
                 ),
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Annuler"),
+            ),
             ElevatedButton(
               onPressed: () async {
                 if (nom.isNotEmpty) {
                   setState(() {
-                    inventaire.add(Materiel(
-                      id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      nom: nom, quantite: quantite, prixUnitaire: prix, unite: "Unités", categorie: categorie,
-                    ));
+                    inventaire.add(
+                      Materiel(
+                        id: DateTime.now().millisecondsSinceEpoch.toString(),
+                        nom: nom,
+                        quantite: quantite,
+                        prixUnitaire: prix,
+                        unite: "Unités",
+                        categorie: categorie,
+                      ),
+                    );
                   });
                   await _saveData();
                   if (!mounted) return;
@@ -100,11 +143,10 @@ class _MaterielScreenState extends State<MaterielScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Gestion du Matériel"), 
-        backgroundColor: const Color(0xFF1A334D), 
+        title: const Text("Gestion du Matériel"),
+        backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
         actions: [
           IconButton(
@@ -121,48 +163,66 @@ class _MaterielScreenState extends State<MaterielScreen> {
           ),
         ],
       ),
-      body: inventaire.isEmpty 
-        ? const Center(child: Text("Aucun matériel")) 
-        : ListView.builder(
-            padding: const EdgeInsets.all(12),
-            itemCount: inventaire.length,
-            itemBuilder: (context, index) {
-              final item = inventaire[index];
-              return Dismissible(
-                key: Key(item.id),
-                direction: DismissDirection.endToStart,
-                onDismissed: (direction) {
-                  setState(() => inventaire.removeAt(index));
-                  _saveData();
-                },
-                background: Container(
-                  color: Colors.red, 
-                  alignment: Alignment.centerRight, 
-                  padding: const EdgeInsets.only(right: 20),
-                  child: const Icon(Icons.delete, color: Colors.white)
-                ),
-                child: Card(
-                  child: ListTile(
-                    leading: Icon(item.categorie == CategorieMateriel.outillage ? Icons.build : Icons.inventory_2),
-                    title: Text(item.nom, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text("${item.prixUnitaire.toStringAsFixed(2)} € / ${item.unite}"),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(icon: const Icon(Icons.remove_circle_outline), onPressed: () => _updateQuantity(index, -1)),
-                        Text("${item.quantite}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                        IconButton(icon: const Icon(Icons.add_circle_outline), onPressed: () => _updateQuantity(index, 1)),
-                      ],
+      body: inventaire.isEmpty
+          ? const Center(child: Text("Aucun matériel"))
+          : ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: inventaire.length,
+              itemBuilder: (context, index) {
+                final item = inventaire[index];
+                return Dismissible(
+                  key: Key(item.id),
+                  direction: DismissDirection.endToStart,
+                  onDismissed: (direction) {
+                    setState(() => inventaire.removeAt(index));
+                    _saveData();
+                  },
+                  background: Container(
+                    color: Colors.red,
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 20),
+                    child: const Icon(Icons.delete, color: Colors.white),
+                  ),
+                  child: Card(
+                    child: ListTile(
+                      leading: Icon(
+                        item.categorie == CategorieMateriel.outillage
+                            ? Icons.build
+                            : Icons.inventory_2,
+                      ),
+                      title: Text(
+                        item.nom,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(
+                        "${item.prixUnitaire.toStringAsFixed(2)} € / ${item.unite}",
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.remove_circle_outline),
+                            onPressed: () => _updateQuantity(index, -1),
+                          ),
+                          Text(
+                            "${item.quantite}",
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.add_circle_outline),
+                            onPressed: () => _updateQuantity(index, 1),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
-          ),
+                );
+              },
+            ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: const Color(0xFF1A334D),
-        onPressed: _showAddMaterialDialog, 
-        child: const Icon(Icons.add, color: Colors.white)
+        onPressed: _showAddMaterialDialog,
+        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }

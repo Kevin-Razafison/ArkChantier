@@ -90,6 +90,17 @@ class DataStorage {
     return decodedData.map((item) => Materiel.fromJson(item)).toList();
   }
 
+  static Future<List<Materiel>> loadAllMateriels() async {
+    final allChantiers = await loadChantiers();
+    List<Materiel> totalMateriel = [];
+
+    for (var chantier in allChantiers) {
+      final list = await loadMateriels(chantier.id);
+      totalMateriel.addAll(list);
+    }
+    return totalMateriel;
+  }
+
   // --- GESTION DES RAPPORTS PHOTOS ---
   static Future<void> saveReport(Report report) async {
     final reports = await loadReports();

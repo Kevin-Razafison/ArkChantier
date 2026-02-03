@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../data/mock_data.dart';
 import '../models/chantier_model.dart';
-import '../models/materiel_model.dart';
-import '../services/pdf_service.dart'; // Assure-toi que le chemin est correct
+import '../services/pdf_service.dart';
+import '../services/data_storage.dart';
 
 class StatsScreen extends StatelessWidget {
   const StatsScreen({super.key});
@@ -148,11 +148,31 @@ class StatsScreen extends StatelessWidget {
               icon: Icons.inventory_2,
               iconColor: Colors.redAccent,
               bgColor: const Color(0xFFFFEBEE),
-              onTap: () {
-                // Logique pour compiler tous les matériels (mock ou réels)
-                // Ici on génère une liste vide ou mock pour le test
-                List<Materiel> inventaireGlobal = [];
-                PdfService.generateInventoryReport(inventaireGlobal);
+              onTap: () async {
+                // Affichage d'un indicateur de chargement si nécessaire
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Préparation de l'inventaire..."),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+
+                // 1. Récupération de toutes les données via la nouvelle méthode
+                final inventaireComplet = await DataStorage.loadAllMateriels();
+
+                if (inventaireComplet.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        "Aucun matériel enregistré dans les chantiers.",
+                      ),
+                    ),
+                  );
+                  return;
+                }
+
+                // 2. Génération du PDF avec PdfService
+                await PdfService.generateInventoryReport(inventaireComplet);
               },
             ),
 

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'models/user_model.dart';
 import 'widgets/sidebar_drawer.dart';
-import 'screens/dashboard_view.dart'; 
+import 'screens/dashboard_view.dart';
 import 'screens/chantiers_screen.dart';
 import 'screens/ouvriers_screen.dart';
 import 'screens/stats_screen.dart';
@@ -22,7 +22,7 @@ class ChantierApp extends StatefulWidget {
 
 class _ChantierAppState extends State<ChantierApp> {
   ThemeMode _themeMode = ThemeMode.light;
-  
+
   UserModel currentUser = UserModel(
     id: '1',
     nom: 'Admin ArkChantier',
@@ -82,7 +82,6 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     bool isMobile = MediaQuery.of(context).size.width < 800;
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     final List<Widget> pages = [
       DashboardView(user: widget.user),
@@ -95,38 +94,35 @@ class _MainShellState extends State<MainShell> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: isMobile 
-        ? AppBar(
-            title: const Text("ArkChantier", style: TextStyle(fontSize: 18)),
-            backgroundColor: const Color(0xFF1A334D),
-            foregroundColor: Colors.white,
-          ) 
-        : null,
-      drawer: isMobile 
-        ? Drawer(
-            child: SidebarDrawer(
-              role: widget.user.role, 
-              currentIndex: _selectedIndex, 
-              onDestinationSelected: (i) {
-                setState(() => _selectedIndex = i);
-                Navigator.pop(context); 
-              }
+      appBar: isMobile
+          ? AppBar(
+              title: const Text("ArkChantier", style: TextStyle(fontSize: 18)),
+              backgroundColor: const Color(0xFF1A334D),
+              foregroundColor: Colors.white,
             )
-          ) 
-        : null,
+          : null,
+      drawer: isMobile
+          ? Drawer(
+              child: SidebarDrawer(
+                role: widget.user.role,
+                currentIndex: _selectedIndex,
+                onDestinationSelected: (i) {
+                  setState(() => _selectedIndex = i);
+                  Navigator.pop(context);
+                },
+              ),
+            )
+          : null,
       body: Row(
         children: [
-          if (!isMobile) 
+          if (!isMobile)
             SidebarDrawer(
-              role: widget.user.role, 
-              currentIndex: _selectedIndex, 
-              onDestinationSelected: (i) => setState(() => _selectedIndex = i)
+              role: widget.user.role,
+              currentIndex: _selectedIndex,
+              onDestinationSelected: (i) => setState(() => _selectedIndex = i),
             ),
           Expanded(
-            child: IndexedStack(
-              index: _selectedIndex,
-              children: pages,
-            ),
+            child: IndexedStack(index: _selectedIndex, children: pages),
           ),
         ],
       ),
