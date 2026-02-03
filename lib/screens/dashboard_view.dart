@@ -6,7 +6,6 @@ import '../services/data_storage.dart';
 import '../widgets/info_card.dart';
 import '../widgets/chantier_map_preview.dart';
 import '../widgets/financial_stats_card.dart';
-import '../screens/chantier_detail_screen.dart';
 import '../widgets/financial_pie_chart.dart';
 import '../widgets/photo_reporter.dart';
 import '../models/report_model.dart';
@@ -43,46 +42,34 @@ class _DashboardViewState extends State<DashboardView> {
     _loadDashboardData();
   }
 
-  // Helper pour récupérer le chantier sur lequel travaille l'utilisateur
-  Chantier? _getChantierActuel() {
-    if (_chantiers.isEmpty) return _dummyChantier();
-    if (widget.user.chantierId != null) {
-      return _chantiers.firstWhere(
-        (c) => c.id == widget.user.chantierId,
-        orElse: () => _chantiers.first,
-      );
-    }
-    return _chantiers.first;
-  }
-
   // --- LOGIQUE DE CHARGEMENT ET CALCUL HYBRIDE ---
   Future<void> _loadDashboardData() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
 
-    // 1. Charger la liste des chantiers persistée (contenant les dépenses manuelles)
+    // 1. Charger la liste persistée
     final data = await DataStorage.loadChantiers();
 
     double tempMO = 0;
     double tempMat = 0;
 
     for (var c in data) {
-      // 2. Calcul Automatique : Équipe (Main d'œuvre)
+      // 2. Calcul Auto : Équipe (Main d'œuvre)
       final equipe = await DataStorage.loadTeam(c.id);
       for (var o in equipe) {
         tempMO += (o.joursPointes.length * o.salaireJournalier);
       }
 
-      // 3. Calcul Automatique : Inventaire (Matériel)
+      // 3. Calcul Auto : Inventaire (Matériel)
       final inventaire = await DataStorage.loadMateriels(c.id);
       for (var m in inventaire) {
         tempMat += (m.quantite * m.prixUnitaire);
       }
 
-      // 4. Calcul Manuel : Ajouter les dépenses saisies dans StatsScreen
+      // 4. Calcul Manuel : Dépenses ajoutées via StatsScreen
       for (var d in c.depenses) {
         if (d.type == TypeDepense.mainOeuvre) tempMO += d.montant;
         if (d.type == TypeDepense.materiel) tempMat += d.montant;
-        // Transport et Divers peuvent être répartis ou ignorés selon tes besoins
       }
     }
 
@@ -96,14 +83,274 @@ class _DashboardViewState extends State<DashboardView> {
     }
   }
 
-  Future<void> _openChantierDetail(Chantier chantier) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ChantierDetailScreen(chantier: chantier),
+  // --- FONCTION DE CLÔTURE DE CHANTIER ---
+  Future<void> _cloturerChantier(Chantier chantier) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Clôturer le chantier ?"),
+        content: Text(
+          "Voulez-vous marquer '${chantier.nom}' comme terminé ? Cela figera sa progression à 100%.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("ANNULER"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text(
+              "CONFIRMER LA CLÔTURE",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
       ),
     );
-    _loadDashboardData(); // Recharger au retour
+
+    if (confirm == true) {
+      setState(() {
+        chantier.statut = StatutChantier.termine;
+        chantier.progression = 1.0;
+      });
+      // Sauvegarde immédiate
+      await DataStorage.saveChantiers(_chantiers);
+      await _loadDashboardData();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Chantier ${chantier.nom} clôturé !"),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    }
+  }
+
+  Chantier? _getChantierActuel() {
+    if (_chantiers.isEmpty) return _dummyChantier();
+    if (widget.user.chantierId != null) {
+      return _chantiers.firstWhere(
+        (c) => c.id == widget.user.chantierId,
+        orElse: () => _chantiers.first,
+      );
+    }
+    return _chantiers.isNotEmpty ? _chantiers.first : _dummyChantier();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading)
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+
+    bool isMobile = MediaQuery.of(context).size.width < 800;
+    final actuel = _getChantierActuel();
+
+    return Scaffold(
+      body: RefreshIndicator(
+        onRefresh: _loadDashboardData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "BIENVENUE, ${widget.user.nom.toUpperCase()}",
+                style: const TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+              Text(
+                "ESPACE ${widget.user.role.name.toUpperCase()}",
+                style: const TextStyle(
+                  fontSize: 18,
+                  color: Colors.orange,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 20),
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: isMobile ? 1 : 2,
+                childAspectRatio: isMobile ? 1.1 : 1.4,
+                crossAxisSpacing: 20,
+                mainAxisSpacing: 20,
+                children: [
+                  InfoCard(
+                    title: "LOCALISATION",
+                    child: ChantierMapPreview(chantiers: _chantiers),
+                  ),
+                  InfoCard(title: "TÂCHES", child: _listTasks()),
+                  if (widget.user.role != UserRole.client)
+                    InfoCard(
+                      title: "FINANCES (Appui long pour clôturer)",
+                      child: (actuel != null && actuel.id != "0")
+                          ? InkWell(
+                              onLongPress: () => _cloturerChantier(actuel),
+                              child: FinancialStatsCard(chantier: actuel),
+                            )
+                          : const Center(
+                              child: Text("Sélectionnez un chantier"),
+                            ),
+                    ),
+                  InfoCard(
+                    title: "RÉPARTITION GLOBALE",
+                    child: FinancialPieChart(
+                      montantMO: totalMainOeuvre,
+                      montantMat: totalMateriel,
+                    ),
+                  ),
+                  if (widget.user.role != UserRole.client)
+                    InfoCard(
+                      title: "ALERTES BUDGÉTAIRES",
+                      borderColor: Colors.orange,
+                      child: _listAlertes(),
+                    ),
+                  InfoCard(title: "PROGRÈS", child: _listProgres()),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showQuickReportForm(context),
+        label: const Text(
+          "RAPPORT PHOTO",
+          style: TextStyle(color: Colors.white),
+        ),
+        icon: const Icon(Icons.add_a_photo, color: Colors.white),
+        backgroundColor: Colors.orange,
+      ),
+    );
+  }
+
+  // --- Widgets de listes ---
+
+  Widget _listAlertes() {
+    // Calcul dynamique des alertes budget (> 80%)
+    final alertesBudget = _chantiers.where((c) {
+      if (c.budgetInitial <= 0) return false;
+      return (c.depensesActuelles / c.budgetInitial) >= 0.8;
+    }).toList();
+
+    return ListView(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      children: [
+        if (alertesBudget.isEmpty &&
+            !_chantiers.any((c) => c.statut == StatutChantier.enRetard))
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(8.0),
+              child: Text(
+                "Aucune alerte critique",
+                style: TextStyle(fontSize: 11, color: Colors.green),
+              ),
+            ),
+          ),
+
+        ...alertesBudget.map((c) {
+          final ratio = c.depensesActuelles / c.budgetInitial;
+          return ListTile(
+            leading: Icon(
+              Icons.warning_amber_rounded,
+              color: ratio >= 1.0 ? Colors.red : Colors.orange,
+              size: 18,
+            ),
+            title: Text(
+              "${c.nom}: ${(ratio * 100).toInt()}% du budget",
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+            dense: true,
+          );
+        }),
+
+        ..._chantiers
+            .where((c) => c.statut == StatutChantier.enRetard)
+            .map(
+              (c) => ListTile(
+                leading: const Icon(Icons.timer, color: Colors.red, size: 18),
+                title: Text(
+                  "Retard: ${c.nom}",
+                  style: const TextStyle(fontSize: 11),
+                ),
+                dense: true,
+              ),
+            ),
+      ],
+    );
+  }
+
+  Widget _listProgres() {
+    if (_chantiers.isEmpty) return const Center(child: Text("Aucun chantier"));
+    return Column(
+      children: _chantiers
+          .take(3)
+          .map(
+            (c) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        c.nom,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        "${(c.progression * 100).toInt()}%",
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  LinearProgressIndicator(
+                    value: c.progression.clamp(0.0, 1.0),
+                    color: c.statut == StatutChantier.termine
+                        ? Colors.green
+                        : Colors.blue,
+                    backgroundColor: Colors.grey[200],
+                    minHeight: 6,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ],
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Widget _listTasks() {
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _tasks.length,
+      itemBuilder: (context, index) {
+        return CheckboxListTile(
+          value: _tasks[index].isDone,
+          title: Text(
+            _tasks[index].title,
+            style: const TextStyle(fontSize: 11),
+          ),
+          onChanged: (value) => setState(() => _tasks[index].isDone = value!),
+          controlAffinity: ListTileControlAffinity.leading,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+        );
+      },
+    );
   }
 
   void _showQuickReportForm(BuildContext context) {
@@ -188,201 +435,6 @@ class _DashboardViewState extends State<DashboardView> {
           ],
         ),
       ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading)
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-
-    bool isMobile = MediaQuery.of(context).size.width < 800;
-    final actuel = _getChantierActuel();
-
-    return Scaffold(
-      // Ajout du RefreshIndicator pour forcer la mise à jour
-      body: RefreshIndicator(
-        onRefresh: _loadDashboardData,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "BIENVENUE, ${widget.user.nom.toUpperCase()}",
-                style: const TextStyle(fontSize: 14, color: Colors.grey),
-              ),
-              Text(
-                "ESPACE ${widget.user.role.name.toUpperCase()}",
-                style: const TextStyle(
-                  fontSize: 18,
-                  color: Colors.orange,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 20),
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: isMobile ? 1 : 2,
-                childAspectRatio: isMobile ? 1.1 : 1.4,
-                crossAxisSpacing: 20,
-                mainAxisSpacing: 20,
-                children: [
-                  InfoCard(
-                    title: "LOCALISATION",
-                    child: ChantierMapPreview(chantiers: _chantiers),
-                  ),
-                  InfoCard(title: "TÂCHES", child: _listTasks()),
-                  if (widget.user.role != UserRole.client)
-                    InfoCard(
-                      title: "FINANCES",
-                      child: (actuel != null && actuel.id != "0")
-                          ? FinancialStatsCard(chantier: actuel)
-                          : const Center(
-                              child: Text("Sélectionnez un chantier"),
-                            ),
-                    ),
-                  InfoCard(
-                    title: "COÛTS",
-                    child: FinancialPieChart(
-                      montantMO: totalMainOeuvre,
-                      montantMat: totalMateriel,
-                    ),
-                  ),
-                  if (widget.user.role != UserRole.client)
-                    InfoCard(
-                      title: "ALERTES",
-                      borderColor: Colors.orange,
-                      child: _listAlertes(),
-                    ),
-                  InfoCard(title: "PROGRÈS", child: _listProgres()),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showQuickReportForm(context),
-        label: const Text(
-          "RAPPORT PHOTO",
-          style: TextStyle(color: Colors.white),
-        ),
-        icon: const Icon(Icons.add_a_photo, color: Colors.white),
-        backgroundColor: Colors.orange,
-      ),
-    );
-  }
-
-  // --- Widgets de listes ---
-  Widget _listTasks() {
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: _tasks.length,
-      itemBuilder: (context, index) {
-        return CheckboxListTile(
-          value: _tasks[index].isDone,
-          title: Text(
-            _tasks[index].title,
-            style: const TextStyle(fontSize: 11),
-          ),
-          onChanged: (value) => setState(() => _tasks[index].isDone = value!),
-          controlAffinity: ListTileControlAffinity.leading,
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-        );
-      },
-    );
-  }
-
-  Widget _listProgres() {
-    if (_chantiers.isEmpty) return const Center(child: Text("Aucun chantier"));
-    return Column(
-      children: _chantiers
-          .take(3)
-          .map(
-            (c) => InkWell(
-              onTap: () => _openChantierDetail(c),
-              child: _progresItem(
-                c.nom,
-                c.progression,
-                c.progression >= 1.0 ? Colors.green : Colors.blue,
-              ),
-            ),
-          )
-          .toList(),
-    );
-  }
-
-  Widget _progresItem(String t, double v, Color c) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                t,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Text(
-                "${(v * 100).toInt()}%",
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          LinearProgressIndicator(
-            value: v.clamp(0.0, 1.0),
-            color: c,
-            backgroundColor: Colors.grey[200],
-            minHeight: 6,
-            borderRadius: BorderRadius.circular(4),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _listAlertes() {
-    final retards = _chantiers
-        .where((c) => c.statut == StatutChantier.enRetard)
-        .toList();
-    return ListView(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      children: [
-        if (retards.isNotEmpty)
-          ...retards.map(
-            (c) => ListTile(
-              leading: const Icon(Icons.timer, color: Colors.red, size: 18),
-              title: Text(
-                "Retard: ${c.nom}",
-                style: const TextStyle(fontSize: 11),
-              ),
-              dense: true,
-            ),
-          ),
-        const ListTile(
-          leading: Icon(Icons.warning, color: Colors.orange, size: 18),
-          title: Text(
-            "Matériel HS (Générateur)",
-            style: TextStyle(fontSize: 11),
-          ),
-          dense: true,
-        ),
-      ],
     );
   }
 
