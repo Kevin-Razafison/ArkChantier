@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/ouvrier_model.dart';
 import '../data/mock_data.dart';
+import '../services/data_storage.dart'; // Import de ton DataStorage
 import 'ouvrier_detail_screen.dart';
 
 class OuvriersScreen extends StatefulWidget {
@@ -17,7 +18,18 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
   @override
   void initState() {
     super.initState();
-    _filteredOuvriers = globalOuvriers; 
+    _loadData(); // On charge les données sauvegardées au démarrage
+  }
+
+  // --- CHARGEMENT DES DONNÉES ---
+  Future<void> _loadData() async {
+    final savedOuvriers = await DataStorage.loadTeam("annuaire_global");
+    setState(() {
+      if (savedOuvriers.isNotEmpty) {
+        globalOuvriers = savedOuvriers;
+      }
+      _filteredOuvriers = globalOuvriers;
+    });
   }
 
   void _filterOuvriers(String query) {
@@ -69,12 +81,16 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
                     return Dismissible(
                       key: Key(worker.id),
                       direction: DismissDirection.endToStart,
-                      onDismissed: (direction) {
+                      onDismissed: (direction) async { // Ajout de async
                         setState(() {
                           globalOuvriers.removeWhere((o) => o.id == worker.id);
                           _filterOuvriers(_searchController.text);
                         });
                         
+                        // SAUVEGARDE APRÈS SUPPRESSION
+                        await DataStorage.saveTeam("annuaire_global", globalOuvriers);
+
+                        if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text("${worker.nom} supprimé de l'annuaire")),
                         );
@@ -101,7 +117,7 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
                         ),
                         child: ListTile(
                           leading: Hero(
-                            tag: "avatar-${worker.id}", // Tag ajouté pour l'animation
+                            tag: "avatar-${worker.id}",
                             child: CircleAvatar(
                               backgroundColor: isDark 
                                   ? Colors.blue.withValues(alpha: 0.2) 
@@ -171,7 +187,7 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
   void _showAddWorkerDialog() {
     final nomController = TextEditingController();
     final specialiteController = TextEditingController();
-    final telephoneController = TextEditingController(); // Nouveau contrôleur
+    final telephoneController = TextEditingController();
     final salaireController = TextEditingController(text: "50");
 
     showDialog(
@@ -179,7 +195,7 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: Theme.of(context).cardColor,
         title: const Text("Nouvel Ouvrier"),
-        content: SingleChildScrollView( // Sécurité si le clavier cache les champs
+        content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -194,7 +210,6 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
                 decoration: const InputDecoration(labelText: "Spécialité (ex: Maçon)"),
               ),
               const SizedBox(height: 10),
-              // --- NOUVEAU CHAMP TÉLÉPHONE ---
               TextField(
                 controller: telephoneController,
                 keyboardType: TextInputType.phone,
@@ -226,29 +241,35 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
               backgroundColor: const Color(0xFF1A334D),
               foregroundColor: Colors.white,
             ),
-            onPressed: () {
+            onPressed: () async { // Ajout de async
               if (nomController.text.isNotEmpty && 
                   specialiteController.text.isNotEmpty &&
                   telephoneController.text.isNotEmpty) {
+                
+                final newWorker = Ouvrier(
+                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  nom: nomController.text,
+                  specialite: specialiteController.text,
+                  telephone: telephoneController.text,
+                  salaireJournalier: double.tryParse(salaireController.text) ?? 50.0,
+                  joursPointes: [],
+                );
+
                 setState(() {
-                  final newWorker = Ouvrier(
-                    id: DateTime.now().millisecondsSinceEpoch.toString(), // ID plus propre
-                    nom: nomController.text,
-                    specialite: specialiteController.text,
-                    telephone: telephoneController.text, // On enregistre le numéro !
-                    salaireJournalier: double.tryParse(salaireController.text) ?? 50.0,
-                    joursPointes: [], // Initialisation vide
-                  );
                   globalOuvriers.add(newWorker);
                   _filterOuvriers(_searchController.text);
                 });
+
+                // SAUVEGARDE APRÈS AJOUT
+                await DataStorage.saveTeam("annuaire_global", globalOuvriers);
+
+                if (!context.mounted) return;
                 Navigator.pop(context);
                 
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text("${nomController.text} ajouté avec succès")),
                 );
               } else {
-                // Petit avertissement si des champs sont vides
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text("Veuillez remplir tous les champs")),
                 );

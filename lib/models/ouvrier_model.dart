@@ -1,24 +1,23 @@
 class Ouvrier {
   final String id;
-  final String nom;
-  final String specialite;
-  final String telephone; // <--- Nouveau champ
-  final String photoUrl;
+  String nom;      
+  String specialite; 
+  String telephone; 
+  String photoUrl;
   bool estPresent;
-  final double salaireJournalier;
+  double salaireJournalier; 
   List<String> joursPointes;
 
   Ouvrier({
     required this.id,
     required this.nom,
     required this.specialite,
-    required this.telephone, // <--- Requis à la création
+    required this.telephone,
     this.photoUrl = 'https://via.placeholder.com/150',
     this.estPresent = true,
     this.salaireJournalier = 0.0,
     List<String>? joursPointes,
   }) : joursPointes = joursPointes ?? [];
-
   Map<String, dynamic> toJson() => {
     'id': id,
     'nom': nom,

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart'; 
 import '../models/ouvrier_model.dart';
 import '../services/pdf_service.dart';
+import '../services/data_storage.dart'; // IMPORTANT : Pour la sauvegarde
+import '../data/mock_data.dart';      // IMPORTANT : Pour globalOuvriers
 
 class OuvrierDetailScreen extends StatefulWidget {
   final Ouvrier worker;
@@ -43,6 +45,94 @@ class _OuvrierDetailScreenState extends State<OuvrierDetailScreen> {
     }
   }
 
+  void _showEditWorkerSheet() {
+    final nomController = TextEditingController(text: widget.worker.nom);
+    final phoneController = TextEditingController(text: widget.worker.telephone);
+    final salaireController = TextEditingController(text: widget.worker.salaireJournalier.toString());
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+          left: 20, right: 20, top: 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Modifier l'Ouvrier", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            TextField(controller: nomController, decoration: const InputDecoration(labelText: "Nom")),
+            TextField(controller: phoneController, decoration: const InputDecoration(labelText: "Téléphone"), keyboardType: TextInputType.phone),
+            TextField(controller: salaireController, decoration: const InputDecoration(labelText: "Salaire Journalier"), keyboardType: TextInputType.number),
+            const SizedBox(height: 20),
+            
+            // Bouton Enregistrer
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A334D), foregroundColor: Colors.white),
+                onPressed: () async {
+                  setState(() {
+                    widget.worker.nom = nomController.text;
+                    widget.worker.telephone = phoneController.text;
+                    widget.worker.salaireJournalier = double.tryParse(salaireController.text) ?? widget.worker.salaireJournalier;
+                  });
+                  await DataStorage.saveTeam("annuaire_global", globalOuvriers);
+                  if (!mounted) return;
+                  Navigator.pop(context);
+                },
+                child: const Text("Enregistrer les modifications"),
+              ),
+            ),
+            
+            // Bouton Supprimer
+            TextButton.icon(
+              icon: const Icon(Icons.delete_forever, color: Colors.red),
+              label: const Text("Supprimer l'ouvrier", style: TextStyle(color: Colors.red)),
+              onPressed: () => _confirmDelete(),
+            ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
+  }
+  void _confirmDelete() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Supprimer l'ouvrier ?"),
+        content: Text("Êtes-vous sûr de vouloir retirer ${widget.worker.nom} de la base de données ? Cette action est irréversible."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Annuler"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () async {
+              setState(() {
+                globalOuvriers.removeWhere((o) => o.id == widget.worker.id);
+              });
+              await DataStorage.saveTeam("annuaire_global", globalOuvriers);
+              if (!mounted) return;
+              // Fermer le dialogue, puis le BottomSheet, puis l'écran de profil
+              Navigator.of(context).pop(); // Ferme le dialogue
+              Navigator.of(context).pop(); // Ferme le BottomSheet
+              Navigator.of(context).pop(); // Retourne à la liste des ouvriers
+              
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Ouvrier supprimé avec succès.")),
+              );
+            },
+            child: const Text("Supprimer"),
+          ),
+        ],
+      ),
+    );
+  }
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
@@ -50,6 +140,7 @@ class _OuvrierDetailScreenState extends State<OuvrierDetailScreen> {
       "", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin", 
       "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
     ];
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Profil Ouvrier"),
@@ -65,7 +156,6 @@ class _OuvrierDetailScreenState extends State<OuvrierDetailScreen> {
             
             _buildSectionTitle("Informations Générales"),
             _buildDetailItem(Icons.payments, "Salaire Journalier", "${widget.worker.salaireJournalier} € / jour"),
-            // Affichage du numéro de téléphone dynamique
             _buildDetailItem(Icons.phone, "Téléphone", widget.worker.telephone.isNotEmpty ? widget.worker.telephone : "Non renseigné"),
             _buildDetailItem(Icons.badge, "ID Employé", "#${widget.worker.id.length > 8 ? widget.worker.id.substring(0, 8) : widget.worker.id}"),
             
@@ -106,142 +196,126 @@ class _OuvrierDetailScreenState extends State<OuvrierDetailScreen> {
     );
   }
 
-Widget _buildAttendanceGrid() {
-  // 1. Déterminer la date actuelle pour le calcul dynamique
-  final now = DateTime.now();
-  
-  // 2. Calculer le nombre de jours dans le mois en cours
-  // Astuce Dart : Le jour 0 du mois suivant est le dernier jour du mois actuel
-  final int daysInMonth = DateTime(now.year, now.month + 1, 0).day;
-  
-  // 3. Créer le préfixe de la clé (ex: "2026-02-") pour correspondre au format du modèle
-  final String monthPrefix = "${now.year}-${now.month.toString().padLeft(2, '0')}-";
+  Widget _buildAttendanceGrid() {
+    final now = DateTime.now();
+    final int daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    final String monthPrefix = "${now.year}-${now.month.toString().padLeft(2, '0')}-";
 
-  // Optionnel : Pour l'affichage du nom du mois en français
-  final List<String> mois = [
-    "", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin", 
-    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
-  ];
+    final List<String> mois = [
+      "", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin", 
+      "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+    ];
 
-  return Container(
-    margin: const EdgeInsets.symmetric(horizontal: 20),
-    padding: const EdgeInsets.all(15),
-    decoration: BoxDecoration(
-      color: Colors.grey.withOpacity(0.1),
-      borderRadius: BorderRadius.circular(15),
-      border: Border.all(color: Colors.grey.withOpacity(0.2)),
-    ),
-    child: Column(
-      children: [
-        // En-tête du calendrier
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              "${mois[now.month]} ${now.year}",
-              style: const TextStyle(
-                fontSize: 16, 
-                fontWeight: FontWeight.bold, 
-                color: Color(0xFF1A334D)
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.grey.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.grey.withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "${mois[now.month]} ${now.year}",
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A334D)),
               ),
-            ),
-            Text(
-              "${widget.worker.joursPointes.where((d) => d.startsWith(monthPrefix)).length} j. travaillés",
-              style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.w600),
-            ),
-          ],
-        ),
-        const SizedBox(height: 15),
-        
-        // La Grille de pointage
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 7, // 7 jours par semaine
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
+              Text(
+                "${widget.worker.joursPointes.where((d) => d.startsWith(monthPrefix)).length} j. travaillés",
+                style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.w600),
+              ),
+            ],
           ),
-          itemCount: daysInMonth,
-          itemBuilder: (context, index) {
-            final int day = index + 1;
-            // Génère la clé unique pour ce jour : "2026-02-05"
-            final String dateKey = "$monthPrefix${day.toString().padLeft(2, '0')}";
-            final bool isPointed = widget.worker.joursPointes.contains(dateKey);
+          const SizedBox(height: 15),
+          
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+            ),
+            itemCount: daysInMonth,
+            itemBuilder: (context, index) {
+              final int day = index + 1;
+              final String dateKey = "$monthPrefix${day.toString().padLeft(2, '0')}";
+              final bool isPointed = widget.worker.joursPointes.contains(dateKey);
 
-            return GestureDetector(
-              onTap: () {
-                setState(() {
-                  if (isPointed) {
-                    widget.worker.joursPointes.remove(dateKey);
-                  } else {
-                    widget.worker.joursPointes.add(dateKey);
-                  }
-                });
-                // Ici tu pourrais ajouter un appel à un service de sauvegarde
-                // ex: StorageService.saveOuvriers(globalOuvriers);
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                decoration: BoxDecoration(
-                  color: isPointed ? Colors.green : Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isPointed ? Colors.green : Colors.grey.withOpacity(0.3),
-                    width: 1,
+              return GestureDetector(
+                onTap: () async {
+                  setState(() {
+                    if (isPointed) {
+                      widget.worker.joursPointes.remove(dateKey);
+                    } else {
+                      widget.worker.joursPointes.add(dateKey);
+                    }
+                  });
+                  
+                  // Sauvegarde locale via ton DataStorage
+                  await DataStorage.saveTeam("annuaire_global", globalOuvriers); 
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  decoration: BoxDecoration(
+                    color: isPointed ? Colors.green : Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isPointed ? Colors.green : Colors.grey.withOpacity(0.3),
+                      width: 1,
+                    ),
+                    boxShadow: isPointed 
+                      ? [BoxShadow(color: Colors.green.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2))] 
+                      : [],
                   ),
-                  boxShadow: isPointed 
-                    ? [BoxShadow(color: Colors.green.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2))] 
-                    : [],
-                ),
-                child: Center(
-                  child: Text(
-                    "$day",
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isPointed ? Colors.white : Colors.black87,
-                      fontWeight: isPointed ? FontWeight.bold : FontWeight.normal,
+                  child: Center(
+                    child: Text(
+                      "$day",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isPointed ? Colors.white : Colors.black87,
+                        fontWeight: isPointed ? FontWeight.bold : FontWeight.normal,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            );
-          },
-        ),
-        const SizedBox(height: 15),
-        
-        // Légende rapide
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _buildLegendItem(Colors.green, "Présent"),
-            const SizedBox(width: 20),
-            _buildLegendItem(Colors.white, "Absent"),
-          ],
-        )
-      ],
-    ),
-  );
-}
-
-// Widget d'aide pour la légende
-Widget _buildLegendItem(Color color, String text) {
-  return Row(
-    children: [
-      Container(
-        width: 12,
-        height: 12,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(3),
-          border: Border.all(color: Colors.grey.withOpacity(0.5)),
-        ),
+              );
+            },
+          ),
+          const SizedBox(height: 15),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildLegendItem(Colors.green, "Présent"),
+              const SizedBox(width: 20),
+              _buildLegendItem(Colors.white, "Absent"),
+            ],
+          )
+        ],
       ),
-      const SizedBox(width: 5),
-      Text(text, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-    ],
-  );
-}
+    );
+  }
+
+  Widget _buildLegendItem(Color color, String text) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+            border: Border.all(color: Colors.grey.withOpacity(0.5)),
+          ),
+        ),
+        const SizedBox(width: 5),
+        Text(text, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+      ],
+    );
+  }
 
   Widget _buildActionButtons() {
     return Padding(
@@ -267,7 +341,7 @@ Widget _buildLegendItem(Color color, String text) {
                   icon: const Icon(Icons.edit),
                   label: const Text("Modifier"),
                   onPressed: () {
-                    // Logique de modification à venir
+                    _showEditWorkerSheet();
                   },
                 ),
               ),
