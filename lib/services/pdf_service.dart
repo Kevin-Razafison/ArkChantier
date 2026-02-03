@@ -3,24 +3,89 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../models/ouvrier_model.dart';
+import '../models/materiel_model.dart'; // Importation critique ajoutée
 
 class PdfService {
-  static Future<void> generateOuvrierReport(Ouvrier worker) async {
+  
+  // --- GÉNÉRATION RAPPORT INVENTAIRE ---
+  static Future<void> generateInventoryReport(List<Materiel> inventaire) async {
     final pdf = pw.Document();
     final now = DateTime.now();
 
-    // --- CALCUL DYNAMIQUE ---
-    // On crée le préfixe du mois actuel (ex: "2026-02")
+    double grandTotal = 0;
+    for (var item in inventaire) {
+      grandTotal += (item.quantite * item.prixUnitaire);
+    }
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return [
+            pw.Header(
+              level: 0,
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text("ÉTAT DES STOCKS - CHANTIER", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                  pw.Text("${now.day}/${now.month}/${now.year}"),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 20),
+
+            pw.TableHelper.fromTextArray(
+              border: pw.TableBorder.all(color: PdfColors.grey300),
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+              headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey900),
+              headers: ['Désignation', 'Catégorie', 'Qté', 'P.U (€)', 'Total (€)'],
+              data: inventaire.map((item) {
+                return [
+                  item.nom,
+                  item.categorie.name.toUpperCase(),
+                  item.quantite.toString(),
+                  item.prixUnitaire.toStringAsFixed(2),
+                  (item.quantite * item.prixUnitaire).toStringAsFixed(2),
+                ];
+              }).toList(),
+            ),
+
+            pw.SizedBox(height: 20),
+
+            pw.Align(
+              alignment: pw.Alignment.centerRight,
+              child: pw.Container(
+                padding: const pw.EdgeInsets.all(10),
+                decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.black)),
+                child: pw.Text(
+                  "VALEUR TOTALE DU STOCK : ${grandTotal.toStringAsFixed(2)} €",
+                  style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+                ),
+              ),
+            ),
+          ];
+        },
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdf.save(),
+      name: 'Inventaire_Stock_${now.millisecondsSinceEpoch}.pdf',
+    );
+  }
+
+  // --- GÉNÉRATION FICHE DE PAIE OUVRIER ---
+  static Future<void> generateOuvrierReport(Ouvrier worker) async {
+    final pdf = pw.Document();
+    final now = DateTime.now();
     final String currentMonthPrefix = "${now.year}-${now.month.toString().padLeft(2, '0')}";
     
-    // On compte le nombre de jours pointés qui commencent par ce préfixe
     final int joursTravailles = worker.joursPointes
         .where((date) => date.startsWith(currentMonthPrefix))
         .length;
 
     final double totalDu = joursTravailles * worker.salaireJournalier;
 
-    // Traduction des mois pour l'affichage
     final List<String> moisFr = [
       "", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin", 
       "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
@@ -35,7 +100,6 @@ class PdfService {
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                // En-tête avec Logo fictif ou Nom de l'entreprise
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
@@ -51,106 +115,53 @@ class PdfService {
                   ],
                 ),
                 pw.SizedBox(height: 40),
-
                 pw.Center(
                   child: pw.Text("BULLETIN DE PAIE", 
                       style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline)),
                 ),
                 pw.SizedBox(height: 30),
-
-                // Informations Ouvrier
                 pw.Container(
                   padding: const pw.EdgeInsets.all(10),
-                  decoration: pw.BoxDecoration(
-                    border: pw.Border.all(color: PdfColors.grey300),
-                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
-                  ),
+                  decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5))),
                   child: pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
                       pw.Text("EMPLOYÉ : ${worker.nom.toUpperCase()}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                      pw.SizedBox(height: 5),
                       pw.Text("Poste : ${worker.specialite}"),
-                      pw.Text("ID Employé : ${worker.id.substring(0, 8)}"),
                       pw.Text("Période : ${moisFr[now.month]} ${now.year}"),
                     ],
                   ),
                 ),
-                
                 pw.SizedBox(height: 30),
-
-                // Tableau des prestations
                 pw.TableHelper.fromTextArray(
                   border: pw.TableBorder.all(color: PdfColors.grey400),
                   headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
                   headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey800),
                   headers: ['Désignation', 'Quantité', 'Prix Unitaire', 'Total'],
                   data: [
-                    [
-                      'Prestation de travail (${moisFr[now.month]})', 
-                      '$joursTravailles jours', 
-                      '${worker.salaireJournalier.toStringAsFixed(2)} €', 
-                      '${totalDu.toStringAsFixed(2)} €'
-                    ],
+                    ['Travail (${moisFr[now.month]})', '$joursTravailles jours', '${worker.salaireJournalier.toStringAsFixed(2)} €', '${totalDu.toStringAsFixed(2)} €'],
                   ],
-                  cellAlignment: pw.Alignment.centerLeft,
-                  headerAlignment: pw.Alignment.center,
-                  columnWidths: {
-                    0: const pw.FlexColumnWidth(3),
-                    1: const pw.FlexColumnWidth(1),
-                    2: const pw.FlexColumnWidth(1.5),
-                    3: const pw.FlexColumnWidth(1.5),
-                  },
                 ),
-
-                // Total Net
                 pw.SizedBox(height: 10),
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.end,
                   children: [
                     pw.Container(
-                      padding: const pw.EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                      padding: const pw.EdgeInsets.all(10),
                       color: PdfColors.grey200,
-                      child: pw.Text(
-                        "NET À PAYER : ${totalDu.toStringAsFixed(2)} €",
-                        style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14),
-                      ),
+                      child: pw.Text("NET À PAYER : ${totalDu.toStringAsFixed(2)} €", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                     ),
                   ],
                 ),
-
                 pw.Spacer(),
-
-                // Section Signature
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Column(
-                      children: [
-                        pw.Text("Signature de l'ouvrier", style: pw.TextStyle(fontSize: 10, fontStyle: pw.FontStyle.italic)),
-                        pw.SizedBox(height: 50),
-                        pw.Container(width: 120, decoration: const pw.BoxDecoration(border: pw.Border(top: pw.BorderSide(width: 0.5)))),
-                      ],
-                    ),
-                    pw.Column(
-                      children: [
-                        pw.Text("Cachet de l'entreprise", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                        pw.SizedBox(height: 50),
-                        pw.Container(
-                          width: 150,
-                          decoration: const pw.BoxDecoration(
-                            border: pw.Border(top: pw.BorderSide(width: 1, color: PdfColors.black)),
-                          ),
-                        ),
-                      ],
-                    ),
+                    pw.Text("Signature de l'ouvrier", style: pw.TextStyle(fontSize: 10, fontStyle: pw.FontStyle.italic)),
+                    pw.Text("Cachet Entreprise", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                   ],
                 ),
-                pw.SizedBox(height: 20),
-                pw.Center(
-                  child: pw.Text("Généré par l'application Mon Chantier - Document faisant foi", 
-                      style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey500)),
-                ),
+                pw.SizedBox(height: 50),
               ],
             ),
           );
@@ -158,10 +169,9 @@ class PdfService {
       ),
     );
 
-    // Lancer l'impression ou l'enregistrement
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => pdf.save(),
-      name: 'Fiche_Paie_${worker.nom}_${moisFr[now.month]}.pdf',
+      name: 'Fiche_Paie_${worker.nom}.pdf',
     );
   }
 }

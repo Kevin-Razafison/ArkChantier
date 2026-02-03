@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/chantier_model.dart';
 import '../models/journal_model.dart';
 import '../models/ouvrier_model.dart';
-import '../models/materiel_model.dart'; // N'oublie pas l'import
+import '../models/materiel_model.dart';
 
 class DataStorage {
   static const String _keyChantiers = 'chantiers_list';
@@ -19,12 +19,11 @@ class DataStorage {
     final prefs = await SharedPreferences.getInstance();
     final String? savedData = prefs.getString(_keyChantiers);
     if (savedData == null) return [];
-    
     final List<dynamic> decodedData = jsonDecode(savedData);
     return decodedData.map((item) => Chantier.fromJson(item)).toList();
   }
 
-  // --- GESTION DU JOURNAL (Par Chantier) ---
+  // --- GESTION DU JOURNAL ---
   static Future<void> saveJournal(String chantierId, List<JournalEntry> entries) async {
     final prefs = await SharedPreferences.getInstance();
     final String key = 'journal_$chantierId';
@@ -41,7 +40,7 @@ class DataStorage {
     return decodedData.map((item) => JournalEntry.fromJson(item)).toList();
   }
 
-  // --- GESTION DE L'ÉQUIPE (Par Chantier) ---
+  // --- GESTION DE L'ÉQUIPE ---
   static Future<void> saveTeam(String chantierId, List<Ouvrier> equipe) async {
     final prefs = await SharedPreferences.getInstance();
     final String key = 'team_$chantierId';
@@ -58,7 +57,7 @@ class DataStorage {
     return decodedData.map((item) => Ouvrier.fromJson(item)).toList();
   }
 
-  // --- NOUVEAU : GESTION DES MATÉRIELS (Par Chantier) ---
+  // --- GESTION DES MATÉRIELS ---
   static Future<void> saveMateriels(String chantierId, List<Materiel> materiels) async {
     final prefs = await SharedPreferences.getInstance();
     final String key = 'materiels_$chantierId';
