@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart'; // Importation pour le GPS
 import '../models/chantier_model.dart';
 import 'package:uuid/uuid.dart';
 
@@ -16,8 +17,52 @@ class _AddChantierFormState extends State<AddChantierForm> {
   final _nomController = TextEditingController();
   final _lieuController = TextEditingController();
   final _budgetController = TextEditingController();
-  final _latController = TextEditingController(text: "48.8566");
-  final _lngController = TextEditingController(text: "2.3522");
+  final _latController = TextEditingController();
+  final _lngController = TextEditingController();
+
+  bool _isLocating = false;
+
+  /// Fonction pour récupérer la position actuelle
+  Future<void> _getCurrentLocation() async {
+    setState(() => _isLocating = true);
+
+    try {
+      // 1. Vérifier si les services de localisation sont activés
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) throw 'Services de localisation désactivés.';
+
+      // 2. Vérifier les permissions
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied)
+          throw 'Permission refusée.';
+      }
+
+      // 3. Récupérer la position
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      setState(() {
+        _latController.text = position.latitude.toStringAsFixed(6);
+        _lngController.text = position.longitude.toStringAsFixed(6);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Position récupérée !"),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Erreur : $e"), backgroundColor: Colors.red),
+      );
+    } finally {
+      setState(() => _isLocating = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,6 +90,49 @@ class _AddChantierFormState extends State<AddChantierForm> {
             ),
             const SizedBox(height: 12),
 
+            // Section GPS avec bouton automatique
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _latController,
+                    decoration: const InputDecoration(
+                      labelText: "Lat",
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextFormField(
+                    controller: _lngController,
+                    decoration: const InputDecoration(
+                      labelText: "Long",
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  onPressed: _isLocating ? null : _getCurrentLocation,
+                  icon: _isLocating
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Icon(Icons.my_location),
+                  style: IconButton.styleFrom(backgroundColor: Colors.blue),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
             TextFormField(
               controller: _lieuController,
               decoration: const InputDecoration(
@@ -63,33 +151,6 @@ class _AddChantierFormState extends State<AddChantierForm> {
               ),
               keyboardType: TextInputType.number,
             ),
-            const SizedBox(height: 12),
-
-            Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: _latController,
-                    decoration: const InputDecoration(
-                      labelText: "Latitude",
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextFormField(
-                    controller: _lngController,
-                    decoration: const InputDecoration(
-                      labelText: "Longitude",
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-              ],
-            ),
             const SizedBox(height: 24),
 
             ElevatedButton(
@@ -107,8 +168,8 @@ class _AddChantierFormState extends State<AddChantierForm> {
                     statut: StatutChantier.enCours,
                     budgetInitial:
                         double.tryParse(_budgetController.text) ?? 0.0,
-                    latitude: double.tryParse(_latController.text) ?? 48.8566,
-                    longitude: double.tryParse(_lngController.text) ?? 2.3522,
+                    latitude: double.tryParse(_latController.text) ?? 0.0,
+                    longitude: double.tryParse(_lngController.text) ?? 0.0,
                   );
                   widget.onAdd(nouveau);
                   Navigator.pop(context);
