@@ -7,9 +7,14 @@ import '../models/materiel_model.dart';
 import '../widgets/financial_stats_card.dart';
 import '../widgets/financial_pie_chart.dart';
 import '../widgets/add_depense_modal.dart';
+import '../models/projet_model.dart';
 
 class StatsScreen extends StatefulWidget {
-  const StatsScreen({super.key});
+  final Projet projet; // AJOUT : On reçoit le projet
+  const StatsScreen({
+    super.key,
+    required this.projet,
+  }); // AJOUT : Constructeur mis à jour
 
   @override
   State<StatsScreen> createState() => _StatsScreenState();
@@ -108,7 +113,7 @@ class _StatsScreenState extends State<StatsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Tableau de Bord"),
+        title: Text("Tableau de Bord : ${widget.projet.nom}"),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
         actions: [

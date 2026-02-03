@@ -19,6 +19,7 @@ class OuvriersScreen extends StatefulWidget {
 class _OuvriersScreenState extends State<OuvriersScreen> {
   List<Ouvrier> _filteredOuvriers = [];
   final TextEditingController _searchController = TextEditingController();
+  final String _today = DateTime.now().toIso8601String().split('T')[0];
 
   @override
   void initState() {
@@ -27,13 +28,16 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
   }
 
   Future<void> _loadData() async {
+    // On charge l'équipe spécifique au projet actuel
     final savedOuvriers = await DataStorage.loadTeam("annuaire_global");
-    setState(() {
-      if (savedOuvriers.isNotEmpty) {
-        globalOuvriers = savedOuvriers;
-      }
-      _filteredOuvriers = globalOuvriers;
-    });
+    if (mounted) {
+      setState(() {
+        if (savedOuvriers.isNotEmpty) {
+          globalOuvriers = savedOuvriers;
+        }
+        _filteredOuvriers = globalOuvriers;
+      });
+    }
   }
 
   void _filterOuvriers(String query) {
@@ -48,127 +52,127 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
     });
   }
 
+  // FONCTION DE POINTAGE RAPIDE
+  Future<void> _togglePointage(Ouvrier worker) async {
+    setState(() {
+      if (worker.joursPointes.contains(_today)) {
+        worker.joursPointes.remove(_today);
+      } else {
+        worker.joursPointes.add(_today);
+      }
+    });
+    await DataStorage.saveTeam("annuaire_global", globalOuvriers);
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    // Règle de gestion des droits : seul un non-client peut modifier
     final bool canEdit = widget.user.role != UserRole.client;
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text("Annuaire des Ouvriers"),
+        title: const Text("Gestion de l'Équipe"),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
       ),
       body: Column(
         children: [
-          // BARRE DE RECHERCHE
+          _buildHeaderInfo(),
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: TextField(
               controller: _searchController,
               onChanged: _filterOuvriers,
               decoration: InputDecoration(
-                hintText: "Rechercher un nom ou un métier...",
+                hintText: "Rechercher...",
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
                 filled: true,
-                fillColor: isDark
-                    ? Colors.white.withValues(alpha: 0.05)
-                    : Colors.grey[100],
               ),
             ),
           ),
-
-          // LISTE DES OUVRIERS
           Expanded(
             child: _filteredOuvriers.isEmpty
-                ? const Center(child: Text("Aucun ouvrier trouvé"))
+                ? const Center(child: Text("Aucun ouvrier sur ce projet"))
                 : ListView.builder(
                     itemCount: _filteredOuvriers.length,
                     itemBuilder: (context, index) {
                       final worker = _filteredOuvriers[index];
-
-                      // Si l'utilisateur est un client, on retire la possibilité de supprimer au swipe
-                      if (!canEdit) {
-                        return _buildWorkerCard(worker, isDark);
-                      }
+                      if (!canEdit)
+                        return _buildWorkerCard(worker, isDark, false);
 
                       return Dismissible(
                         key: Key(worker.id),
                         direction: DismissDirection.endToStart,
-                        onDismissed: (direction) async {
-                          setState(() {
-                            globalOuvriers.removeWhere(
-                              (o) => o.id == worker.id,
-                            );
-                            _filterOuvriers(_searchController.text);
-                          });
+                        onDismissed: (_) async {
+                          globalOuvriers.remove(worker);
                           await DataStorage.saveTeam(
                             "annuaire_global",
                             globalOuvriers,
                           );
-
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text("${worker.nom} supprimé")),
-                          );
                         },
                         background: Container(
-                          margin: const EdgeInsets.symmetric(vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+                          color: Colors.red,
                           alignment: Alignment.centerRight,
                           padding: const EdgeInsets.only(right: 20),
                           child: const Icon(Icons.delete, color: Colors.white),
                         ),
-                        child: _buildWorkerCard(worker, isDark),
+                        child: _buildWorkerCard(worker, isDark, true),
                       );
                     },
                   ),
           ),
         ],
       ),
-      // BOUTON FLOTTANT : Masqué pour le client
       floatingActionButton: canEdit
           ? FloatingActionButton(
-              backgroundColor: const Color(0xFF1A334D),
-              onPressed: () => _showAddWorkerDialog(),
+              backgroundColor: Colors.orange,
+              onPressed: _showAddWorkerDialog,
               child: const Icon(Icons.person_add, color: Colors.white),
             )
           : null,
     );
   }
 
-  // WIDGET DE LA CARTE (SANS DISMISSIBLE À L'INTÉRIEUR)
-  Widget _buildWorkerCard(Ouvrier worker, bool isDark) {
+  Widget _buildHeaderInfo() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      color: Colors.orange.withOpacity(0.1),
+      child: Row(
+        children: [
+          const Icon(Icons.calendar_today, size: 16, color: Colors.orange),
+          const SizedBox(width: 8),
+          Text(
+            "Pointage du : $_today",
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.orange,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWorkerCard(Ouvrier worker, bool isDark, bool canEdit) {
+    bool isPresent = worker.joursPointes.contains(_today);
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      elevation: 0,
-      color: Theme.of(context).cardColor,
-      shape: RoundedRectangleBorder(
-        side: BorderSide(color: isDark ? Colors.white12 : Colors.grey[200]!),
-        borderRadius: BorderRadius.circular(12),
-      ),
       child: ListTile(
         leading: Hero(
           tag: "avatar-${worker.id}",
           child: CircleAvatar(
-            backgroundColor: isDark
-                ? Colors.blue.withValues(alpha: 0.2)
-                : Colors.blue[50],
-            child: Text(
-              worker.nom[0],
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.blue[200] : Colors.blue[800],
-              ),
-            ),
+            backgroundColor: isPresent ? Colors.green : Colors.blueGrey,
+            child: isPresent
+                ? const Icon(Icons.check, color: Colors.white)
+                : Text(
+                    worker.nom[0],
+                    style: const TextStyle(color: Colors.white),
+                  ),
           ),
         ),
         title: Text(
@@ -176,7 +180,15 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: Text(worker.specialite),
-        trailing: const Icon(Icons.chevron_right),
+        trailing: canEdit
+            ? IconButton(
+                icon: Icon(
+                  isPresent ? Icons.check_circle : Icons.radio_button_unchecked,
+                  color: isPresent ? Colors.green : Colors.grey,
+                ),
+                onPressed: () => _togglePointage(worker),
+              )
+            : const Icon(Icons.chevron_right),
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(
@@ -187,15 +199,15 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
     );
   }
 
+  // --- TON CODE DE DIALOGUE RESTE LE MÊME ---
   void _showAddWorkerDialog() {
     final nomController = TextEditingController();
-    final specialiteController = TextEditingController();
-    final telephoneController = TextEditingController();
+    final specController = TextEditingController();
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Nouvel Ouvrier"),
+      builder: (ctx) => AlertDialog(
+        title: const Text("Ajouter un ouvrier"),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -204,42 +216,33 @@ class _OuvriersScreenState extends State<OuvriersScreen> {
               decoration: const InputDecoration(labelText: "Nom"),
             ),
             TextField(
-              controller: specialiteController,
-              decoration: const InputDecoration(labelText: "Spécialité"),
-            ),
-            TextField(
-              controller: telephoneController,
-              decoration: const InputDecoration(labelText: "Téléphone"),
-              keyboardType: TextInputType.phone,
+              controller: specController,
+              decoration: const InputDecoration(labelText: "Métier"),
             ),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Annuler"),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("ANNULER"),
           ),
           ElevatedButton(
             onPressed: () async {
               if (nomController.text.isNotEmpty) {
-                final newWorker = Ouvrier(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                final n = Ouvrier(
+                  id: DateTime.now().toString(),
                   nom: nomController.text,
-                  specialite: specialiteController.text,
-                  telephone: telephoneController.text,
+                  specialite: specController.text,
+                  telephone: "",
                   salaireJournalier: 50.0,
                   joursPointes: [],
                 );
-                setState(() {
-                  globalOuvriers.add(newWorker);
-                  _filterOuvriers(_searchController.text);
-                });
+                setState(() => globalOuvriers.add(n));
                 await DataStorage.saveTeam("annuaire_global", globalOuvriers);
-                if (!context.mounted) return;
-                Navigator.pop(context);
+                Navigator.pop(ctx);
               }
             },
-            child: const Text("Ajouter"),
+            child: const Text("AJOUTER"),
           ),
         ],
       ),

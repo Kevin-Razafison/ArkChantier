@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import '../models/materiel_model.dart';
 import '../services/data_storage.dart';
-import '../services/pdf_service.dart'; // Import indispensable pour le PDF
+import '../services/pdf_service.dart';
+import '../models/projet_model.dart';
 
 class MaterielScreen extends StatefulWidget {
-  const MaterielScreen({super.key});
+  final Projet projet; // AJOUT : On reçoit le projet
+  const MaterielScreen({
+    super.key,
+    required this.projet,
+  }); // AJOUT : Constructeur mis à jour
 
   @override
   State<MaterielScreen> createState() => _MaterielScreenState();
@@ -12,11 +17,13 @@ class MaterielScreen extends StatefulWidget {
 
 class _MaterielScreenState extends State<MaterielScreen> {
   List<Materiel> inventaire = [];
-  final String currentChantierId = "annuaire_global";
+  // REMPLACE "annuaire_global" par widget.projet.id
+  late String currentChantierId;
 
   @override
   void initState() {
     super.initState();
+    currentChantierId = widget.projet.id; // Liaison dynamique au projet
     _loadData();
   }
 
@@ -184,35 +191,94 @@ class _MaterielScreenState extends State<MaterielScreen> {
                     child: const Icon(Icons.delete, color: Colors.white),
                   ),
                   child: Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     child: ListTile(
-                      leading: Icon(
-                        item.categorie == CategorieMateriel.outillage
-                            ? Icons.build
-                            : Icons.inventory_2,
+                      leading: CircleAvatar(
+                        backgroundColor: item.quantite == 0
+                            ? Colors.red.withOpacity(0.1)
+                            : const Color(0xFF1A334D).withOpacity(0.1),
+                        child: Icon(
+                          item.categorie == CategorieMateriel.outillage
+                              ? Icons.handyman
+                              : Icons.layers,
+                          color: item.quantite == 0
+                              ? Colors.red
+                              : const Color(0xFF1A334D),
+                        ),
                       ),
                       title: Text(
                         item.nom,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: item.quantite == 0
+                              ? Colors.red
+                              : Colors.black87,
+                        ),
                       ),
-                      subtitle: Text(
-                        "${item.prixUnitaire.toStringAsFixed(2)} € / ${item.unite}",
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          IconButton(
-                            icon: const Icon(Icons.remove_circle_outline),
-                            onPressed: () => _updateQuantity(index, -1),
-                          ),
                           Text(
-                            "${item.quantite}",
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                            "${item.prixUnitaire.toStringAsFixed(2)} € / ${item.unite}",
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.add_circle_outline),
-                            onPressed: () => _updateQuantity(index, 1),
+                          // Petit badge de catégorie
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[200],
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              item.categorie.name.toUpperCase(),
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
                         ],
+                      ),
+                      trailing: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              icon: const Icon(Icons.remove, size: 20),
+                              onPressed: () => _updateQuantity(index, -1),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
+                              child: Text(
+                                "${item.quantite}",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: item.quantite == 0
+                                      ? Colors.red
+                                      : Colors.black,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              icon: const Icon(Icons.add, size: 20),
+                              onPressed: () => _updateQuantity(index, 1),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),

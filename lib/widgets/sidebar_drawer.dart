@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
 import '../models/user_model.dart';
+import '../models/projet_model.dart';
+import '../screens/project_team_screen.dart';
 
 class SidebarDrawer extends StatelessWidget {
   final UserRole role;
   final int currentIndex;
   final Function(int) onDestinationSelected;
+  final Projet currentProject;
 
   const SidebarDrawer({
     super.key,
     required this.role,
     required this.currentIndex,
     required this.onDestinationSelected,
+    required this.currentProject,
   });
 
-  // Méthode de déconnexion centralisée
   void _handleLogout(BuildContext context) {
     showDialog(
       context: context,
@@ -26,14 +29,11 @@ class SidebarDrawer extends StatelessWidget {
             child: const Text("ANNULER"),
           ),
           ElevatedButton(
-            onPressed: () {
-              // On vide la pile et on retourne au login
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/login',
-                (route) => false,
-              );
-            },
+            onPressed: () => Navigator.pushNamedAndRemoveUntil(
+              context,
+              '/login',
+              (route) => false,
+            ),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text(
               "DÉCONNEXION",
@@ -47,21 +47,21 @@ class SidebarDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<_MenuItemData> menuItems = [];
-
-    menuItems.add(_MenuItemData(Icons.dashboard, "Dashboard"));
-    menuItems.add(_MenuItemData(Icons.business, "Chantiers"));
+    // LA CORRECTION EST ICI : On sépare les onglets de l'IndexedStack
+    final List<_MenuItemData> tabs = [];
+    tabs.add(_MenuItemData(Icons.dashboard, "Dashboard"));
+    tabs.add(_MenuItemData(Icons.business, "Chantiers"));
 
     if (role != UserRole.client) {
-      menuItems.add(_MenuItemData(Icons.people, "Ouvriers"));
-      menuItems.add(_MenuItemData(Icons.inventory_2, "Matériel"));
+      tabs.add(_MenuItemData(Icons.people, "Ouvriers"));
+      tabs.add(_MenuItemData(Icons.inventory_2, "Matériel"));
     }
 
     if (role == UserRole.chefProjet) {
-      menuItems.add(_MenuItemData(Icons.bar_chart, "Statistiques"));
+      tabs.add(_MenuItemData(Icons.bar_chart, "Statistiques"));
     }
 
-    menuItems.add(_MenuItemData(Icons.settings, "Paramètres"));
+    tabs.add(_MenuItemData(Icons.settings, "Paramètres"));
 
     return SizedBox(
       width: 260,
@@ -92,22 +92,41 @@ class SidebarDrawer extends StatelessWidget {
               ),
               const Divider(color: Colors.white24, indent: 20, endIndent: 20),
 
-              // Menu Principal
               Expanded(
-                child: ListView.builder(
+                child: ListView(
                   padding: EdgeInsets.zero,
-                  itemCount: menuItems.length,
-                  itemBuilder: (context, index) {
-                    final item = menuItems[index];
-                    return _buildItem(item.icon, item.label, index);
-                  },
+                  children: [
+                    // 1. Les onglets normaux (Sync avec IndexedStack)
+                    ...tabs.asMap().entries.map((entry) {
+                      return _buildItem(
+                        context,
+                        entry.value.icon,
+                        entry.value.label,
+                        entry.key,
+                        false,
+                      );
+                    }),
+
+                    // 2. L'item spécial qui fait un Navigator.push
+                    if (role == UserRole.chefProjet) ...[
+                      const Divider(
+                        color: Colors.white10,
+                        indent: 20,
+                        endIndent: 20,
+                      ),
+                      _buildItem(
+                        context,
+                        Icons.group_work,
+                        "Équipe Projet",
+                        -1,
+                        true,
+                      ),
+                    ],
+                  ],
                 ),
               ),
 
-              // SECTION BASSE (Déconnexion + Badge)
               const Divider(color: Colors.white10),
-
-              // Bouton Déconnexion
               ListTile(
                 leading: const Icon(Icons.logout, color: Colors.redAccent),
                 title: const Text(
@@ -120,7 +139,6 @@ class SidebarDrawer extends StatelessWidget {
                 ),
                 onTap: () => _handleLogout(context),
               ),
-
               const SizedBox(height: 10),
               _buildRoleBadge(),
               const SizedBox(height: 30),
@@ -131,8 +149,14 @@ class SidebarDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildItem(IconData icon, String label, int index) {
-    bool isSelected = currentIndex == index;
+  Widget _buildItem(
+    BuildContext context,
+    IconData icon,
+    String label,
+    int index,
+    bool isSpecial,
+  ) {
+    bool isSelected = !isSpecial && currentIndex == index;
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 12),
@@ -153,26 +177,42 @@ class SidebarDrawer extends StatelessWidget {
             fontSize: 14,
           ),
         ),
-        onTap: () => onDestinationSelected(index),
+        onTap: () {
+          if (isSpecial) {
+            if (Scaffold.of(context).isDrawerOpen) Navigator.pop(context);
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ProjectTeamScreen(projet: currentProject),
+              ),
+            );
+          } else {
+            onDestinationSelected(index);
+          }
+        },
       ),
     );
   }
 
   Widget _buildRoleBadge() {
-    String roleLabel = "Utilisateur";
+    String roleLabel = "UTILISATEUR";
     Color roleColor = Colors.grey;
-
-    if (role == UserRole.chefProjet) {
-      roleLabel = "ADMIN / CP";
-      roleColor = Colors.greenAccent;
-    } else if (role == UserRole.client) {
-      roleLabel = "ESPACE CLIENT";
-      roleColor = Colors.blueAccent;
-    } else if (role == UserRole.ouvrier) {
-      roleLabel = "OPÉRATEUR";
-      roleColor = Colors.orangeAccent;
+    switch (role) {
+      case UserRole.chefProjet:
+        roleLabel = "ADMIN / CP";
+        roleColor = Colors.greenAccent;
+        break;
+      case UserRole.client:
+        roleLabel = "ESPACE CLIENT";
+        roleColor = Colors.blueAccent;
+        break;
+      case UserRole.ouvrier:
+        roleLabel = "OPÉRATEUR";
+        roleColor = Colors.orangeAccent;
+        break;
+      default:
+        break;
     }
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
@@ -196,5 +236,6 @@ class SidebarDrawer extends StatelessWidget {
 class _MenuItemData {
   final IconData icon;
   final String label;
-  _MenuItemData(this.icon, this.label);
+  final bool isSpecial;
+  _MenuItemData(this.icon, this.label, {this.isSpecial = false});
 }

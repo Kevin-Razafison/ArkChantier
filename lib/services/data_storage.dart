@@ -6,6 +6,7 @@ import '../models/journal_model.dart';
 import '../models/ouvrier_model.dart';
 import '../models/materiel_model.dart';
 import '../models/report_model.dart';
+import '../models/user_model.dart';
 
 class DataStorage {
   static const String _keyProjects = 'projects_list';
@@ -204,5 +205,35 @@ class DataStorage {
       }
     }
     await saveAllProjects(projets);
+  }
+
+  // --- GESTION DES UTILISATEURS (CORRIGÉ) ---
+
+  static const String _keyUsers = 'users_list';
+
+  static Future<void> saveAllUsers(List<UserModel> users) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String encodedData = jsonEncode(
+      users.map((u) => u.toJson()).toList(),
+    );
+    await prefs.setString(_keyUsers, encodedData);
+  }
+
+  static Future<List<UserModel>> loadAllUsers() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? savedData = prefs.getString(_keyUsers);
+
+    if (savedData == null || savedData.isEmpty) {
+      // Si vide, on retourne l'admin par défaut
+      return [UserModel.mockAdmin()];
+    }
+
+    try {
+      final List<dynamic> decodedData = jsonDecode(savedData);
+      return decodedData.map((item) => UserModel.fromJson(item)).toList();
+    } catch (e) {
+      print("Erreur chargement utilisateurs: $e");
+      return [UserModel.mockAdmin()];
+    }
   }
 }

@@ -13,7 +13,6 @@ import 'screens/project_launcher_screen.dart';
 import 'screens/login_screen.dart';
 
 void main() async {
-  // Indispensable pour initialiser les SharedPreferences avant le runApp
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const ChantierApp());
 }
@@ -40,19 +39,15 @@ class ChantierAppState extends State<ChantierApp> {
   @override
   void initState() {
     super.initState();
-    _loadSettings(); // Charge les données dès l'ouverture de l'app
+    _loadSettings();
   }
-
-  // --- PERSISTANCE DES DONNÉES ---
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      // 1. Charger le Thème
       final isDark = prefs.getBool('isDarkMode') ?? false;
       _themeMode = isDark ? ThemeMode.dark : ThemeMode.light;
 
-      // 2. Charger le Nom
       final savedName = prefs.getString('userName');
       if (savedName != null) {
         currentUser = UserModel(
@@ -113,8 +108,6 @@ class ChantierAppState extends State<ChantierApp> {
   }
 }
 
-// --- STRUCTURE PRINCIPALE (NAVIGATION) ---
-
 class MainShell extends StatefulWidget {
   final UserModel user;
   final Projet currentProject;
@@ -136,22 +129,25 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     bool isMobile = MediaQuery.of(context).size.width < 800;
 
+    // LA CORRECTION EST ICI : On définit les pages dans un ordre fixe
     final List<Widget> pages = [];
-    pages.add(DashboardView(user: widget.user, projet: widget.currentProject));
-    pages.add(ChantiersScreen(projet: widget.currentProject));
+    pages.add(
+      DashboardView(user: widget.user, projet: widget.currentProject),
+    ); // 0
+    pages.add(ChantiersScreen(projet: widget.currentProject)); // 1
 
     if (widget.user.role != UserRole.client) {
       pages.add(
         OuvriersScreen(projet: widget.currentProject, user: widget.user),
-      );
-      pages.add(const MaterielScreen());
+      ); // 2
+      pages.add(MaterielScreen(projet: widget.currentProject)); // 3
     }
 
     if (widget.user.role == UserRole.chefProjet) {
-      pages.add(const StatsScreen());
+      pages.add(StatsScreen(projet: widget.currentProject)); // 4
     }
 
-    pages.add(const SettingsScreen());
+    pages.add(const SettingsScreen()); // Dernier Index
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -165,6 +161,7 @@ class _MainShellState extends State<MainShell> {
             ? null
             : IconButton(
                 icon: const Icon(Icons.apps_rounded),
+                tooltip: "Changer de projet",
                 onPressed: () => Navigator.pushReplacementNamed(
                   context,
                   '/project_launcher',
@@ -175,6 +172,7 @@ class _MainShellState extends State<MainShell> {
           ? SidebarDrawer(
               role: widget.user.role,
               currentIndex: _selectedIndex,
+              currentProject: widget.currentProject,
               onDestinationSelected: (i) {
                 setState(() => _selectedIndex = i);
                 Navigator.pop(context);
@@ -187,10 +185,14 @@ class _MainShellState extends State<MainShell> {
             SidebarDrawer(
               role: widget.user.role,
               currentIndex: _selectedIndex,
+              currentProject: widget.currentProject,
               onDestinationSelected: (i) => setState(() => _selectedIndex = i),
             ),
           Expanded(
-            child: IndexedStack(index: _selectedIndex, children: pages),
+            child: IndexedStack(
+              index: _selectedIndex >= pages.length ? 0 : _selectedIndex,
+              children: pages,
+            ),
           ),
         ],
       ),
