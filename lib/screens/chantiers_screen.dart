@@ -1,111 +1,160 @@
 import 'package:flutter/material.dart';
 import '../models/chantier_model.dart';
+import '../models/projet_model.dart';
 import '../widgets/add_chantier_form.dart';
 import '../services/data_storage.dart';
 import 'chantier_detail_screen.dart';
 
 class ChantiersScreen extends StatefulWidget {
-  const ChantiersScreen({super.key});
+  final Projet projet;
+
+  const ChantiersScreen({super.key, required this.projet});
 
   @override
   State<ChantiersScreen> createState() => _ChantiersScreenState();
 }
 
 class _ChantiersScreenState extends State<ChantiersScreen> {
-  List<Chantier> _listChantiers = [];
   StatutChantier? _filterStatut;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadInitialData();
-  }
-
-  Future<void> _loadInitialData() async {
-    final savedChantiers = await DataStorage.loadChantiers();
-    setState(() {
-      if (savedChantiers.isNotEmpty) {
-        _listChantiers = savedChantiers;
-      } else {
-        _listChantiers = [
-          Chantier(
-            id: '1',
-            nom: "Résidence Horizon",
-            lieu: "Paris",
-            progression: 0.65,
-            statut: StatutChantier.enCours,
-            latitude: 48.8566,
-            longitude: 2.3522,
-            budgetInitial: 500000,
-          ),
-          Chantier(
-            id: '2',
-            nom: "Extension École B",
-            lieu: "Lyon",
-            progression: 0.15,
-            statut: StatutChantier.enRetard,
-            latitude: 45.7640,
-            longitude: 4.8357,
-            budgetInitial: 250000,
-          ),
-        ];
-      }
-      _isLoading = false;
-    });
-  }
+  String _searchQuery = "";
+  bool _isLoading = false;
 
   Future<void> _saveAndRefresh() async {
-    await DataStorage.saveChantiers(_listChantiers);
-    setState(() {});
+    await DataStorage.saveSingleProject(widget.projet);
+    if (mounted) setState(() {});
   }
 
   void _addNewChantier(Chantier nouveauChantier) {
-    setState(() {
-      _listChantiers.add(nouveauChantier);
-    });
+    setState(() => widget.projet.chantiers.add(nouveauChantier));
     _saveAndRefresh();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading)
+    if (_isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final filteredChantiers = _filterStatut == null
-        ? _listChantiers
-        : _listChantiers.where((c) => c.statut == _filterStatut).toList();
+
+    // LOGIQUE DE FILTRAGE
+    final filteredList = widget.projet.chantiers.where((c) {
+      final matchesSearch =
+          c.nom.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          c.lieu.toLowerCase().contains(_searchQuery.toLowerCase());
+      return matchesSearch;
+    }).toList();
+
+    final actives = filteredList
+        .where((c) => c.statut != StatutChantier.termine)
+        .toList();
+    final termines = filteredList
+        .where((c) => c.statut == StatutChantier.termine)
+        .toList();
+
+    List<Chantier> displayedActive = _filterStatut == null
+        ? actives
+        : actives.where((c) => c.statut == _filterStatut).toList();
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text(
-          "Mes Chantiers",
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        title: Text(
+          "Chantiers : ${widget.projet.nom}",
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
       ),
-      body: Column(
-        children: [
-          _buildFilterBar(),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: filteredChantiers.length,
-              itemBuilder: (context, index) {
-                final c = filteredChantiers[index];
-                return _buildChantierCard(c, isDark);
-              },
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: TextField(
+                onChanged: (value) => setState(() => _searchQuery = value),
+                decoration: InputDecoration(
+                  hintText: "Rechercher un chantier...",
+                  prefixIcon: const Icon(Icons.search),
+                  filled: true,
+                  fillColor: isDark ? Colors.white10 : Colors.grey[200],
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
             ),
           ),
+
+          SliverToBoxAdapter(child: _buildFilterBar()),
+
+          SliverToBoxAdapter(
+            child: _buildSectionHeader(
+              "EN COURS DANS CE PROJET",
+              Icons.engineering,
+              Colors.orange,
+            ),
+          ),
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _buildChantierCard(displayedActive[index], isDark),
+              ),
+              childCount: displayedActive.length,
+            ),
+          ),
+
+          if (_filterStatut == null && termines.isNotEmpty) ...[
+            SliverToBoxAdapter(
+              child: _buildSectionHeader(
+                "ARCHIVES DU PROJET",
+                Icons.history,
+                Colors.grey,
+              ),
+            ),
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Opacity(
+                    opacity: 0.7,
+                    child: _buildChantierCard(termines[index], isDark),
+                  ),
+                ),
+                childCount: termines.length,
+              ),
+            ),
+          ],
+
+          const SliverPadding(padding: EdgeInsets.only(bottom: 80)),
         ],
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.orange,
         onPressed: () => _showAddForm(context),
         child: const Icon(Icons.add, color: Colors.white),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon, Color color) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: color,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -121,17 +170,20 @@ class _ChantiersScreenState extends State<ChantiersScreen> {
             selected: _filterStatut == null,
             onSelected: (_) => setState(() => _filterStatut = null),
           ),
-          ...StatutChantier.values.map(
-            (statut) => Padding(
-              padding: const EdgeInsets.only(left: 8.0),
-              child: FilterChip(
-                label: Text(statut.name),
-                selected: _filterStatut == statut,
-                onSelected: (selected) =>
-                    setState(() => _filterStatut = selected ? statut : null),
+          ...StatutChantier.values
+              .where((s) => s != StatutChantier.termine)
+              .map(
+                (statut) => Padding(
+                  padding: const EdgeInsets.only(left: 8.0),
+                  child: FilterChip(
+                    label: Text(statut.name),
+                    selected: _filterStatut == statut,
+                    onSelected: (selected) => setState(
+                      () => _filterStatut = selected ? statut : null,
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ),
         ],
       ),
     );
@@ -144,37 +196,32 @@ class _ChantiersScreenState extends State<ChantiersScreen> {
       background: _buildDeleteBackground(),
       confirmDismiss: (_) => _confirmDeletion(context, c.nom),
       onDismissed: (_) {
-        setState(() => _listChantiers.removeWhere((item) => item.id == c.id));
+        setState(
+          () => widget.projet.chantiers.removeWhere((item) => item.id == c.id),
+        );
         _saveAndRefresh();
       },
       child: Card(
-        elevation: 2,
-        margin: const EdgeInsets.only(bottom: 20),
+        elevation: 1,
+        margin: const EdgeInsets.only(bottom: 16),
         clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: InkWell(
           onTap: () async {
+            // CORRECTION ICI : Ajout du paramètre 'projet' requis par ChantierDetailScreen
             await Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => ChantierDetailScreen(chantier: c),
+                builder: (context) =>
+                    ChantierDetailScreen(chantier: c, projet: widget.projet),
               ),
             );
             _saveAndRefresh();
           },
           child: Column(
             children: [
-              Container(
-                height: 100,
-                width: double.infinity,
-                color: isDark ? Colors.white10 : Colors.grey[200],
-                child: Icon(
-                  Icons.map_outlined,
-                  color: Colors.orange.withOpacity(0.5),
-                  size: 40,
-                ),
-              ),
               ListTile(
+                contentPadding: const EdgeInsets.all(16),
                 title: Text(
                   c.nom,
                   style: const TextStyle(fontWeight: FontWeight.bold),
@@ -182,14 +229,17 @@ class _ChantiersScreenState extends State<ChantiersScreen> {
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("${c.lieu} (Lat: ${c.latitude.toStringAsFixed(2)})"),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
+                    Text(c.lieu, style: const TextStyle(fontSize: 12)),
+                    const SizedBox(height: 12),
                     LinearProgressIndicator(
                       value: c.progression,
                       color: _getStatusColor(c.statut),
                       backgroundColor: isDark
                           ? Colors.white10
-                          : Colors.grey[200],
+                          : Colors.grey[100],
+                      minHeight: 6,
+                      borderRadius: BorderRadius.circular(3),
                     ),
                   ],
                 ),
@@ -202,16 +252,47 @@ class _ChantiersScreenState extends State<ChantiersScreen> {
     );
   }
 
+  Widget _buildStatusBadge(StatutChantier statut) {
+    Color color = _getStatusColor(statut);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.5)),
+      ),
+      child: Text(
+        statut.name.toUpperCase(),
+        style: TextStyle(
+          color: color,
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  Color _getStatusColor(StatutChantier statut) {
+    switch (statut) {
+      case StatutChantier.enRetard:
+        return Colors.red;
+      case StatutChantier.termine:
+        return Colors.green;
+      default:
+        return Colors.blue;
+    }
+  }
+
   Widget _buildDeleteBackground() {
     return Container(
       alignment: Alignment.centerRight,
       padding: const EdgeInsets.only(right: 20),
-      margin: const EdgeInsets.only(bottom: 20),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: Colors.red,
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: const Icon(Icons.delete, color: Colors.white, size: 30),
+      child: const Icon(Icons.delete_sweep, color: Colors.white, size: 28),
     );
   }
 
@@ -235,43 +316,12 @@ class _ChantiersScreenState extends State<ChantiersScreen> {
     );
   }
 
-  Color _getStatusColor(StatutChantier statut) {
-    switch (statut) {
-      case StatutChantier.enRetard:
-        return Colors.red;
-      case StatutChantier.termine:
-        return Colors.green;
-      default:
-        return Colors.blue;
-    }
-  }
-
-  Widget _buildStatusBadge(StatutChantier statut) {
-    Color color = _getStatusColor(statut);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color),
-      ),
-      child: Text(
-        statut.name.toUpperCase(),
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-
   Future<bool?> _confirmDeletion(BuildContext context, String nom) {
     return showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Confirmation"),
-        content: Text("Voulez-vous vraiment supprimer le chantier $nom ?"),
+        title: const Text("Supprimer le chantier ?"),
+        content: Text("Supprimer $nom de ce projet ?"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),

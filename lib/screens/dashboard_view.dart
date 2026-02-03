@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../models/user_model.dart';
 import '../models/chantier_model.dart';
+import '../models/projet_model.dart'; // Import ajouté
 import '../services/data_storage.dart';
 import '../widgets/info_card.dart';
 import '../widgets/chantier_map_preview.dart';
@@ -18,7 +19,9 @@ class ChecklistTask {
 
 class DashboardView extends StatefulWidget {
   final UserModel user;
-  const DashboardView({super.key, required this.user});
+  final Projet projet; // Ajouté pour l'isolation par projet
+
+  const DashboardView({super.key, required this.user, required this.projet});
 
   @override
   State<DashboardView> createState() => _DashboardViewState();
@@ -42,31 +45,31 @@ class _DashboardViewState extends State<DashboardView> {
     _loadDashboardData();
   }
 
-  // --- LOGIQUE DE CHARGEMENT ET CALCUL HYBRIDE ---
+  // --- LOGIQUE DE CHARGEMENT FILTRÉE PAR PROJET ---
   Future<void> _loadDashboardData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
 
-    // 1. Charger la liste persistée
-    final data = await DataStorage.loadChantiers();
+    // Au lieu de charger tous les chantiers globaux, on utilise ceux du projet actuel
+    final data = widget.projet.chantiers;
 
     double tempMO = 0;
     double tempMat = 0;
 
     for (var c in data) {
-      // 2. Calcul Auto : Équipe (Main d'œuvre)
+      // Calcul Auto : Équipe (Main d'œuvre)
       final equipe = await DataStorage.loadTeam(c.id);
       for (var o in equipe) {
         tempMO += (o.joursPointes.length * o.salaireJournalier);
       }
 
-      // 3. Calcul Auto : Inventaire (Matériel)
+      // Calcul Auto : Inventaire (Matériel)
       final inventaire = await DataStorage.loadMateriels(c.id);
       for (var m in inventaire) {
         tempMat += (m.quantite * m.prixUnitaire);
       }
 
-      // 4. Calcul Manuel : Dépenses ajoutées via StatsScreen
+      // Calcul Manuel : Dépenses ajoutées
       for (var d in c.depenses) {
         if (d.type == TypeDepense.mainOeuvre) tempMO += d.montant;
         if (d.type == TypeDepense.materiel) tempMat += d.montant;
@@ -114,8 +117,8 @@ class _DashboardViewState extends State<DashboardView> {
         chantier.statut = StatutChantier.termine;
         chantier.progression = 1.0;
       });
-      // Sauvegarde immédiate
-      await DataStorage.saveChantiers(_chantiers);
+      // Sauvegarde du projet entier qui contient ce chantier
+      await DataStorage.saveSingleProject(widget.projet);
       await _loadDashboardData();
 
       if (mounted) {
@@ -158,8 +161,16 @@ class _DashboardViewState extends State<DashboardView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
+                "PROJET : ${widget.projet.nom.toUpperCase()}",
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
                 "BIENVENUE, ${widget.user.nom.toUpperCase()}",
-                style: const TextStyle(fontSize: 14, color: Colors.grey),
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
               ),
               Text(
                 "ESPACE ${widget.user.role.name.toUpperCase()}",
@@ -227,10 +238,7 @@ class _DashboardViewState extends State<DashboardView> {
     );
   }
 
-  // --- Widgets de listes ---
-
   Widget _listAlertes() {
-    // Calcul dynamique des alertes budget (> 80%)
     final alertesBudget = _chantiers.where((c) {
       if (c.budgetInitial <= 0) return false;
       return (c.depensesActuelles / c.budgetInitial) >= 0.8;

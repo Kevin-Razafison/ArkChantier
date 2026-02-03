@@ -24,18 +24,15 @@ class _StatsScreenState extends State<StatsScreen> {
     _loadInitialData();
   }
 
-  // --- CHARGEMENT DES DONNÉES SAUVEGARDÉES ---
   Future<void> _loadInitialData() async {
     final savedChantiers = await DataStorage.loadChantiers();
     if (savedChantiers.isNotEmpty) {
       setState(() {
-        // On remplace les données en mémoire par celles du disque
         globalChantiers = savedChantiers;
       });
     }
   }
 
-  // --- CALCUL HYBRIDE (Auto via Materiel + Manuel via Depenses) ---
   Future<Map<String, double>> _calculerTotauxFinanciers() async {
     final List<Materiel> tousLesMateriels =
         await DataStorage.loadAllMateriels();
@@ -57,7 +54,6 @@ class _StatsScreenState extends State<StatsScreen> {
     return {'materiel': totalMat, 'mo': totalMO, 'global': totalGlobalEngage};
   }
 
-  // --- AJOUT ET SAUVEGARDE PHYSIQUE ---
   void _openAddDepenseOverlay() {
     showModalBottomSheet(
       context: context,
@@ -69,17 +65,17 @@ class _StatsScreenState extends State<StatsScreen> {
         onAdd: (nouvelleDepense) async {
           setState(() {
             if (globalChantiers.isNotEmpty) {
-              // 1. Mise à jour de l'état en mémoire (UI)
               globalChantiers[0].depenses.add(nouvelleDepense);
               globalChantiers[0].depensesActuelles += nouvelleDepense.montant;
               _isSyncing = true;
             }
           });
 
-          // 2. Sauvegarde persistante sur le disque
           await DataStorage.saveChantiers(globalChantiers);
 
-          if (!mounted) return;
+          if (!mounted) {
+            return;
+          }
           setState(() => _isSyncing = false);
 
           ScaffoldMessenger.of(context).showSnackBar(
@@ -103,6 +99,8 @@ class _StatsScreenState extends State<StatsScreen> {
     final retards = globalChantiers
         .where((c) => c.statut == StatutChantier.enRetard)
         .length;
+
+    // Protection contre la division par zéro
     final moyenne = globalChantiers.isEmpty
         ? 0.0
         : globalChantiers.map((c) => c.progression).reduce((a, b) => a + b) /
@@ -174,7 +172,9 @@ class _StatsScreenState extends State<StatsScreen> {
                 bgColor: const Color(0xFFFFEBEE),
                 onTap: () async {
                   final brute = await DataStorage.loadAllMateriels();
-                  if (brute.isEmpty) return;
+                  if (brute.isEmpty) {
+                    return;
+                  }
                   await PdfService.generateInventoryReport(
                     aggregateMateriels(brute),
                   );
@@ -192,18 +192,19 @@ class _StatsScreenState extends State<StatsScreen> {
                   final retardsList = globalChantiers
                       .where((c) => c.statut == StatutChantier.enRetard)
                       .toList();
-                  if (retardsList.isEmpty) return;
+                  if (retardsList.isEmpty) {
+                    return;
+                  }
                   await PdfService.generateDelayReport(retardsList);
                 },
               ),
               const SizedBox(height: 30),
               const Text(
-                "Dernières Dépenses (Manuel)",
+                "Dernières Dépenses",
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 10),
               _buildRecentExpensesList(isDark),
-
               if (retards > 0) ...[
                 const SizedBox(height: 30),
                 const Text(
@@ -227,14 +228,15 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  // --- WIDGETS INTERNES ---
+  // --- WIDGETS DE CONSTRUCTION ---
 
   Widget _buildFinancialSection(double moyenne) {
     return FutureBuilder<Map<String, double>>(
       future: _calculerTotauxFinanciers(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting)
+        if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
+        }
         final data =
             snapshot.data ?? {'materiel': 0.0, 'mo': 0.0, 'global': 0.0};
 

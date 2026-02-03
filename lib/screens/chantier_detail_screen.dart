@@ -5,11 +5,12 @@ import '../models/chantier_model.dart';
 import '../models/ouvrier_model.dart';
 import '../models/journal_model.dart';
 import '../models/materiel_model.dart';
+import '../models/projet_model.dart';
 import '../data/mock_data.dart';
 import '../services/data_storage.dart';
+import '../services/pdf_service.dart';
 import '../models/report_model.dart';
 
-// Modèle pour les tâches de construction dynamiques
 class ConstructionTask {
   String id;
   String label;
@@ -23,7 +24,13 @@ class ConstructionTask {
 
 class ChantierDetailScreen extends StatefulWidget {
   final Chantier chantier;
-  const ChantierDetailScreen({super.key, required this.chantier});
+  final Projet projet;
+
+  const ChantierDetailScreen({
+    super.key,
+    required this.chantier,
+    required this.projet,
+  });
 
   @override
   State<ChantierDetailScreen> createState() => _ChantierDetailScreenState();
@@ -34,8 +41,8 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
   List<JournalEntry> _journalEntries = [];
   List<Ouvrier> _equipe = [];
   List<Materiel> _materiels = [];
+  bool _isLoading = true;
 
-  // Liste des tâches modifiée pour être dynamique
   final List<ConstructionTask> _tasks = [
     ConstructionTask(id: "1", label: "Terrassement"),
     ConstructionTask(id: "2", label: "Fondations"),
@@ -43,8 +50,6 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
     ConstructionTask(id: "4", label: "Murs"),
     ConstructionTask(id: "5", label: "Toiture"),
   ];
-
-  bool _isLoading = true;
 
   @override
   void initState() {
@@ -64,13 +69,12 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
       _journalEntries = savedJournal;
       _equipe = savedTeam;
       _materiels = savedMat;
-      _quickReports = savedReports; // Stockage
+      _quickReports = savedReports;
       _isLoading = false;
       _updateProgression();
     });
   }
 
-  // Calcul automatique du pourcentage basé sur les tâches
   void _updateProgression() {
     if (_tasks.isEmpty) {
       widget.chantier.progression = 0.0;
@@ -86,13 +90,8 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
     await DataStorage.saveJournal(widget.chantier.id, _journalEntries);
     await DataStorage.saveTeam(widget.chantier.id, _equipe);
     await DataStorage.saveMateriels(widget.chantier.id, _materiels);
-
-    final list = await DataStorage.loadChantiers();
-    final index = list.indexWhere((c) => c.id == widget.chantier.id);
-    if (index != -1) {
-      list[index] = widget.chantier;
-      await DataStorage.saveChantiers(list);
-    }
+    await DataStorage.saveReports(widget.chantier.id, _quickReports);
+    await DataStorage.saveSingleProject(widget.projet);
   }
 
   void _onNewJournalEntry(JournalEntry entry) {
@@ -102,17 +101,36 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading)
+    if (_isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
     return DefaultTabController(
       length: 6,
       child: Scaffold(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
           title: Text(widget.chantier.nom),
           backgroundColor: const Color(0xFF1A334D),
           foregroundColor: Colors.white,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.picture_as_pdf),
+              tooltip: "Exporter le rapport PDF",
+              onPressed: () async {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Génération du PDF en cours..."),
+                  ),
+                );
+                // CORRECTION : Utilisation de la méthode définie dans ton PdfService
+                await PdfService.generateChantierFullReport(
+                  chantier: widget.chantier,
+                  journal: _journalEntries,
+                  reports: _quickReports,
+                );
+              },
+            ),
+          ],
           bottom: const TabBar(
             isScrollable: true,
             tabAlignment: TabAlignment.start,
@@ -130,7 +148,6 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
           ),
         ),
         body: TabBarView(
-          physics: const BouncingScrollPhysics(),
           children: [
             _buildOverviewTab(context),
             _buildTasksTab(),
@@ -143,100 +160,6 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
             GalleryTab(entries: _journalEntries, quickReports: _quickReports),
           ],
         ),
-      ),
-    );
-  }
-
-  // --- ONGLET TÂCHES DYNAMIQUE ---
-  Widget _buildTasksTab() {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton(
-        mini: true,
-        backgroundColor: Colors.green,
-        onPressed: _showAddTaskDialog,
-        child: const Icon(Icons.add_task, color: Colors.white),
-      ),
-      body: _tasks.isEmpty
-          ? const Center(child: Text("Aucune tâche définie"))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _tasks.length,
-              itemBuilder: (context, index) {
-                final task = _tasks[index];
-                return Card(
-                  child: CheckboxListTile(
-                    title: Text(
-                      task.label,
-                      style: TextStyle(
-                        decoration: task.isDone
-                            ? TextDecoration.lineThrough
-                            : null,
-                        color: task.isDone ? Colors.grey : null,
-                      ),
-                    ),
-                    value: task.isDone,
-                    activeColor: Colors.green,
-                    onChanged: (val) {
-                      setState(() => task.isDone = val!);
-                      _updateProgression();
-                      _persistAll();
-                    },
-                    secondary: IconButton(
-                      icon: const Icon(
-                        Icons.delete_outline,
-                        color: Colors.redAccent,
-                      ),
-                      onPressed: () {
-                        setState(() => _tasks.removeAt(index));
-                        _updateProgression();
-                        _persistAll();
-                      },
-                    ),
-                  ),
-                );
-              },
-            ),
-    );
-  }
-
-  void _showAddTaskDialog() {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Nouvelle tâche"),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            hintText: "Nom de la tâche (ex: Carrelage)",
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Annuler"),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (controller.text.isNotEmpty) {
-                setState(() {
-                  _tasks.add(
-                    ConstructionTask(
-                      id: DateTime.now().toString(),
-                      label: controller.text,
-                    ),
-                  );
-                  _updateProgression();
-                });
-                _persistAll();
-                Navigator.pop(context);
-              }
-            },
-            child: const Text("Ajouter"),
-          ),
-        ],
       ),
     );
   }
@@ -278,31 +201,7 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
             ],
           ),
           const SizedBox(height: 25),
-          Text(
-            "Progression Physique : ${(widget.chantier.progression * 100).toInt()}%",
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 10),
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              LinearProgressIndicator(
-                value: widget.chantier.progression,
-                minHeight: 20,
-                borderRadius: BorderRadius.circular(10),
-                color: Colors.green,
-                backgroundColor: isDark ? Colors.white10 : Colors.grey[200],
-              ),
-              Text(
-                "${(widget.chantier.progression * 100).toInt()}%",
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
+          _buildProgressBar(isDark),
           const SizedBox(height: 30),
           _infoTile(Icons.location_on, "Localisation", widget.chantier.lieu),
           ListTile(
@@ -326,6 +225,39 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
     );
   }
 
+  Widget _buildProgressBar(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "Progression Physique : ${(widget.chantier.progression * 100).toInt()}%",
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 10),
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            LinearProgressIndicator(
+              value: widget.chantier.progression,
+              minHeight: 20,
+              borderRadius: BorderRadius.circular(10),
+              color: Colors.green,
+              backgroundColor: isDark ? Colors.white10 : Colors.grey[200],
+            ),
+            Text(
+              "${(widget.chantier.progression * 100).toInt()}%",
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildBudgetCard(double ratio) {
     return Container(
       padding: const EdgeInsets.all(15),
@@ -333,7 +265,11 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4),
+          // CORRECTION : withValues au lieu de withOpacity
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+          ),
         ],
       ),
       child: Column(
@@ -393,34 +329,65 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
     );
   }
 
+  Widget _buildTasksTab() {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      floatingActionButton: FloatingActionButton(
+        mini: true,
+        backgroundColor: Colors.green,
+        onPressed: _showAddTaskDialog,
+        child: const Icon(Icons.add_task, color: Colors.white),
+      ),
+      body: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _tasks.length,
+        itemBuilder: (context, index) {
+          final task = _tasks[index];
+          return Card(
+            child: CheckboxListTile(
+              title: Text(
+                task.label,
+                style: TextStyle(
+                  decoration: task.isDone ? TextDecoration.lineThrough : null,
+                ),
+              ),
+              value: task.isDone,
+              onChanged: (val) {
+                setState(() => task.isDone = val!);
+                _updateProgression();
+                _persistAll();
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildTeamTab() {
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton(
         mini: true,
+        onPressed: _showAddWorkerDialog,
         backgroundColor: const Color(0xFF1A334D),
-        onPressed: () => _showAddWorkerDialog(),
-        child: const Icon(Icons.add, color: Colors.white),
+        child: const Icon(Icons.person_add, color: Colors.white),
       ),
-      body: _equipe.isEmpty
-          ? const Center(child: Text("Aucun ouvrier"))
-          : ListView.builder(
-              itemCount: _equipe.length,
-              itemBuilder: (context, index) => ListTile(
-                leading: const CircleAvatar(child: Icon(Icons.person)),
-                title: Text(_equipe[index].nom),
-                subtitle: Text(
-                  "${_equipe[index].specialite} • ${_equipe[index].salaireJournalier}€/j",
-                ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: () {
-                    setState(() => _equipe.removeAt(index));
-                    _persistAll();
-                  },
-                ),
-              ),
-            ),
+      body: ListView.builder(
+        itemCount: _equipe.length,
+        itemBuilder: (context, index) => ListTile(
+          leading: const CircleAvatar(child: Icon(Icons.person)),
+          title: Text(_equipe[index].nom),
+          subtitle: Text(_equipe[index].specialite),
+          trailing: IconButton(
+            icon: const Icon(Icons.delete, color: Colors.red),
+            onPressed: () {
+              setState(() => _equipe.removeAt(index));
+              _persistAll();
+            },
+          ),
+        ),
+      ),
     );
   }
 
@@ -430,28 +397,61 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
       floatingActionButton: FloatingActionButton(
         mini: true,
         backgroundColor: Colors.orange,
-        onPressed: () => _showAddMaterialDialog(),
+        onPressed: _showAddMaterialDialog,
         child: const Icon(Icons.add, color: Colors.white),
       ),
-      body: _materiels.isEmpty
-          ? const Center(child: Text("Aucun matériel"))
-          : ListView.builder(
-              itemCount: _materiels.length,
-              itemBuilder: (context, index) {
-                final m = _materiels[index];
-                return ListTile(
-                  leading: const Icon(Icons.inventory, color: Colors.blue),
-                  title: Text(m.nom),
-                  subtitle: Text(
-                    "${m.quantite} ${m.unite} x ${m.prixUnitaire}€",
-                  ),
-                  trailing: Text(
-                    "${(m.quantite * m.prixUnitaire).toStringAsFixed(0)} €",
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+      body: ListView.builder(
+        itemCount: _materiels.length,
+        itemBuilder: (context, index) {
+          final m = _materiels[index];
+          return ListTile(
+            leading: const Icon(Icons.inventory, color: Colors.blue),
+            title: Text(m.nom),
+            subtitle: Text("${m.quantite} ${m.unite}"),
+            trailing: Text(
+              "${(m.quantite * m.prixUnitaire).toStringAsFixed(0)} €",
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showAddTaskDialog() {
+    final ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Nouvelle Tâche"),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(hintText: "Nom"),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Annuler"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (ctrl.text.isNotEmpty) {
+                setState(
+                  () => _tasks.add(
+                    ConstructionTask(
+                      id: DateTime.now().toString(),
+                      label: ctrl.text,
+                    ),
                   ),
                 );
-              },
-            ),
+                _updateProgression();
+                _persistAll();
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text("Ajouter"),
+          ),
+        ],
+      ),
     );
   }
 
@@ -567,8 +567,6 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
   }
 }
 
-// --- CLASSES JOURNAL & GALERIE ---
-
 class JournalTab extends StatefulWidget {
   final Function(JournalEntry) onEntryAdded;
   final List<JournalEntry> entries;
@@ -577,6 +575,7 @@ class JournalTab extends StatefulWidget {
     required this.onEntryAdded,
     required this.entries,
   });
+
   @override
   State<JournalTab> createState() => _JournalTabState();
 }
@@ -587,7 +586,10 @@ class _JournalTabState extends State<JournalTab> {
   File? _selectedImage;
 
   Future<void> _takePhoto() async {
-    final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
+    final XFile? photo = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 70,
+    );
     if (photo != null) setState(() => _selectedImage = File(photo.path));
   }
 
@@ -597,7 +599,9 @@ class _JournalTabState extends State<JournalTab> {
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         date:
             "Le ${DateTime.now().day}/${DateTime.now().month} à ${DateTime.now().hour}:${DateTime.now().minute}",
-        contenu: _textController.text,
+        contenu: _textController.text.isEmpty
+            ? "Photo sans commentaire"
+            : _textController.text,
         auteur: "Chef de chantier",
         imagePath: _selectedImage?.path,
       );
@@ -615,15 +619,30 @@ class _JournalTabState extends State<JournalTab> {
       children: [
         Container(
           padding: const EdgeInsets.all(12),
-          color: Theme.of(context).cardColor,
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2)],
+          ),
           child: Column(
             children: [
               if (_selectedImage != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8.0),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.file(_selectedImage!, height: 100),
+                  child: Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(_selectedImage!, height: 120),
+                      ),
+                      Positioned(
+                        right: 0,
+                        child: IconButton(
+                          icon: const Icon(Icons.close, color: Colors.red),
+                          onPressed: () =>
+                              setState(() => _selectedImage = null),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               Row(
@@ -636,49 +655,49 @@ class _JournalTabState extends State<JournalTab> {
                     child: TextField(
                       controller: _textController,
                       decoration: const InputDecoration(
-                        hintText: "Rapport...",
+                        hintText: "Note de suivi ou incident...",
                         border: InputBorder.none,
                       ),
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.send, color: Color(0xFF1A334D)),
-                    onPressed: _addEntry,
+                  CircleAvatar(
+                    backgroundColor: const Color(0xFF1A334D),
+                    child: IconButton(
+                      icon: const Icon(
+                        Icons.send,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      onPressed: _addEntry,
+                    ),
                   ),
                 ],
               ),
             ],
           ),
         ),
-        const Divider(height: 1),
         Expanded(
           child: ListView.builder(
+            padding: const EdgeInsets.only(bottom: 80),
             itemCount: widget.entries.length,
             itemBuilder: (context, index) {
               final note = widget.entries[index];
               return Card(
-                margin: const EdgeInsets.all(10),
+                margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+                clipBehavior: Clip.antiAlias,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (note.imagePath != null)
-                      ClipRRect(
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(12),
-                        ),
-                        child: Image.file(
-                          File(note.imagePath!),
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: 200,
-                        ),
+                      Image.file(
+                        File(note.imagePath!),
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: 200,
                       ),
                     ListTile(
                       title: Text(note.contenu),
-                      subtitle: Text(
-                        note.date,
-                        style: const TextStyle(fontSize: 11),
-                      ),
+                      subtitle: Text("${note.date} • ${note.auteur}"),
                     ),
                   ],
                 ),
@@ -693,7 +712,7 @@ class _JournalTabState extends State<JournalTab> {
 
 class GalleryTab extends StatelessWidget {
   final List<JournalEntry> entries;
-  final List<Report> quickReports; // Ajouté
+  final List<Report> quickReports;
   const GalleryTab({
     super.key,
     required this.entries,
@@ -702,20 +721,21 @@ class GalleryTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // On combine les deux sources d'images
     final List<dynamic> allPhotos = [
       ...entries.where((e) => e.imagePath != null),
       ...quickReports,
     ];
 
-    if (allPhotos.isEmpty) return const Center(child: Text("Aucune photo"));
+    if (allPhotos.isEmpty) {
+      return const Center(child: Text("Aucune photo dans la galerie."));
+    }
 
     return GridView.builder(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(12),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
       ),
       itemCount: allPhotos.length,
       itemBuilder: (context, index) {
@@ -727,11 +747,14 @@ class GalleryTab extends StatelessWidget {
             ? item.contenu
             : (item as Report).comment;
 
-        return GestureDetector(
+        return InkWell(
           onTap: () => _showPhotoDetail(context, path, text),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.file(File(path), fit: BoxFit.cover),
+          child: Hero(
+            tag: path,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.file(File(path), fit: BoxFit.cover),
+            ),
           ),
         );
       },
@@ -742,13 +765,22 @@ class GalleryTab extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.file(File(path)),
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(15),
+              ),
+              child: Image.file(File(path)),
+            ),
             Padding(
               padding: const EdgeInsets.all(16),
-              child: Text(comment.isEmpty ? "Pas de commentaire" : comment),
+              child: Text(
+                comment,
+                style: const TextStyle(fontStyle: FontStyle.italic),
+              ),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context),

@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:typed_data'; // AJOUTÉ : Pour ByteData
+import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -12,14 +12,21 @@ import '../models/journal_model.dart';
 import '../models/report_model.dart';
 
 class PdfService {
-  // --- UTILS : CHARGEMENT DU LOGO ---
+  // --- CHARGEMENT DES RESSOURCES (LOGO & POLICE) ---
   static Future<pw.MemoryImage> _getLogo() async {
-    // Utilisation de ByteData grâce à l'import typed_data
-    final ByteData logoData = await rootBundle.load('assets/images/logo.png');
-    return pw.MemoryImage(logoData.buffer.asUint8List());
+    try {
+      final ByteData logoData = await rootBundle.load('assets/images/logo.png');
+      return pw.MemoryImage(logoData.buffer.asUint8List());
+    } catch (e) {
+      // Fallback si le logo n'est pas trouvé
+      final ByteData emptyData = await rootBundle.load(
+        'assets/images/placeholder.png',
+      );
+      return pw.MemoryImage(emptyData.buffer.asUint8List());
+    }
   }
 
-  // --- UTILS : HEADER STANDARD RÉUTILISABLE ---
+  // --- HEADER RÉUTILISABLE (SANS CONST SUR LES STYLES) ---
   static pw.Widget _buildHeader(
     pw.MemoryImage logo,
     String title,
@@ -44,8 +51,7 @@ class PdfService {
                 ),
                 pw.Text("Date : ${date.day}/${date.month}/${date.year}"),
                 pw.Text(
-                  "Système Mon Chantier Pro",
-                  // CORRIGÉ : Retrait du 'const' ici
+                  "Système ArkChantier Pro",
                   style: pw.TextStyle(fontSize: 8, color: PdfColors.grey),
                 ),
               ],
@@ -59,71 +65,43 @@ class PdfService {
     );
   }
 
-  // --- LOGIQUE DE FUSION DES MATÉRIELS ---
-  static List<Materiel> aggregateMateriels(List<Materiel> brute) {
-    final Map<String, Materiel> aggregated = {};
-
-    for (var item in brute) {
-      if (aggregated.containsKey(item.nom)) {
-        aggregated[item.nom] = Materiel(
-          id: aggregated[item.nom]!.id,
-          nom: item.nom,
-          categorie: item.categorie,
-          quantite: aggregated[item.nom]!.quantite + item.quantite,
-          prixUnitaire: item.prixUnitaire,
-          unite: item.unite,
-        );
-      } else {
-        aggregated[item.nom] = item;
-      }
-    }
-    return aggregated.values.toList();
-  }
-
-  // --- 1. GÉNÉRATION RAPPORT INVENTAIRE ---
+  // --- 1. RAPPORT INVENTAIRE GLOBAL ---
   static Future<void> generateInventoryReport(List<Materiel> inventaire) async {
     final pdf = pw.Document();
     final now = DateTime.now();
     final logo = await _getLogo();
+    final font = await PdfGoogleFonts.robotoRegular();
 
-    final List<Materiel> fusionnee = aggregateMateriels(inventaire);
-    fusionnee.sort(
-      (a, b) => a.nom.toLowerCase().compareTo(b.nom.toLowerCase()),
+    double grandTotal = inventaire.fold(
+      0,
+      (sum, item) => sum + (item.quantite * item.prixUnitaire),
     );
-
-    double grandTotal = 0;
-    for (var item in fusionnee) {
-      grandTotal += (item.quantite * item.prixUnitaire);
-    }
 
     pdf.addPage(
       pw.MultiPage(
+        theme: pw.ThemeData.withFont(base: font),
         pageFormat: PdfPageFormat.a4,
         build: (pw.Context context) => [
           _buildHeader(logo, "ÉTAT CONSOLIDÉ DES STOCKS", now),
-
           pw.TableHelper.fromTextArray(
             border: pw.TableBorder.all(color: PdfColors.grey300),
             headerStyle: pw.TextStyle(
               fontWeight: pw.FontWeight.bold,
               color: PdfColors.white,
             ),
-            headerDecoration: const pw.BoxDecoration(
-              color: PdfColors.blueGrey900,
-            ),
+            headerDecoration: pw.BoxDecoration(color: PdfColors.blueGrey900),
             headers: ['Désignation', 'Qté', 'Unité', 'Total (€)'],
-            data: fusionnee
+            data: inventaire
                 .map(
                   (item) => [
                     item.nom,
                     item.quantite.toString(),
                     item.unite,
-                    (item.quantite * item.prixUnitaire).toStringAsFixed(2),
+                    "${(item.quantite * item.prixUnitaire).toStringAsFixed(2)} €",
                   ],
                 )
                 .toList(),
           ),
-
           pw.Padding(
             padding: const pw.EdgeInsets.only(top: 20),
             child: pw.Align(
@@ -151,11 +129,12 @@ class PdfService {
     );
   }
 
-  // --- 2. GÉNÉRATION FICHE DE PAIE OUVRIER ---
+  // --- 2. BULLETIN DE PAIE OUVRIER ---
   static Future<void> generateOuvrierReport(Ouvrier worker) async {
     final pdf = pw.Document();
     final now = DateTime.now();
     final logo = await _getLogo();
+    final font = await PdfGoogleFonts.robotoRegular();
 
     final String monthStr =
         "${now.year}-${now.month.toString().padLeft(2, '0')}";
@@ -166,14 +145,13 @@ class PdfService {
 
     pdf.addPage(
       pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        build: (pw.Context context) => pw.Padding(
+        theme: pw.ThemeData.withFont(base: font),
+        build: (context) => pw.Padding(
           padding: const pw.EdgeInsets.all(30),
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               _buildHeader(logo, "BULLETIN DE PAIE", now),
-              pw.SizedBox(height: 20),
               pw.Text(
                 "EMPLOYÉ : ${worker.nom.toUpperCase()}",
                 style: pw.TextStyle(
@@ -184,7 +162,7 @@ class PdfService {
               pw.Text("Spécialité : ${worker.specialite}"),
               pw.SizedBox(height: 30),
               pw.TableHelper.fromTextArray(
-                headerDecoration: const pw.BoxDecoration(
+                headerDecoration: pw.BoxDecoration(
                   color: PdfColors.blueGrey800,
                 ),
                 headers: ['Désignation', 'Volume', 'Taux Journalier', 'Total'],
@@ -203,7 +181,6 @@ class PdfService {
                 children: [
                   pw.Text(
                     "Signature employé",
-                    // CORRIGÉ : Retrait du 'const' ici
                     style: pw.TextStyle(
                       fontSize: 8,
                       fontStyle: pw.FontStyle.italic,
@@ -231,7 +208,7 @@ class PdfService {
     );
   }
 
-  // --- 3. GÉNÉRATION RAPPORT COMPLET CLIENT ---
+  // --- 3. RAPPORT COMPLET CHANTIER (AVEC PHOTOS) ---
   static Future<void> generateChantierFullReport({
     required Chantier chantier,
     required List<JournalEntry> journal,
@@ -240,17 +217,18 @@ class PdfService {
     final pdf = pw.Document();
     final now = DateTime.now();
     final logo = await _getLogo();
+    final font = await PdfGoogleFonts.robotoRegular();
 
-    final List<String> images = [
+    final List<String> imagePaths = [
       ...journal.where((e) => e.imagePath != null).map((e) => e.imagePath!),
       ...reports.map((r) => r.imagePath),
     ];
 
     pdf.addPage(
       pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        build: (pw.Context context) => [
-          _buildHeader(logo, "RAPPORT DE CHANTIER : ${chantier.nom}", now),
+        theme: pw.ThemeData.withFont(base: font),
+        build: (context) => [
+          _buildHeader(logo, "RAPPORT : ${chantier.nom}", now),
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
@@ -266,27 +244,28 @@ class PdfService {
           ),
           pw.SizedBox(height: 30),
           pw.Text(
-            "GALERIE PHOTOS",
-            style: pw.TextStyle(
-              fontWeight: pw.FontWeight.bold,
-              decoration: pw.TextDecoration.underline,
-            ),
+            "GALERIE PHOTOS DE SUIVI",
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
           ),
           pw.SizedBox(height: 15),
           pw.Wrap(
             spacing: 10,
             runSpacing: 10,
-            children: images.map((path) {
-              final file = File(path);
-              if (!file.existsSync()) return pw.SizedBox();
-              return pw.Container(
-                width: 160,
-                height: 120,
-                child: pw.Image(
-                  pw.MemoryImage(file.readAsBytesSync()),
-                  fit: pw.BoxFit.cover,
-                ),
-              );
+            children: imagePaths.map((path) {
+              try {
+                final file = File(path);
+                if (!file.existsSync()) return pw.SizedBox();
+                return pw.Container(
+                  width: 160,
+                  height: 120,
+                  child: pw.Image(
+                    pw.MemoryImage(file.readAsBytesSync()),
+                    fit: pw.BoxFit.cover,
+                  ),
+                );
+              } catch (e) {
+                return pw.SizedBox();
+              }
             }).toList(),
           ),
         ],
@@ -299,42 +278,24 @@ class PdfService {
     );
   }
 
-  // --- 4. GÉNÉRATION RAPPORT DE RETARDS ---
+  // --- 4. RAPPORT DE RETARDS (ALERTES) ---
   static Future<void> generateDelayReport(
     List<Chantier> chantiersEnRetard,
   ) async {
     final pdf = pw.Document();
     final now = DateTime.now();
     final logo = await _getLogo();
+    final font = await PdfGoogleFonts.robotoRegular();
 
     pdf.addPage(
       pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        build: (pw.Context context) => [
-          _buildHeader(logo, "RAPPORT D'ALERTE : CHANTIERS EN RETARD", now),
-
-          pw.Text(
-            "Ce document liste les projets nécessitant une intervention immédiate ou une révision du planning.",
-            style: pw.TextStyle(
-              fontStyle: pw.FontStyle.italic,
-              color: PdfColors.grey700,
-            ),
-          ),
-          pw.SizedBox(height: 20),
-
+        theme: pw.ThemeData.withFont(base: font),
+        build: (context) => [
+          _buildHeader(logo, "ALERTE : CHANTIERS EN RETARD", now),
           pw.TableHelper.fromTextArray(
             border: pw.TableBorder.all(color: PdfColors.red200),
-            headerStyle: pw.TextStyle(
-              fontWeight: pw.FontWeight.bold,
-              color: PdfColors.white,
-            ),
-            headerDecoration: const pw.BoxDecoration(color: PdfColors.red800),
-            headers: [
-              'Chantier',
-              'Localisation',
-              'Progression',
-              'Budget Consommé',
-            ],
+            headerDecoration: pw.BoxDecoration(color: PdfColors.red800),
+            headers: ['Chantier', 'Lieu', 'Progression', 'Dépenses'],
             data: chantiersEnRetard
                 .map(
                   (c) => [
@@ -345,22 +306,6 @@ class PdfService {
                   ],
                 )
                 .toList(),
-          ),
-
-          pw.SizedBox(height: 40),
-          pw.Text(
-            "Notes de direction :",
-            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-          ),
-          pw.Padding(
-            padding: const pw.EdgeInsets.only(top: 10),
-            child: pw.Container(
-              height: 100,
-              width: double.infinity,
-              decoration: pw.BoxDecoration(
-                border: pw.Border.all(color: PdfColors.grey300),
-              ),
-            ),
           ),
         ],
       ),

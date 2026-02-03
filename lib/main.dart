@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'models/user_model.dart';
-import 'data/mock_data.dart'; // Import nécessaire pour globalChantiers
-import 'services/data_storage.dart';
+import 'models/projet_model.dart';
 import 'widgets/sidebar_drawer.dart';
 import 'screens/dashboard_view.dart';
 import 'screens/chantiers_screen.dart';
@@ -9,38 +8,31 @@ import 'screens/ouvriers_screen.dart';
 import 'screens/stats_screen.dart';
 import 'screens/materiel_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/project_launcher_screen.dart';
 
 void main() async {
-  // 1. Initialisation obligatoire pour les services asynchrones (SharedPreferences)
   WidgetsFlutterBinding.ensureInitialized();
-
-  // 2. Chargement des données sauvegardées avant de lancer l'interface
-  final savedChantiers = await DataStorage.loadChantiers();
-  if (savedChantiers.isNotEmpty) {
-    globalChantiers = savedChantiers;
-  }
-
   runApp(const ChantierApp());
 }
 
 class ChantierApp extends StatefulWidget {
   const ChantierApp({super.key});
 
-  static _ChantierAppState of(BuildContext context) =>
-      context.findAncestorStateOfType<_ChantierAppState>()!;
+  static ChantierAppState of(BuildContext context) =>
+      context.findAncestorStateOfType<ChantierAppState>()!;
 
   @override
-  State<ChantierApp> createState() => _ChantierAppState();
+  State<ChantierApp> createState() => ChantierAppState();
 }
 
-class _ChantierAppState extends State<ChantierApp> {
+class ChantierAppState extends State<ChantierApp> {
   ThemeMode _themeMode = ThemeMode.light;
 
   UserModel currentUser = UserModel(
     id: '1',
     nom: 'Admin ArkChantier',
     email: 'admin@ark.com',
-    role: UserRole.chefChantier,
+    role: UserRole.chefProjet,
   );
 
   void toggleTheme(bool isDark) {
@@ -76,14 +68,20 @@ class _ChantierAppState extends State<ChantierApp> {
         scaffoldBackgroundColor: const Color(0xFF0F172A),
         cardColor: const Color(0xFF1E293B),
       ),
-      home: MainShell(user: currentUser),
+      home: ProjectLauncherScreen(user: currentUser),
     );
   }
 }
 
 class MainShell extends StatefulWidget {
   final UserModel user;
-  const MainShell({super.key, required this.user});
+  final Projet currentProject;
+
+  const MainShell({
+    super.key,
+    required this.user,
+    required this.currentProject,
+  });
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -96,26 +94,44 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     bool isMobile = MediaQuery.of(context).size.width < 800;
 
-    // Utilisation d'une liste dynamique pour s'assurer que les écrans
-    // récupèrent les données à jour lors du changement d'onglet
-    final List<Widget> pages = [
-      DashboardView(user: widget.user),
-      const ChantiersScreen(),
-      const OuvriersScreen(),
-      const StatsScreen(),
-      const MaterielScreen(),
-      const SettingsScreen(),
-    ];
+    final List<Widget> pages = [];
+    pages.add(DashboardView(user: widget.user, projet: widget.currentProject));
+    pages.add(ChantiersScreen(projet: widget.currentProject));
+
+    if (widget.user.role != UserRole.client) {
+      pages.add(
+        OuvriersScreen(projet: widget.currentProject, user: widget.user),
+      );
+      pages.add(const MaterielScreen());
+    }
+
+    if (widget.user.role == UserRole.chefProjet) {
+      pages.add(const StatsScreen());
+    }
+
+    pages.add(const SettingsScreen());
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: isMobile
-          ? AppBar(
-              title: const Text("ArkChantier", style: TextStyle(fontSize: 18)),
-              backgroundColor: const Color(0xFF1A334D),
-              foregroundColor: Colors.white,
-            )
-          : null,
+      appBar: AppBar(
+        title: Text(
+          "Projet : ${widget.currentProject.nom}",
+          style: const TextStyle(fontSize: 16),
+        ),
+        backgroundColor: const Color(0xFF1A334D),
+        foregroundColor: Colors.white,
+        leading: isMobile
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (ctx) => ProjectLauncherScreen(user: widget.user),
+                  ),
+                ),
+              ),
+      ),
       drawer: isMobile
           ? Drawer(
               child: SidebarDrawer(

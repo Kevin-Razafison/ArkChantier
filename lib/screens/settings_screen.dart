@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../main.dart'; // Import crucial pour accéder à ChantierApp.of(context)
+import '../main.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -9,9 +9,8 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  String _selectedLanguage = 'Français';
+  final String _selectedLanguage = 'Français';
 
-  // Boîte de dialogue pour modifier le nom de l'admin
   void _showEditAdminDialog(String currentName) {
     TextEditingController controller = TextEditingController(text: currentName);
     showDialog(
@@ -23,10 +22,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           decoration: const InputDecoration(hintText: "Nouveau nom"),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Annuler"),
+          ),
           ElevatedButton(
             onPressed: () {
-              // APPEL GLOBAL : On met à jour le nom dans le Main
               ChantierApp.of(context).updateAdminName(controller.text);
               Navigator.pop(context);
             },
@@ -47,12 +48,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             TextField(decoration: InputDecoration(labelText: "Nom complet")),
             TextField(decoration: InputDecoration(labelText: "Email")),
-            TextField(decoration: InputDecoration(labelText: "Rôle (Chef, Ouvrier...)")),
+            TextField(
+              decoration: InputDecoration(labelText: "Rôle (Chef, Ouvrier...)"),
+            ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
-          ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("Créer")),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Annuler"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Créer"),
+          ),
         ],
       ),
     );
@@ -60,11 +69,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // On détecte si on est en mode sombre actuellement
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    // On pourrait aussi récupérer le nom de l'admin ici si besoin, 
-    // mais on va passer par les widgets pour la lecture.
 
     return Scaffold(
       appBar: AppBar(
@@ -78,10 +83,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             leading: const Icon(Icons.person),
             title: const Text("Nom de l'administrateur"),
-            // On affiche le nom actuel (celui qui est dans le MainShell/Main)
-            subtitle: const Text("Cliquez pour modifier"), 
+            subtitle: const Text("Cliquez pour modifier"),
             trailing: const Icon(Icons.edit, size: 20),
-            onTap: () => _showEditAdminDialog("Admin"), 
+            onTap: () => _showEditAdminDialog("Admin"),
           ),
           ListTile(
             leading: const Icon(Icons.person_add),
@@ -95,7 +99,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text("Mode Sombre"),
             value: isDark,
             onChanged: (val) {
-              // APPEL GLOBAL : On change le thème dans toute l'app
               ChantierApp.of(context).toggleTheme(val);
             },
           ),
@@ -104,9 +107,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text("Langue de l'application"),
             subtitle: Text(_selectedLanguage),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              // Logique future pour la langue
-            },
+            onTap: () {},
           ),
           const Divider(),
           _buildSectionTitle("À propos"),
@@ -125,7 +126,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
       child: Text(
         title.toUpperCase(),
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey,
+        ),
       ),
     );
   }
