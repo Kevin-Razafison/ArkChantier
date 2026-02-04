@@ -248,7 +248,10 @@ class _StatsScreenState extends State<StatsScreen>
                             .toList();
 
                         if (filtered.isNotEmpty) {
-                          await PdfService.generateInventoryReport(filtered);
+                          await PdfService.generateInventoryReport(
+                            filtered,
+                            widget.projet.devise,
+                          );
                         } else {
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -322,7 +325,7 @@ class _StatsScreenState extends State<StatsScreen>
                 title: Text(d.titre),
                 subtitle: Text("${d.date.day}/${d.date.month}"),
                 trailing: Text(
-                  "-${d.montant.toStringAsFixed(0)} €",
+                  "-${d.montant.toStringAsFixed(0)} ${widget.projet.devise}",
                   style: const TextStyle(
                     color: Colors.red,
                     fontWeight: FontWeight.bold,
@@ -363,7 +366,7 @@ class _StatsScreenState extends State<StatsScreen>
         _statCard(
           context,
           "Budget Global", // Changé pour plus de clarté
-          "${widget.projet.chantiers.fold(0.0, (s, c) => s + c.budgetInitial).toInt()} €",
+          "${widget.projet.chantiers.fold(0.0, (s, c) => s + c.budgetInitial).toInt()} ${widget.projet.devise}",
           Icons.payments,
           Colors.orange,
         ),

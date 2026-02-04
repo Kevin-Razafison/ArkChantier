@@ -4,11 +4,17 @@ import '../models/ouvrier_model.dart';
 import '../services/pdf_service.dart';
 import '../services/data_storage.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import '../models/projet_model.dart';
 
 class OuvrierDetailScreen extends StatefulWidget {
   final Ouvrier worker;
+  final Projet projet;
 
-  const OuvrierDetailScreen({super.key, required this.worker});
+  const OuvrierDetailScreen({
+    super.key,
+    required this.worker,
+    required this.projet,
+  });
 
   @override
   State<OuvrierDetailScreen> createState() => _OuvrierDetailScreenState();
@@ -236,7 +242,7 @@ class _OuvrierDetailScreenState extends State<OuvrierDetailScreen> {
             _buildDetailItem(
               Icons.payments,
               "Salaire Journalier",
-              "${widget.worker.salaireJournalier} € / jour",
+              "${widget.worker.salaireJournalier} ${widget.projet.devise} / jour",
             ),
             _buildDetailItem(
               Icons.phone,
@@ -505,7 +511,10 @@ class _OuvrierDetailScreenState extends State<OuvrierDetailScreen> {
             child: OutlinedButton.icon(
               icon: const Icon(Icons.picture_as_pdf, color: Colors.red),
               label: const Text("Exporter la fiche de paie (PDF)"),
-              onPressed: () => PdfService.generateOuvrierReport(widget.worker),
+              onPressed: () => PdfService.generateOuvrierReport(
+                widget.worker,
+                widget.projet.devise,
+              ),
             ),
           ),
         ],

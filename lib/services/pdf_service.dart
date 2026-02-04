@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:http/http.dart' as http;
 import 'package:printing/printing.dart';
 import 'dart:typed_data';
 import '../models/ouvrier_model.dart';
@@ -136,19 +137,27 @@ class PdfService {
               color: PdfColors.white,
               fontWeight: pw.FontWeight.bold,
             ),
-            headers: ['Poste de depense', 'Montant (EUR)', '% du total'],
+            headers: [
+              'Poste de depense',
+              'Montant (${projet.devise})',
+              '% du total',
+            ],
             data: [
               [
                 'Materiels et Stocks',
-                '${totalMat.toStringAsFixed(2)} EUR',
+                '${totalMat.toStringAsFixed(2)} ${projet.devise}',
                 '${totalEngage > 0 ? (totalMat / totalEngage * 100).toInt() : 0}%',
               ],
               [
                 'Main d\'oeuvre',
-                '${totalMO.toStringAsFixed(2)} EUR',
+                '${totalMO.toStringAsFixed(2)} ${projet.devise}',
                 '${totalEngage > 0 ? (totalMO / totalEngage * 100).toInt() : 0}%',
               ],
-              ['TOTAL ENGAGE', '${totalEngage.toStringAsFixed(2)} EUR', '100%'],
+              [
+                'TOTAL ENGAGE',
+                '${totalEngage.toStringAsFixed(2)} ${projet.devise}',
+                '100%',
+              ],
             ],
           ),
 
@@ -206,7 +215,10 @@ class PdfService {
   }
 
   // --- 2. RAPPORT INVENTAIRE GLOBAL ---
-  static Future<void> generateInventoryReport(List<Materiel> inventaire) async {
+  static Future<void> generateInventoryReport(
+    List<Materiel> inventaire,
+    String devise,
+  ) async {
     final pdf = pw.Document();
     final now = DateTime.now();
     final logo = await _getLogo();
@@ -232,14 +244,14 @@ class PdfService {
             headerDecoration: const pw.BoxDecoration(
               color: PdfColors.blueGrey900,
             ),
-            headers: ['Designation', 'Qte', 'Unite', 'Total (EUR)'],
+            headers: ['Designation', 'Qte', 'Unite', 'Total ($devise)'],
             data: inventaire
                 .map(
                   (item) => [
                     item.nom,
                     item.quantite.toString(),
                     item.unite,
-                    "${(item.quantite * item.prixUnitaire).toStringAsFixed(2)} EUR",
+                    "${(item.quantite * item.prixUnitaire).toStringAsFixed(2)} $devise",
                   ],
                 )
                 .toList(),
@@ -252,7 +264,7 @@ class PdfService {
                 padding: const pw.EdgeInsets.all(10),
                 color: PdfColors.grey100,
                 child: pw.Text(
-                  "VALEUR TOTALE : ${grandTotal.toStringAsFixed(2)} EUR",
+                  "VALEUR TOTALE : ${grandTotal.toStringAsFixed(2)} $devise",
                   style: pw.TextStyle(
                     fontSize: 14,
                     fontWeight: pw.FontWeight.bold,
@@ -272,7 +284,10 @@ class PdfService {
   }
 
   // --- 3. BULLETIN DE PAIE OUVRIER ---
-  static Future<void> generateOuvrierReport(Ouvrier worker) async {
+  static Future<void> generateOuvrierReport(
+    Ouvrier worker,
+    String devise,
+  ) async {
     final pdf = pw.Document();
     final now = DateTime.now();
     final logo = await _getLogo();
@@ -312,8 +327,8 @@ class PdfService {
                   [
                     'Prestation Travail',
                     '$jours jours',
-                    '${worker.salaireJournalier} EUR',
-                    '${totalDu.toStringAsFixed(2)} EUR',
+                    '${worker.salaireJournalier} $devise',
+                    '${totalDu.toStringAsFixed(2)} $devise',
                   ],
                 ],
               ),
@@ -332,7 +347,7 @@ class PdfService {
                     padding: const pw.EdgeInsets.all(10),
                     color: PdfColors.blue50,
                     child: pw.Text(
-                      "NET A PAYER : ${totalDu.toStringAsFixed(2)} EUR",
+                      "NET A PAYER : ${totalDu.toStringAsFixed(2)} $devise",
                       style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
                     ),
                   ),
@@ -360,6 +375,7 @@ class PdfService {
     final now = DateTime.now();
     final logo = await _getLogo();
     final font = await PdfGoogleFonts.robotoRegular();
+    final pw.Widget mapWidget = await _buildMapSection(chantier);
 
     pdf.addPage(
       pw.MultiPage(
@@ -386,6 +402,10 @@ class PdfService {
               ),
             ],
           ),
+          pw.SizedBox(height: 20),
+
+          // --- INSERTION DE LA CARTE ---
+          mapWidget,
           pw.SizedBox(height: 20),
 
           // --- SECTION INCIDENTS ---
@@ -440,12 +460,16 @@ class PdfService {
                         incident.imagePath!.isNotEmpty)
                       pw.Padding(
                         padding: const pw.EdgeInsets.only(top: 10),
-                        child: pw.Image(
-                          pw.MemoryImage(
-                            File(incident.imagePath!).readAsBytesSync(),
-                          ),
-                          height: 150,
-                        ),
+                        child:
+                            (incident.imagePath != null &&
+                                File(incident.imagePath!).existsSync())
+                            ? pw.Image(
+                                pw.MemoryImage(
+                                  File(incident.imagePath!).readAsBytesSync(),
+                                ),
+                                height: 150,
+                              )
+                            : pw.SizedBox(), // Si pas d'image, on ne met rien
                       ),
                   ],
                 ),
@@ -459,5 +483,36 @@ class PdfService {
       onLayout: (format) async => pdf.save(),
       name: 'Rapport_Complet_${chantier.nom}.pdf',
     );
+  }
+
+  static Future<pw.Widget> _buildMapSection(Chantier chantier) async {
+    final mapUrl =
+        'https://static-maps.yandex.ru/1.x/?ll=${chantier.longitude},${chantier.latitude}&z=14&l=map&size=450,200';
+
+    try {
+      final response = await http.get(Uri.parse(mapUrl));
+      if (response.statusCode == 200) {
+        final mapImage = pw.MemoryImage(response.bodyBytes);
+        return pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              "LOCALISATION DU SITE",
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 10),
+            pw.Image(mapImage),
+            pw.SizedBox(height: 5),
+            pw.Text(
+              "Coordonnées : ${chantier.latitude}, ${chantier.longitude}",
+              style: const pw.TextStyle(fontSize: 8),
+            ),
+          ],
+        );
+      }
+    } catch (e) {
+      return pw.Text("Carte non disponible");
+    }
+    return pw.SizedBox();
   }
 }

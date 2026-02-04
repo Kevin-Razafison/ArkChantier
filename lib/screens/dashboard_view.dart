@@ -208,6 +208,7 @@ class _DashboardViewState extends State<DashboardView>
                           await showModalBottomSheet(
                             context: context,
                             builder: (ctx) => AddChantierForm(
+                              projet: widget.projet,
                               onAdd: (nouveau) async {
                                 widget.projet.chantiers.add(
                                   nouveau,

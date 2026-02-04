@@ -4,11 +4,13 @@ import 'package:uuid/uuid.dart';
 import 'package:latlong2/latlong.dart';
 import 'location_picker_map.dart';
 import '../models/chantier_model.dart';
+import '../models/projet_model.dart';
 
 class AddChantierForm extends StatefulWidget {
   final Function(Chantier) onAdd;
+  final Projet projet;
 
-  const AddChantierForm({super.key, required this.onAdd});
+  const AddChantierForm({super.key, required this.onAdd, required this.projet});
 
   @override
   State<AddChantierForm> createState() => _AddChantierFormState();
@@ -172,8 +174,8 @@ class _AddChantierFormState extends State<AddChantierForm> {
 
             TextFormField(
               controller: _budgetController,
-              decoration: const InputDecoration(
-                labelText: "Budget Initial (€)",
+              decoration: InputDecoration(
+                labelText: "Budget Initial (${widget.projet.devise})",
                 border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.number,

@@ -99,8 +99,8 @@ class _MaterielScreenState extends State<MaterielScreen>
                   onChanged: (val) => quantite = int.tryParse(val) ?? 0,
                 ),
                 TextField(
-                  decoration: const InputDecoration(
-                    labelText: "Prix Unitaire (€)",
+                  decoration: InputDecoration(
+                    labelText: "Prix Unitaire (${widget.projet.devise})",
                   ),
                   keyboardType: TextInputType.number,
                   onChanged: (val) => prix = double.tryParse(val) ?? 0.0,
@@ -171,7 +171,10 @@ class _MaterielScreenState extends State<MaterielScreen>
             icon: const Icon(Icons.picture_as_pdf),
             onPressed: () {
               if (inventaire.isNotEmpty) {
-                PdfService.generateInventoryReport(inventaire);
+                PdfService.generateInventoryReport(
+                  inventaire,
+                  widget.projet.devise,
+                );
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text("L'inventaire est vide !")),
@@ -233,7 +236,7 @@ class _MaterielScreenState extends State<MaterielScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            "${item.prixUnitaire.toStringAsFixed(2)} € / ${item.unite}",
+                            "${item.prixUnitaire.toStringAsFixed(2)} ${widget.projet.devise} / ${item.unite}",
                           ),
                           // Petit badge de catégorie
                           Container(

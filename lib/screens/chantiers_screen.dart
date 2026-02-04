@@ -337,7 +337,7 @@ class _ChantiersScreenState extends State<ChantiersScreen>
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom,
         ),
-        child: AddChantierForm(onAdd: _addNewChantier),
+        child: AddChantierForm(onAdd: _addNewChantier, projet: widget.projet),
       ),
     );
   }

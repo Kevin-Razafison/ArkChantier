@@ -254,7 +254,8 @@ class _OuvriersScreenState extends State<OuvriersScreen>
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => OuvrierDetailScreen(worker: worker),
+            builder: (context) =>
+                OuvrierDetailScreen(worker: worker, projet: widget.projet),
           ),
         ),
       ),

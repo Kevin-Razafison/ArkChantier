@@ -434,14 +434,14 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                "${widget.chantier.depensesActuelles.toStringAsFixed(0)} €",
+                "${widget.chantier.depensesActuelles.toStringAsFixed(0)} ${widget.projet.devise}",
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   color: ratio > 1.0 ? Colors.red : Colors.green,
                 ),
               ),
               Text(
-                "Budget: ${widget.chantier.budgetInitial.toStringAsFixed(0)} €",
+                "Budget: ${widget.chantier.budgetInitial.toStringAsFixed(0)} ${widget.projet.devise}",
               ),
             ],
           ),
@@ -553,7 +553,7 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen>
               title: Text(m.nom),
               subtitle: Text("${m.quantite} ${m.unite}"),
               trailing: Text(
-                "${(m.quantite * m.prixUnitaire).toStringAsFixed(0)} €",
+                "${(m.quantite * m.prixUnitaire).toStringAsFixed(0)} ${widget.projet.devise}",
               ),
             );
           },
