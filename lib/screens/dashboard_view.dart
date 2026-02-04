@@ -15,6 +15,7 @@ import '../models/materiel_model.dart';
 import '../widgets/weather_banner.dart';
 import '../widgets/incident_widget.dart';
 import '../widgets/analytic_overview.dart';
+import '../widgets/add_chantier_form.dart';
 
 class ChecklistTask {
   final String title;
@@ -55,6 +56,16 @@ class _DashboardViewState extends State<DashboardView>
     if (widget.user.role != UserRole.client) {
       _loadDashboardData();
     }
+  }
+
+  void _navigateToPersonnel(String chantierId) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          "Ouverture du module Personnel pour le chantier: $chantierId",
+        ),
+      ),
+    );
   }
 
   Future<void> _loadDashboardData() async {
@@ -168,11 +179,54 @@ class _DashboardViewState extends State<DashboardView>
               padding: const EdgeInsets.all(24.0),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
-                  // --- AJOUT ICI ---
-                  WeatherBanner(city: actuel.lieu),
+                  // --- HEADER AVEC MÉTÉO ET BOUTON POINTAGE ---
+                  Row(
+                    children: [
+                      Expanded(
+                        child: WeatherBanner(
+                          city: actuel.lieu,
+                          lat: actuel.latitude, // On passe la latitude stockée
+                          lon:
+                              actuel.longitude, // On passe la longitude stockée
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Bouton Pointage
+                      _buildHeaderButton(
+                        icon: Icons.qr_code_scanner,
+                        label: "POINTAGE",
+                        color: const Color(0xFF1A334D),
+                        onTap: () => _navigateToPersonnel(actuel.id),
+                      ),
+                      const SizedBox(width: 8),
+                      // NOUVEAU : Bouton Ajouter Chantier (pour libérer le FAB)
+                      _buildHeaderButton(
+                        icon: Icons.add_location_alt,
+                        label: "AJOUTER",
+                        color: Colors.blueGrey,
+                        onTap: () async {
+                          await showModalBottomSheet(
+                            context: context,
+                            builder: (ctx) => AddChantierForm(
+                              onAdd: (nouveau) async {
+                                widget.projet.chantiers.add(
+                                  nouveau,
+                                ); // Ajout local
+                                await DataStorage.saveSingleProject(
+                                  widget.projet,
+                                );
+                                _loadDashboardData();
+                              },
+                            ),
+                          );
+                          setState(() => _chantiers = widget.projet.chantiers);
+                        },
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 20),
 
-                  // ------------------
+                  // --- INFOS PROJET ---
                   Text(
                     "PROJET : ${widget.projet.nom.toUpperCase()}",
                     style: const TextStyle(
@@ -189,7 +243,7 @@ class _DashboardViewState extends State<DashboardView>
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 10), // Un peu réduit pour l'équilibre
+                  const SizedBox(height: 10),
                 ]),
               ),
             ),
@@ -206,7 +260,10 @@ class _DashboardViewState extends State<DashboardView>
                 delegate: SliverChildListDelegate([
                   InfoCard(
                     title: "LOCALISATION",
-                    child: ChantierMapPreview(chantiers: _chantiers),
+                    child: ChantierMapPreview(
+                      chantiers: _chantiers,
+                      chantierActuel: actuel,
+                    ),
                   ),
                   if (!isClient && actuel.id != "0")
                     InfoCard(
@@ -255,6 +312,38 @@ class _DashboardViewState extends State<DashboardView>
         ),
       ),
       floatingActionButton: isClient ? null : _buildFAB(context),
+    );
+  }
+
+  Widget _buildHeaderButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return SizedBox(
+      height: 80,
+      width: 80,
+      child: ElevatedButton(
+        onPressed: onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          padding: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: Colors.white, size: 24),
+            Text(
+              label,
+              style: const TextStyle(color: Colors.white, fontSize: 9),
+            ),
+          ],
+        ),
+      ),
     );
   }
   // --- Widgets internes sans ListView.builder (car déjà dans un Sliver) ---

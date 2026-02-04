@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart'; // Importation pour le GPS
-import '../models/chantier_model.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:uuid/uuid.dart';
+import 'package:latlong2/latlong.dart';
+import 'location_picker_map.dart';
+import '../models/chantier_model.dart';
 
 class AddChantierForm extends StatefulWidget {
   final Function(Chantier) onAdd;
@@ -21,6 +23,27 @@ class _AddChantierFormState extends State<AddChantierForm> {
   final _lngController = TextEditingController();
 
   bool _isLocating = false;
+
+  // À placer après _getCurrentLocation
+  void _openMapPicker() async {
+    double currentLat = double.tryParse(_latController.text) ?? 20.0;
+    double currentLng = double.tryParse(_lngController.text) ?? 0.0;
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            LocationPickerMap(initialPoint: LatLng(currentLat, currentLng)),
+      ),
+    );
+
+    if (result != null && result is LatLng) {
+      setState(() {
+        _latController.text = result.latitude.toStringAsFixed(6);
+        _lngController.text = result.longitude.toStringAsFixed(6);
+      });
+    }
+  }
 
   /// Fonction pour récupérer la position actuelle
   Future<void> _getCurrentLocation() async {
@@ -120,19 +143,18 @@ class _AddChantierFormState extends State<AddChantierForm> {
                   ),
                 ),
                 const SizedBox(width: 8),
+                // Bouton GPS Automatique
                 IconButton.filled(
                   onPressed: _isLocating ? null : _getCurrentLocation,
-                  icon: _isLocating
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Icon(Icons.my_location),
+                  icon: const Icon(Icons.my_location),
                   style: IconButton.styleFrom(backgroundColor: Colors.blue),
+                ),
+                const SizedBox(width: 4),
+                // NOUVEAU : Bouton Carte Manuelle
+                IconButton.filled(
+                  onPressed: _openMapPicker, // On appelle enfin la fonction !
+                  icon: const Icon(Icons.map),
+                  style: IconButton.styleFrom(backgroundColor: Colors.green),
                 ),
               ],
             ),

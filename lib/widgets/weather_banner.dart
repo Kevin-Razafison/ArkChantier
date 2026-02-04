@@ -3,13 +3,17 @@ import '../services/weather_service.dart';
 
 class WeatherBanner extends StatelessWidget {
   final String city;
+  final double? lat;
+  final double? lon;
 
-  const WeatherBanner({super.key, required this.city});
+  const WeatherBanner({super.key, required this.city, this.lat, this.lon});
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<WeatherData?>(
-      future: WeatherService.fetchWeather(city),
+      future: (lat != null && lon != null && lat != 0)
+          ? WeatherService.fetchWeatherByCoords(lat!, lon!)
+          : WeatherService.fetchWeather(city),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const LinearProgressIndicator(minHeight: 2);

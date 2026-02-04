@@ -165,14 +165,11 @@ class _StatsScreenState extends State<StatsScreen>
                   children: [
                     _buildGlobalProgressCard(isDark, moyenneProgression),
                     const SizedBox(height: 25),
-                    ConstrainedBox(
-                      constraints: BoxConstraints(maxHeight: 400),
-                      child: _buildQuickStatsGrid(
-                        context,
-                        totalChantiers,
-                        termines,
-                        retards,
-                      ),
+                    _buildQuickStatsGrid(
+                      context,
+                      totalChantiers,
+                      termines,
+                      retards,
                     ),
                     const SizedBox(height: 30),
 
@@ -345,14 +342,14 @@ class _StatsScreenState extends State<StatsScreen>
     int retards,
   ) {
     return GridView.count(
-      shrinkWrap: true, // Gardez ceci
+      shrinkWrap: true, // Crucial pour ne pas occuper tout l'écran
       primary: false,
       physics:
-          const NeverScrollableScrollPhysics(), // Important car on est dans un ScrollView
+          const NeverScrollableScrollPhysics(), // Désactive le scroll interne
       crossAxisCount: 2,
       crossAxisSpacing: 15,
       mainAxisSpacing: 15,
-      childAspectRatio: 1.5,
+      childAspectRatio: 1.2, // Ajusté pour des cartes moins hautes
       children: [
         _statCard(context, "Chantiers", "$total", Icons.business, Colors.blue),
         _statCard(
@@ -365,7 +362,7 @@ class _StatsScreenState extends State<StatsScreen>
         _statCard(context, "En Retard", "$retards", Icons.warning, Colors.red),
         _statCard(
           context,
-          "Budget Total",
+          "Budget Global", // Changé pour plus de clarté
           "${widget.projet.chantiers.fold(0.0, (s, c) => s + c.budgetInitial).toInt()} €",
           Icons.payments,
           Colors.orange,
@@ -382,24 +379,33 @@ class _StatsScreenState extends State<StatsScreen>
     Color color,
   ) {
     return Container(
-      padding: const EdgeInsets.all(15),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(15),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 5),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.center, // Centrage vertical
         children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(height: 5),
+          Icon(icon, color: color, size: 28),
+          const SizedBox(height: 8),
           Text(
             value,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
           ),
-          Text(title, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+          Text(
+            title,
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
