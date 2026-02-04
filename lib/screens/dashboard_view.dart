@@ -14,7 +14,6 @@ import '../models/ouvrier_model.dart';
 import '../models/materiel_model.dart';
 import '../widgets/weather_banner.dart';
 import '../widgets/incident_widget.dart';
-import '../widgets/analytic_overview.dart';
 import '../widgets/add_chantier_form.dart';
 
 class ChecklistTask {
@@ -39,6 +38,9 @@ class _DashboardViewState extends State<DashboardView>
   bool _isLoadingFinances = false;
   double totalMainOeuvre = 0;
   double totalMateriel = 0;
+  int totalTasksDelayed = 0;
+  double globalBudgetInitial = 0;
+  double globalBudgetConsomme = 0;
 
   @override
   bool get wantKeepAlive => true;
@@ -72,41 +74,64 @@ class _DashboardViewState extends State<DashboardView>
     if (!mounted) return;
     setState(() => _isLoadingFinances = true);
 
-    await Future.delayed(const Duration(milliseconds: 50));
-
     double tempMO = 0;
     double tempMat = 0;
+    int tempDelayed = 0;
+    double tempBudgetInitial = 0;
+    double tempBudgetConsomme = 0;
 
     try {
+      // 1. CALCULS SUR LES DONNÉES DÉJÀ EN MÉMOIRE (Chantiers & Planning)
+      for (var c in widget.projet.chantiers) {
+        tempBudgetInitial += c.budgetInitial;
+        tempBudgetConsomme += c.depensesActuelles;
+
+        // Vérification des retards dans le planning de chaque chantier
+        for (var task in c.tasks) {
+          if (!task.isDone && DateTime.now().isAfter(task.endDate)) {
+            tempDelayed++;
+          }
+        }
+      }
+
+      // 2. CHARGEMENT DES DONNÉES EXTERNES (Fichiers JSON/Local)
       List<Future<List<dynamic>>> futures = [];
-      for (var c in _chantiers) {
+      for (var c in widget.projet.chantiers) {
         futures.add(DataStorage.loadTeam(c.id));
         futures.add(DataStorage.loadMateriels(c.id));
       }
 
       final results = await Future.wait(futures);
 
+      // 3. TRAITEMENT DES RÉSULTATS DES FICHIERS
       int resultIndex = 0;
-      for (var c in _chantiers) {
+      for (var c in widget.projet.chantiers) {
         final equipe = results[resultIndex++] as List<Ouvrier>;
         final inventaire = results[resultIndex++] as List<Materiel>;
 
+        // Coût de la Main d'œuvre (Pointages)
         for (var o in equipe) {
           tempMO += (o.joursPointes.length * o.salaireJournalier);
         }
+        // Coût du Matériel (Stock)
         for (var m in inventaire) {
           tempMat += (m.quantite * m.prixUnitaire);
         }
+        // Ajout des dépenses manuelles
         for (var d in c.depenses) {
           if (d.type == TypeDepense.mainOeuvre) tempMO += d.montant;
           if (d.type == TypeDepense.materiel) tempMat += d.montant;
         }
       }
 
+      // 4. MISE À JOUR FINALE DE L'ÉTAT
       if (mounted) {
         setState(() {
           totalMainOeuvre = tempMO;
           totalMateriel = tempMat;
+          totalTasksDelayed = tempDelayed; // <--- Nouveau KPI
+          globalBudgetInitial = tempBudgetInitial; // <--- Nouveau KPI
+          globalBudgetConsomme = tempBudgetConsomme; // <--- Nouveau KPI
           _isLoadingFinances = false;
         });
       }
@@ -269,9 +294,44 @@ class _DashboardViewState extends State<DashboardView>
                   if (!isClient && actuel.id != "0")
                     InfoCard(
                       title: "ANALYSE DE PERFORMANCE",
-                      child: AnalyticsOverview(
-                        chantier: actuel,
-                        projet: widget.projet,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _buildKpiItem(
+                                label: "RETARDS",
+                                value: "$totalTasksDelayed",
+                                color: totalTasksDelayed > 0
+                                    ? Colors.red
+                                    : Colors.green,
+                                icon: Icons.alarm,
+                              ),
+                              _buildKpiItem(
+                                label: "SANTÉ BUDGET",
+                                value:
+                                    "${((globalBudgetConsomme / globalBudgetInitial) * 100).toStringAsFixed(1)}%",
+                                color:
+                                    (globalBudgetConsomme > globalBudgetInitial)
+                                    ? Colors.red
+                                    : Colors.blue,
+                                icon: Icons.account_balance_wallet,
+                              ),
+                            ],
+                          ),
+                          const Divider(),
+                          Text(
+                            "Statut Global : ${totalTasksDelayed > 2 ? 'ALERTE CRITIQUE' : 'OPÉRATIONNEL'}",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: totalTasksDelayed > 2
+                                  ? Colors.red
+                                  : Colors.green,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   if (!isClient)
@@ -319,6 +379,29 @@ class _DashboardViewState extends State<DashboardView>
         ),
       ),
       floatingActionButton: isClient ? null : _buildFAB(context),
+    );
+  }
+
+  Widget _buildKpiItem({
+    required String label,
+    required String value,
+    required Color color,
+    required IconData icon,
+  }) {
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 20),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+      ],
     );
   }
 

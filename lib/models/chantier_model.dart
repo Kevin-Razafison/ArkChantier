@@ -19,6 +19,43 @@ enum TypeDepense { materiel, mainOeuvre, transport, divers }
 
 enum Priorite { basse, moyenne, haute, critique }
 
+class ConstructionTask {
+  String id;
+  String label;
+  DateTime startDate;
+  DateTime endDate;
+  double progression;
+  bool isDone;
+
+  ConstructionTask({
+    required this.id,
+    required this.label,
+    required this.startDate,
+    required this.endDate,
+    this.progression = 0.0,
+    this.isDone = false,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'label': label,
+    'startDate': startDate.toIso8601String(),
+    'endDate': endDate.toIso8601String(),
+    'progression': progression,
+    'isDone': isDone,
+  };
+
+  factory ConstructionTask.fromJson(Map<String, dynamic> json) =>
+      ConstructionTask(
+        id: json['id'],
+        label: json['label'],
+        startDate: DateTime.parse(json['startDate']),
+        endDate: DateTime.parse(json['endDate']),
+        progression: (json['progression'] as num).toDouble(),
+        isDone: json['isDone'] ?? false,
+      );
+}
+
 class Incident {
   final String id;
   final String chantierId;
@@ -103,7 +140,8 @@ class Chantier {
   final double latitude;
   final double longitude;
   List<Depense> depenses;
-  List<Incident> incidents; // Type maintenant reconnu
+  List<Incident> incidents;
+  List<ConstructionTask> tasks; // 1. DÉCLARATION DE LA PROPRIÉTÉ
 
   Chantier({
     required this.id,
@@ -117,8 +155,9 @@ class Chantier {
     this.latitude = 48.8566,
     this.longitude = 2.3522,
     this.depenses = const [],
+    this.tasks = const [], // 2. VALEUR PAR DÉFAUT (Vide par défaut)
     List<Incident>? incidents,
-  }) : incidents = incidents ?? []; // Retrait du "this." inutile selon ton log
+  }) : incidents = incidents ?? [];
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -132,7 +171,8 @@ class Chantier {
     'latitude': latitude,
     'longitude': longitude,
     'depenses': depenses.map((d) => d.toJson()).toList(),
-    'incidents': incidents.map((i) => i.toJson()).toList(), // Sauvegarde
+    'incidents': incidents.map((i) => i.toJson()).toList(),
+    'tasks': tasks.map((t) => t.toJson()).toList(), // Sauvegarde OK
   };
 
   factory Chantier.fromJson(Map<String, dynamic> json) => Chantier(
@@ -151,6 +191,12 @@ class Chantier {
         : [],
     incidents: json['incidents'] != null
         ? (json['incidents'] as List).map((i) => Incident.fromJson(i)).toList()
+        : [],
+    // 3. RÉCUPÉRATION DEPUIS LE JSON
+    tasks: json['tasks'] != null
+        ? (json['tasks'] as List)
+              .map((t) => ConstructionTask.fromJson(t))
+              .toList()
         : [],
   );
 }
