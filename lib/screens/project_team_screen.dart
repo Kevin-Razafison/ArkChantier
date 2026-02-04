@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/user_model.dart';
 import '../models/projet_model.dart';
 import '../services/data_storage.dart';
+import 'payroll_screen.dart';
 
 class ProjectTeamScreen extends StatefulWidget {
   final Projet projet;
@@ -154,6 +155,20 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
         title: Text("Équipe : ${widget.projet.nom}"),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.account_balance_wallet_outlined),
+            tooltip: "Gestion des paies",
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PayrollScreen(projet: widget.projet),
+                ),
+              );
+            },
+          ),
+        ],
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {

@@ -934,8 +934,6 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen>
                   if (val != null && !_equipe.any((o) => o.id == val.id)) {
                     setState(() {
                       _equipe.add(val);
-                      widget.chantier.depensesActuelles +=
-                          val.salaireJournalier;
                     });
                     await _persistAll();
                   }

@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import '../main.dart';
 import '../models/user_model.dart';
-import '../models/projet_model.dart';
-import '../services/data_storage.dart';
-import '../services/encryption_service.dart';
+import '../screens/user_management_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -18,28 +16,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool get wantKeepAlive => true;
 
   final String _selectedLanguage = 'Français';
-  List<Projet> _availableProjects = [];
-  List<UserModel> _cachedUsers = [];
 
-  @override
-  void initState() {
-    super.initState();
-    _initialLoad();
-  }
-
-  Future<void> _initialLoad() async {
-    final results = await Future.wait([
-      DataStorage.loadAllProjects(),
-      DataStorage.loadAllUsers(),
-    ]);
-
-    if (mounted) {
-      setState(() {
-        _availableProjects = results[0] as List<Projet>;
-        _cachedUsers = results[1] as List<UserModel>;
-      });
-    }
-  }
+  // ✅ Les champs inutilisés ont été supprimés ici
 
   void _showEditAdminDialog(String currentName) {
     TextEditingController controller = TextEditingController(text: currentName);
@@ -71,101 +49,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  void _showAddUserDialog() {
-    final nomController = TextEditingController();
-    final emailController = TextEditingController();
-    UserRole selectedRole = UserRole.ouvrier;
-    String? selectedProjectId;
-    final passwordController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text("Nouvel Utilisateur"),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nomController,
-                  decoration: const InputDecoration(labelText: "Nom complet"),
-                ),
-                TextField(
-                  controller: emailController,
-                  decoration: const InputDecoration(labelText: "Email"),
-                  keyboardType: TextInputType.emailAddress,
-                ),
-                const SizedBox(height: 15),
-                DropdownButtonFormField<UserRole>(
-                  initialValue: selectedRole,
-                  decoration: const InputDecoration(labelText: "Rôle"),
-                  items: UserRole.values
-                      .map(
-                        (role) => DropdownMenuItem(
-                          value: role,
-                          child: Text(role.name.toUpperCase()),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (val) => setDialogState(() => selectedRole = val!),
-                ),
-                if (selectedRole == UserRole.client) ...[
-                  const SizedBox(height: 15),
-                  DropdownButtonFormField<String>(
-                    decoration: const InputDecoration(
-                      labelText: "Assigner au projet",
-                    ),
-                    items: _availableProjects
-                        .map(
-                          (p) =>
-                              DropdownMenuItem(value: p.id, child: Text(p.nom)),
-                        )
-                        .toList(),
-                    onChanged: (val) =>
-                        setDialogState(() => selectedProjectId = val),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Annuler"),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (nomController.text.isNotEmpty &&
-                    emailController.text.isNotEmpty) {
-                  final newUser = UserModel(
-                    id: DateTime.now().millisecondsSinceEpoch.toString(),
-                    nom: nomController.text,
-                    email: emailController.text,
-                    role: selectedRole,
-                    chantierId: selectedProjectId,
-                    passwordHash: EncryptionService.hashPassword(
-                      passwordController.text,
-                    ), // 🛡️ Hashé ici
-                  );
-                  _cachedUsers.add(newUser);
-                  DataStorage.saveAllUsers(_cachedUsers);
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Utilisateur créé avec succès"),
-                    ),
-                  );
-                }
-              },
-              child: const Text("Créer l'accès"),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -193,11 +76,23 @@ class _SettingsScreenState extends State<SettingsScreen>
             const Divider(),
             _buildSectionTitle("Administration"),
             ListTile(
-              leading: const Icon(Icons.group_add),
-              title: const Text("Gestion des comptes"),
-              subtitle: const Text("Ajouter des collaborateurs ou des clients"),
+              leading: const Icon(
+                Icons.manage_accounts,
+                color: Color(0xFF1A334D),
+              ),
+              title: const Text("Gestion des accès"),
+              subtitle: const Text(
+                "Rechercher, ajouter ou supprimer des membres",
+              ),
               trailing: const Icon(Icons.chevron_right),
-              onTap: _showAddUserDialog,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const UserManagementScreen(),
+                  ),
+                );
+              },
             ),
           ],
           const Divider(),

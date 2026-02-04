@@ -125,33 +125,45 @@ class _OuvriersScreenState extends State<OuvriersScreen>
   }
 
   // --- LOGIQUE DE POINTAGE INDIVIDUEL ---
-
   Future<void> _togglePointage(Ouvrier worker, String chantierId) async {
     setState(() {
       if (worker.joursPointes.contains(_today)) {
         worker.joursPointes.remove(_today);
-      } else {
-        worker.joursPointes.add(_today);
-
-        final newDepense = Depense(
-          id: "pay_${worker.id}_$_today",
-          titre: "Paie : ${worker.nom}",
-          montant: worker.salaireJournalier,
-          date: DateTime.now(),
-          type: TypeDepense.mainOeuvre,
-        );
 
         final indexChantier = widget.projet.chantiers.indexWhere(
           (c) => c.id == chantierId,
         );
         if (indexChantier != -1) {
-          widget.projet.chantiers[indexChantier].depenses.add(newDepense);
+          widget.projet.chantiers[indexChantier].depensesActuelles -=
+              worker.salaireJournalier;
+          widget.projet.chantiers[indexChantier].depenses.removeWhere(
+            (d) => d.id == "pay_${worker.id}_$_today",
+          );
+        }
+      } else {
+        worker.joursPointes.add(_today);
+
+        final indexChantier = widget.projet.chantiers.indexWhere(
+          (c) => c.id == chantierId,
+        );
+        if (indexChantier != -1) {
           widget.projet.chantiers[indexChantier].depensesActuelles +=
               worker.salaireJournalier;
+
+          widget.projet.chantiers[indexChantier].depenses.add(
+            Depense(
+              id: "pay_${worker.id}_$_today",
+              titre: "Salaire : ${worker.nom}",
+              montant: worker.salaireJournalier,
+              date: DateTime.now(),
+              type: TypeDepense.mainOeuvre,
+            ),
+          );
         }
       }
     });
 
+    // Sauvegarde globale
     await DataStorage.saveTeam("annuaire_global", _allOuvriers);
     await DataStorage.saveSingleProject(widget.projet);
   }
