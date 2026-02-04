@@ -269,7 +269,10 @@ class _DashboardViewState extends State<DashboardView>
                   if (!isClient && actuel.id != "0")
                     InfoCard(
                       title: "ANALYSE DE PERFORMANCE",
-                      child: AnalyticsOverview(chantier: actuel),
+                      child: AnalyticsOverview(
+                        chantier: actuel,
+                        projet: widget.projet,
+                      ),
                     ),
                   if (!isClient)
                     InfoCard(title: "TÂCHES", child: _listTasksSliver()),
@@ -281,7 +284,10 @@ class _DashboardViewState extends State<DashboardView>
                           : (actuel.id != "0")
                           ? InkWell(
                               onLongPress: () => _cloturerChantier(actuel),
-                              child: FinancialStatsCard(chantier: actuel),
+                              child: FinancialStatsCard(
+                                chantier: actuel,
+                                projet: widget.projet,
+                              ),
                             )
                           : const Center(
                               child: Text("Sélectionnez un chantier"),

@@ -37,6 +37,20 @@ class DataStorage {
     }
   }
 
+  static Future<void> deleteProject(String projectId) async {
+    final prefs = await SharedPreferences.getInstance();
+    // 1. Récupérer la liste actuelle
+    List<Projet> projects = await loadAllProjects();
+    // 2. Filtrer pour enlever celui qui correspond à l'ID
+    projects.removeWhere((p) => p.id == projectId);
+    // 3. Sauvegarder la nouvelle liste
+    final String encoded = jsonEncode(projects.map((p) => p.toJson()).toList());
+    await prefs.setString('all_projects', encoded);
+
+    await prefs.remove("team_$projectId");
+    await prefs.remove("reports_$projectId");
+  }
+
   // --- SAUVEGARDE UNIQUE SÉCURISÉE ---
   static Future<void> saveSingleProject(Projet projet) async {
     final List<Projet> projets = await loadAllProjects();

@@ -34,41 +34,94 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
     }
   }
 
-  void _showCreateProjectDialog() {
-    final controller = TextEditingController();
+  void _confirmDeleteProject(Projet p) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Nouveau Projet BTP"),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            hintText: "Nom du projet (ex: Tour Horizon)",
-          ),
+        title: const Text("Supprimer le projet ?"),
+        content: Text(
+          "Cela supprimera définitivement le projet '${p.nom}' ainsi que tous les chantiers et rapports associés.",
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text("Annuler"),
+            child: const Text("ANNULER"),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
-              if (controller.text.isNotEmpty) {
-                final newProject = Projet(
-                  id: const Uuid().v4(),
-                  nom: controller.text,
-                  dateCreation: DateTime.now(),
-                  chantiers: [],
-                );
-                await DataStorage.saveSingleProject(newProject);
-                if (!ctx.mounted) return;
-                Navigator.pop(ctx);
-                _loadProjets();
-              }
+              // Supposons que ton DataStorage a une méthode deleteProject
+              // Sinon, tu peux filtrer la liste et tout sauvegarder
+              await DataStorage.deleteProject(p.id);
+              if (!ctx.mounted) return;
+              Navigator.pop(ctx);
+              _loadProjets(); // Recharger la liste
             },
-            child: const Text("Créer"),
+            child: const Text(
+              "SUPPRIMER",
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showCreateProjectDialog() {
+    final nomController = TextEditingController();
+    String selectedDevise = "MGA"; // Par défaut
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        // Utilisation de StatefulBuilder pour le dropdown
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text("Nouveau Projet BTP"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nomController,
+                decoration: const InputDecoration(labelText: "Nom du projet"),
+              ),
+              const SizedBox(height: 15),
+              DropdownButtonFormField<String>(
+                initialValue: selectedDevise,
+                decoration: const InputDecoration(
+                  labelText: "Devise par défaut",
+                ),
+                items: ["MGA", "EUR", "USD", "CAD"]
+                    .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                    .toList(),
+                onChanged: (val) => setDialogState(() => selectedDevise = val!),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Annuler"),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (nomController.text.isNotEmpty) {
+                  final newProject = Projet(
+                    id: const Uuid().v4(),
+                    nom: nomController.text,
+                    devise: selectedDevise,
+                    dateCreation: DateTime.now(),
+                    chantiers: [],
+                  );
+                  await DataStorage.saveSingleProject(newProject);
+                  if (!ctx.mounted) return;
+                  Navigator.pop(ctx);
+                  _loadProjets();
+                }
+              },
+              child: const Text("Créer"),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -229,19 +282,27 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
     final bool isClient = widget.user.role == UserRole.client;
 
     return ListTile(
-      onTap: () async {
-        await Future.delayed(const Duration(milliseconds: 50));
-        if (!mounted) return;
-
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (ctx) => MainShell(user: widget.user, currentProject: p),
+      onTap: () => Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (ctx) => MainShell(user: widget.user, currentProject: p),
+        ),
+        (route) => false,
+      ),
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.orange.withValues(alpha: 0.1), // ✅ Syntax 2026
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          p.devise,
+          style: const TextStyle(
+            color: Colors.orange,
+            fontWeight: FontWeight.bold,
           ),
-          (route) => false,
-        );
-      },
-      contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+        ),
+      ),
       title: Text(
         p.nom,
         style: const TextStyle(
@@ -250,17 +311,20 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
         ),
       ),
       subtitle: Text(
-        isClient
-            ? "Accès en lecture seule • Mis à jour aujourd'hui"
-            : "${p.chantiers.length} chantiers actifs • Créé le ${p.dateCreation.day}/${p.dateCreation.month}",
+        "${p.chantiers.length} chantiers • Créé le ${p.dateCreation.day}/${p.dateCreation.month}",
         style: const TextStyle(color: Colors.grey, fontSize: 12),
       ),
-      trailing: Icon(
-        isClient ? Icons.remove_red_eye : Icons.arrow_forward_ios,
-        color: isClient ? Colors.orange : Colors.white24,
-        size: 16,
-      ),
-      hoverColor: Colors.white10,
+      trailing: !isClient
+          ? IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.white24),
+              onPressed: () =>
+                  _confirmDeleteProject(p), // ✅ Méthode maintenant définie
+            )
+          : const Icon(
+              Icons.arrow_forward_ios,
+              color: Colors.white24,
+              size: 14,
+            ),
     );
   }
 

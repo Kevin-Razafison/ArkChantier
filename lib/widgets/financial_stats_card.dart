@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import '../models/chantier_model.dart';
+import '../models/projet_model.dart';
 
 class FinancialStatsCard extends StatelessWidget {
   final Chantier chantier;
+  final Projet projet;
 
-  const FinancialStatsCard({super.key, required this.chantier});
+  const FinancialStatsCard({
+    super.key,
+    required this.chantier,
+    required this.projet,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -48,14 +54,14 @@ class FinancialStatsCard extends StatelessWidget {
           _buildStatRow(
             context,
             "Budget Initial",
-            "${chantier.budgetInitial.toStringAsFixed(0)} €",
+            "${chantier.budgetInitial.toStringAsFixed(0)} ${projet.devise}",
             isDark ? Colors.white : Colors.black87,
           ),
           const SizedBox(height: 8),
           _buildStatRow(
             context,
             "Dépenses Réelles",
-            "${chantier.depensesActuelles.toStringAsFixed(0)} €",
+            "${chantier.depensesActuelles.toStringAsFixed(0)} ${projet.devise}",
             budgetColor,
           ),
           const SizedBox(height: 15),
@@ -116,7 +122,7 @@ class FinancialStatsCard extends StatelessWidget {
                 _miniStat(
                   context,
                   reste < 0 ? "Dépassement" : "Reste à investir",
-                  "${reste.abs().toStringAsFixed(0)} €",
+                  "${reste.abs().toStringAsFixed(0)} ${projet.devise}",
                   reste < 0 ? Colors.red : Colors.green,
                 ),
                 _miniStat(

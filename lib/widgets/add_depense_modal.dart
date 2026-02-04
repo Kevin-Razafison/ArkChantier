@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../models/chantier_model.dart';
+import '../models/projet_model.dart';
 
 class AddDepenseModal extends StatefulWidget {
   final List<Chantier> chantiers; // Reçoit les chantiers du projet actuel
-  final Function(Depense, String)
-  onAdd; // Renvoie la dépense ET l'ID du chantier
+  final Projet projet;
+  final Function(Depense, String) onAdd;
 
   const AddDepenseModal({
     super.key,
     required this.chantiers,
+    required this.projet,
     required this.onAdd,
   });
 
@@ -110,8 +112,8 @@ class _AddDepenseModalState extends State<AddDepenseModal> {
           ),
           TextField(
             controller: _montantController,
-            decoration: const InputDecoration(
-              labelText: "Montant (€)",
+            decoration: InputDecoration(
+              labelText: "Montant (${widget.projet.devise})",
               prefixIcon: Icon(Icons.euro, size: 20),
             ),
             keyboardType: TextInputType.number,

@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import '../models/chantier_model.dart';
+import '../models/projet_model.dart';
 
 class AnalyticsOverview extends StatelessWidget {
   final Chantier chantier;
+  final Projet projet;
 
-  const AnalyticsOverview({super.key, required this.chantier});
+  const AnalyticsOverview({
+    super.key,
+    required this.chantier,
+    required this.projet,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +41,7 @@ class AnalyticsOverview extends StatelessWidget {
             const SizedBox(height: 20),
             _buildLinearInfo(
               "Dépenses",
-              "${chantier.depensesActuelles}€ / ${chantier.budgetInitial}€",
+              "${chantier.depensesActuelles} ${projet.devise} / ${chantier.budgetInitial}${projet.devise}",
             ),
           ],
         ),

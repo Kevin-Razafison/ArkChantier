@@ -87,6 +87,7 @@ class _StatsScreenState extends State<StatsScreen>
         child: SafeArea(
           child: AddDepenseModal(
             chantiers: widget.projet.chantiers,
+            projet: widget.projet,
             onAdd: (nouvelleDepense, chantierId) async {
               setState(() => _isSyncing = true);
 
@@ -182,6 +183,7 @@ class _StatsScreenState extends State<StatsScreen>
                     ),
                     const SizedBox(height: 15),
                     FinancialStatsCard(
+                      projet: widget.projet,
                       chantier: Chantier(
                         id: 'global',
                         nom: 'Global Projet',
