@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 enum StatutChantier { enCours, enRetard, termine }
 
 extension StatutChantierExtension on StatutChantier {
@@ -151,4 +153,17 @@ class Chantier {
         ? (json['incidents'] as List).map((i) => Incident.fromJson(i)).toList()
         : [],
   );
+}
+
+extension ChantierAnalytics on Chantier {
+  Color get healthColor {
+    if (progression <= 0) return Colors.blue;
+    double ratio = (depensesActuelles / budgetInitial) / progression;
+    if (ratio > 1.2) return Colors.red;
+    if (ratio > 1.0) return Colors.orange;
+    return Colors.green;
+  }
+
+  double get budgetConsommePercent =>
+      (depensesActuelles / budgetInitial).clamp(0.0, 1.0);
 }

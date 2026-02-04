@@ -7,8 +7,6 @@ import 'dart:typed_data';
 import '../models/ouvrier_model.dart';
 import '../models/materiel_model.dart';
 import '../models/chantier_model.dart';
-import '../models/journal_model.dart';
-import '../models/report_model.dart';
 import '../models/projet_model.dart';
 
 class PdfService {
@@ -355,70 +353,111 @@ class PdfService {
   // --- 4. RAPPORT COMPLET CHANTIER (AVEC PHOTOS) ---
   static Future<void> generateChantierFullReport({
     required Chantier chantier,
-    required List<JournalEntry> journal,
-    required List<Report> reports,
+    // On ajoute les incidents ici
+    required List<Incident> incidents,
   }) async {
     final pdf = pw.Document();
     final now = DateTime.now();
     final logo = await _getLogo();
     final font = await PdfGoogleFonts.robotoRegular();
 
-    final List<String> imagePaths = [
-      ...journal.where((e) => e.imagePath != null).map((e) => e.imagePath!),
-      ...reports.map((r) => r.imagePath),
-    ];
-
     pdf.addPage(
       pw.MultiPage(
         theme: pw.ThemeData.withFont(base: font),
+        pageFormat: PdfPageFormat.a4,
         build: (context) => [
-          _buildHeader(logo, "RAPPORT : ${chantier.nom.toUpperCase()}", now),
+          _buildHeader(
+            logo,
+            "RAPPORT D'ACTIVITÉ : ${chantier.nom.toUpperCase()}",
+            now,
+          ),
+
+          // --- SECTION RÉSUMÉ ---
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Text("Lieu : ${chantier.lieu}"),
+              pw.Text("Localisation : ${chantier.lieu}"),
               pw.Text(
-                "Progression : ${(chantier.progression * 100).toInt()}%",
+                "Avancement : ${(chantier.progression * 100).toInt()}%",
                 style: pw.TextStyle(
                   fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.orange900,
+                  color: PdfColors.blue900,
                 ),
               ),
             ],
           ),
-          pw.SizedBox(height: 30),
+          pw.SizedBox(height: 20),
+
+          // --- SECTION INCIDENTS ---
           pw.Text(
-            "GALERIE PHOTOS DE SUIVI",
-            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            "JOURNAL DES INCIDENTS",
+            style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
           ),
-          pw.SizedBox(height: 15),
-          pw.Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: imagePaths.map((path) {
-              try {
-                final file = File(path);
-                if (!file.existsSync()) return pw.SizedBox();
-                return pw.Container(
-                  width: 160,
-                  height: 120,
-                  child: pw.Image(
-                    pw.MemoryImage(file.readAsBytesSync()),
-                    fit: pw.BoxFit.cover,
+          pw.SizedBox(height: 10),
+          if (incidents.isEmpty)
+            pw.Text(
+              "Aucun incident signalé.",
+              style: pw.TextStyle(fontStyle: pw.FontStyle.italic),
+            )
+          else
+            ...incidents.map(
+              (incident) => pw.Container(
+                margin: const pw.EdgeInsets.only(bottom: 15),
+                padding: const pw.EdgeInsets.all(10),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.grey300),
+                  borderRadius: const pw.BorderRadius.all(
+                    pw.Radius.circular(5),
                   ),
-                );
-              } catch (e) {
-                return pw.SizedBox();
-              }
-            }).toList(),
-          ),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Row(
+                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                      children: [
+                        pw.Text(
+                          incident.titre,
+                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                        ),
+                        pw.Text(
+                          "Priorité : ${incident.priorite.name.toUpperCase()}",
+                          style: pw.TextStyle(
+                            color: incident.priorite == Priorite.critique
+                                ? PdfColors.red
+                                : PdfColors.orange,
+                            fontWeight: pw.FontWeight.bold,
+                            fontSize: 8,
+                          ),
+                        ),
+                      ],
+                    ),
+                    pw.Text(
+                      incident.description,
+                      style: const pw.TextStyle(fontSize: 10),
+                    ),
+                    if (incident.imagePath != null &&
+                        incident.imagePath!.isNotEmpty)
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.only(top: 10),
+                        child: pw.Image(
+                          pw.MemoryImage(
+                            File(incident.imagePath!).readAsBytesSync(),
+                          ),
+                          height: 150,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
 
     await Printing.layoutPdf(
       onLayout: (format) async => pdf.save(),
-      name: 'Rapport_${chantier.nom}.pdf',
+      name: 'Rapport_Complet_${chantier.nom}.pdf',
     );
   }
 }

@@ -94,17 +94,16 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen>
   }
 
   Future<void> _generatePdf() async {
-    // On capture le ScaffoldMessenger avant l'async pour être sûr
     final messenger = ScaffoldMessenger.of(context);
 
     messenger.showSnackBar(
       const SnackBar(content: Text("Génération du PDF en cours...")),
     );
 
+    // Correction de l'appel :
     await PdfService.generateChantierFullReport(
       chantier: widget.chantier,
-      journal: _journalEntries,
-      reports: _quickReports,
+      incidents: widget.chantier.incidents, // On passe les incidents ici
     );
 
     if (!mounted) return;

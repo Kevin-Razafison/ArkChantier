@@ -14,6 +14,7 @@ import '../models/ouvrier_model.dart';
 import '../models/materiel_model.dart';
 import '../widgets/weather_banner.dart';
 import '../widgets/incident_widget.dart';
+import '../widgets/analytic_overview.dart';
 
 class ChecklistTask {
   final String title;
@@ -207,6 +208,11 @@ class _DashboardViewState extends State<DashboardView>
                     title: "LOCALISATION",
                     child: ChantierMapPreview(chantiers: _chantiers),
                   ),
+                  if (!isClient && actuel.id != "0")
+                    InfoCard(
+                      title: "ANALYSE DE PERFORMANCE",
+                      child: AnalyticsOverview(chantier: actuel),
+                    ),
                   if (!isClient)
                     InfoCard(title: "TÂCHES", child: _listTasksSliver()),
                   if (!isClient)
@@ -235,18 +241,8 @@ class _DashboardViewState extends State<DashboardView>
                   InfoCard(
                     title: "JOURNAL D'INCIDENTS",
                     child: SingleChildScrollView(
-                      child: IncidentList(
-                        incidents: [
-                          // Exemple manuel pour tester le rendu
-                          Incident(
-                            id: "1",
-                            chantierId: actuel.id,
-                            titre: "Retard Livraison",
-                            description:
-                                "Le camion de béton est bloqué en douane",
-                            date: DateTime.now(),
-                            priorite: Priorite.haute,
-                          ),
+                      child: IncidentList(incidents: [
+
                         ],
                       ),
                     ),

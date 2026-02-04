@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/ouvrier_model.dart';
 import '../services/pdf_service.dart';
 import '../services/data_storage.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 class OuvrierDetailScreen extends StatefulWidget {
   final Ouvrier worker;
@@ -173,6 +174,27 @@ class _OuvrierDetailScreenState extends State<OuvrierDetailScreen> {
               );
             },
             child: const Text("Supprimer"),
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.qr_code),
+            label: const Text("Afficher le Badge"),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: Text("Badge de ${widget.worker.nom}"),
+                  content: SizedBox(
+                    width: 200,
+                    height: 200,
+                    child: QrImageView(
+                      data: widget.worker.id, // On encode l'ID de l'ouvrier
+                      version: QrVersions.auto,
+                      size: 200.0,
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -464,6 +486,17 @@ class _OuvrierDetailScreenState extends State<OuvrierDetailScreen> {
                   },
                 ),
               ),
+              Expanded(
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.qr_code),
+                  label: const Text("Badge"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black87,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () => _showQRCodeBadge(),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -507,6 +540,31 @@ class _OuvrierDetailScreenState extends State<OuvrierDetailScreen> {
       subtitle: Text(
         value,
         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+
+  void _showQRCodeBadge() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Badge : ${widget.worker.nom}"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Présentez ce code pour le pointage"),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: 200,
+              height: 200,
+              child: QrImageView(
+                data: widget.worker.id, // L'ID que le scanner va lire
+                version: QrVersions.auto,
+                size: 200.0,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -4,6 +4,8 @@ import '../models/projet_model.dart';
 import '../models/user_model.dart';
 import '../services/data_storage.dart';
 import 'ouvrier_detail_screen.dart';
+import '../models/chantier_model.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 class OuvriersScreen extends StatefulWidget {
   final Projet projet;
@@ -61,17 +63,40 @@ class _OuvriersScreenState extends State<OuvriersScreen>
     });
   }
 
-  Future<void> _togglePointage(Ouvrier worker) async {
+  Future<void> _togglePointage(Ouvrier worker, String chantierId) async {
+    final String today = DateTime.now().toIso8601String().split('T')[0];
+
     setState(() {
-      if (worker.joursPointes.contains(_today)) {
-        worker.joursPointes.remove(_today);
+      if (worker.joursPointes.contains(today)) {
+        worker.joursPointes.remove(today);
+        // Optionnel : Retirer la dépense correspondante si tu veux être ultra précis
       } else {
-        worker.joursPointes.add(_today);
+        worker.joursPointes.add(today);
+
+        // AJOUT : Créer une dépense automatique pour le chantier
+        final newDepense = Depense(
+          id: "pay_${worker.id}_$today",
+          titre: "Paie : ${worker.nom}",
+          montant: worker.salaireJournalier,
+          date: DateTime.now(),
+          type: TypeDepense.mainOeuvre,
+        );
+
+        // Trouver le chantier actuel et lui ajouter la dépense
+        final indexChantier = widget.projet.chantiers.indexWhere(
+          (c) => c.id == chantierId,
+        );
+        if (indexChantier != -1) {
+          widget.projet.chantiers[indexChantier].depenses.add(newDepense);
+          widget.projet.chantiers[indexChantier].depensesActuelles +=
+              worker.salaireJournalier;
+        }
       }
     });
 
-    // Sauvegarde asynchrone pour ne pas bloquer l'UI
+    // Sauvegarde globale
     await DataStorage.saveTeam("annuaire_global", _allOuvriers);
+    await DataStorage.saveSingleProject(widget.projet);
   }
 
   @override
@@ -84,6 +109,12 @@ class _OuvriersScreenState extends State<OuvriersScreen>
         title: const Text("Gestion de l'Équipe"),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner),
+            onPressed: () => _openScanner(),
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -216,7 +247,8 @@ class _OuvriersScreenState extends State<OuvriersScreen>
                   isPresent ? Icons.check_circle : Icons.radio_button_unchecked,
                   color: isPresent ? Colors.green : Colors.grey,
                 ),
-                onPressed: () => _togglePointage(worker),
+                onPressed: () =>
+                    _togglePointage(worker, widget.projet.chantiers.first.id),
               )
             : const Icon(Icons.chevron_right),
         onTap: () => Navigator.push(
@@ -304,5 +336,59 @@ class _OuvriersScreenState extends State<OuvriersScreen>
         ],
       ),
     );
+  }
+
+  void _openScanner() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.7,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text("Scanner le Badge"),
+            leading: IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ),
+          body: MobileScanner(
+            onDetect: (capture) {
+              final List<Barcode> barcodes = capture.barcodes;
+              for (final barcode in barcodes) {
+                if (barcode.rawValue != null) {
+                  final String workerId = barcode.rawValue!;
+                  _handleQRScan(workerId);
+                  Navigator.pop(context); // Ferme le scanner après détection
+                  break;
+                }
+              }
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _handleQRScan(String workerId) {
+    try {
+      final worker = _allOuvriers.firstWhere((o) => o.id == workerId);
+      // On appelle la fonction de pointage qu'on a déjà corrigée
+      _togglePointage(worker, widget.projet.chantiers.first.id);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Pointage validé pour : ${worker.nom}"),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Ouvrier non reconnu ou absent de l'annuaire"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }
