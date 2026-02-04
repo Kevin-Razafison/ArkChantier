@@ -29,11 +29,14 @@ class SidebarDrawer extends StatelessWidget {
             child: const Text("ANNULER"),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pushNamedAndRemoveUntil(
-              context,
-              '/login',
-              (route) => false,
-            ),
+            onPressed: () {
+              Navigator.pop(ctx); // Ferme le dialogue d'abord
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                '/login',
+                (route) => false,
+              );
+            },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text(
               "DÉCONNEXION",
@@ -47,7 +50,9 @@ class SidebarDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // LA CORRECTION EST ICI : On sépare les onglets de l'IndexedStack
+    final bool isMobile = MediaQuery.of(context).size.width < 800;
+
+    // Liste des onglets synchronisés avec l'IndexedStack
     final List<_MenuItemData> tabs = [];
     tabs.add(_MenuItemData(Icons.dashboard, "Dashboard"));
     tabs.add(_MenuItemData(Icons.business, "Chantiers"));
@@ -96,18 +101,19 @@ class SidebarDrawer extends StatelessWidget {
                 child: ListView(
                   padding: EdgeInsets.zero,
                   children: [
-                    // 1. Les onglets normaux (Sync avec IndexedStack)
+                    // Rendu des onglets normaux
                     ...tabs.asMap().entries.map((entry) {
                       return _buildItem(
                         context,
                         entry.value.icon,
                         entry.value.label,
                         entry.key,
-                        false,
+                        false, // isSpecial est false ici
+                        isMobile,
                       );
                     }),
 
-                    // 2. L'item spécial qui fait un Navigator.push
+                    // Item spécial (Navigation directe vers un nouvel écran)
                     if (role == UserRole.chefProjet) ...[
                       const Divider(
                         color: Colors.white10,
@@ -119,7 +125,8 @@ class SidebarDrawer extends StatelessWidget {
                         Icons.group_work,
                         "Équipe Projet",
                         -1,
-                        true,
+                        true, // isSpecial est true ici
+                        isMobile,
                       ),
                     ],
                   ],
@@ -155,13 +162,16 @@ class SidebarDrawer extends StatelessWidget {
     String label,
     int index,
     bool isSpecial,
+    bool isMobile, //
   ) {
     bool isSelected = !isSpecial && currentIndex == index;
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 12),
       decoration: BoxDecoration(
-        color: isSelected ? Colors.white.withOpacity(0.1) : Colors.transparent,
+        color: isSelected
+            ? Colors.white.withValues(alpha: 0.1)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
       ),
       child: ListTile(
@@ -178,17 +188,28 @@ class SidebarDrawer extends StatelessWidget {
           ),
         ),
         onTap: () {
-          if (isSpecial) {
-            if (Scaffold.of(context).isDrawerOpen) Navigator.pop(context);
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ProjectTeamScreen(projet: currentProject),
-              ),
-            );
-          } else {
-            onDestinationSelected(index);
+          if (currentIndex == index) {
+            if (isMobile) Navigator.pop(context);
+            return;
           }
+
+          if (isMobile) {
+            Navigator.pop(context);
+          }
+
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (isSpecial) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      ProjectTeamScreen(projet: currentProject),
+                ),
+              );
+            } else {
+              onDestinationSelected(index);
+            }
+          });
         },
       ),
     );
@@ -218,7 +239,7 @@ class SidebarDrawer extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.black26,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: roleColor.withOpacity(0.3)),
+        border: Border.all(color: roleColor.withValues(alpha: 0.3)),
       ),
       child: Text(
         roleLabel,
@@ -233,9 +254,9 @@ class SidebarDrawer extends StatelessWidget {
   }
 }
 
+// CORRECTION : Suppression du paramètre inutilisé 'isSpecial'
 class _MenuItemData {
   final IconData icon;
   final String label;
-  final bool isSpecial;
-  _MenuItemData(this.icon, this.label, {this.isSpecial = false});
+  _MenuItemData(this.icon, this.label);
 }

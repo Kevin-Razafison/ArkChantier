@@ -14,78 +14,83 @@ class ProjectTeamScreen extends StatefulWidget {
 
 class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
   List<UserModel> _assignedUsers = [];
+  List<UserModel> _allUsers = []; // On garde une copie en mémoire
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadProjectTeam();
+    _refreshData(); // Une seule méthode de chargement initiale
   }
 
-  // Charge les membres de l'équipe pour ce projet spécifique
-  Future<void> _loadProjectTeam() async {
-    final allUsers = await DataStorage.loadAllUsers();
-    setState(() {
-      _assignedUsers = allUsers
-          .where((u) => u.chantierId == widget.projet.id)
-          .toList();
-      _isLoading = false;
-    });
-  }
-
-  // Liaison d'un utilisateur existant au projet actuel
-  Future<void> _assignUserToProject(UserModel user) async {
-    final allUsers = await DataStorage.loadAllUsers();
-    final index = allUsers.indexWhere((u) => u.id == user.id);
-
-    if (index != -1) {
-      allUsers[index] = UserModel(
-        id: user.id,
-        nom: user.nom,
-        email: user.email,
-        role: user.role,
-        chantierId: widget.projet.id, // On définit le lien
-      );
-      await DataStorage.saveAllUsers(allUsers);
-      _loadProjectTeam(); // Rafraîchir la vue
-    }
-  }
-
-  // Retire un utilisateur du projet (met le chantierId à null)
-  Future<void> _removeUserFromProject(UserModel user) async {
-    final allUsers = await DataStorage.loadAllUsers();
-    final index = allUsers.indexWhere((u) => u.id == user.id);
-
-    if (index != -1) {
-      allUsers[index] = UserModel(
-        id: user.id,
-        nom: user.nom,
-        email: user.email,
-        role: user.role,
-        chantierId: null, // Plus d'accès au projet
-      );
-      await DataStorage.saveAllUsers(allUsers);
-      _loadProjectTeam();
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("${user.nom} retiré du projet")));
-    }
-  }
-
-  // Dialogue pour choisir parmi les utilisateurs globaux non assignés
-  void _showAddExistingUserDialog() async {
+  // CHARGEMENT INITIAL (Une seule fois au début)
+  Future<void> _refreshData() async {
     setState(() => _isLoading = true);
-    final allUsers = await DataStorage.loadAllUsers();
+    // On charge tout d'un coup
+    _allUsers = await DataStorage.loadAllUsers();
 
-    // On ne propose que ceux qui n'appartiennent pas déjà à ce projet
-    final availableUsers = allUsers
+    // On filtre en local (instantané)
+    _assignedUsers = _allUsers
+        .where((u) => u.chantierId == widget.projet.id)
+        .toList();
+
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  // LIAISON (Modification en mémoire puis sauvegarde en arrière-plan)
+  Future<void> _assignUserToProject(UserModel user) async {
+    final index = _allUsers.indexWhere((u) => u.id == user.id);
+
+    if (index != -1) {
+      // 1. Mise à jour immédiate de la mémoire pour la fluidité
+      _allUsers[index] = UserModel(
+        id: user.id,
+        nom: user.nom,
+        email: user.email,
+        role: user.role,
+        chantierId: widget.projet.id,
+      );
+
+      // 2. Rafraîchissement UI instantané (pas de freeze)
+      setState(() {
+        _assignedUsers = _allUsers
+            .where((u) => u.chantierId == widget.projet.id)
+            .toList();
+      });
+
+      // 3. Sauvegarde sur le disque en tâche de fond (async)
+      DataStorage.saveAllUsers(_allUsers);
+    }
+  }
+
+  // SUPPRESSION (Même logique : RAM d'abord, Disque ensuite)
+  Future<void> _removeUserFromProject(UserModel user) async {
+    final index = _allUsers.indexWhere((u) => u.id == user.id);
+
+    if (index != -1) {
+      _allUsers[index] = UserModel(
+        id: user.id,
+        nom: user.nom,
+        email: user.email,
+        role: user.role,
+        chantierId: null,
+      );
+
+      setState(() {
+        _assignedUsers = _allUsers
+            .where((u) => u.chantierId == widget.projet.id)
+            .toList();
+      });
+
+      DataStorage.saveAllUsers(_allUsers);
+    }
+  }
+
+  void _showAddExistingUserDialog() {
+    // Plus de loadAllUsers() ici ! On utilise _allUsers qui est déjà là.
+    final availableUsers = _allUsers
         .where((u) => u.chantierId != widget.projet.id)
         .toList();
-    setState(() => _isLoading = false);
-
-    if (!mounted) return;
 
     showDialog(
       context: context,
@@ -94,11 +99,11 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
         content: SizedBox(
           width: double.maxFinite,
           child: availableUsers.isEmpty
-              ? const Text("Aucun utilisateur disponible à ajouter.")
+              ? const Text("Aucun utilisateur disponible.")
               : ListView.separated(
                   shrinkWrap: true,
                   itemCount: availableUsers.length,
-                  separatorBuilder: (_, __) => const Divider(),
+                  separatorBuilder: (_, _) => const Divider(),
                   itemBuilder: (context, index) {
                     final user = availableUsers[index];
                     return ListTile(
@@ -113,12 +118,6 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
                   },
                 ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Fermer"),
-          ),
-        ],
       ),
     );
   }

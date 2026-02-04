@@ -28,14 +28,19 @@ class UserModel {
     'chantierId': chantierId,
   };
 
-  factory UserModel.fromJson(Map<String, dynamic> json) => UserModel(
-    id: json['id'],
-    nom: json['nom'],
-    email: json['email'],
-    role: UserRole.values[json['role']],
-    chantierId: json['chantierId'],
-  );
-
+  factory UserModel.fromJson(Map<String, dynamic> json) {
+    return UserModel(
+      id: json['id']?.toString() ?? '0',
+      nom: json['nom'] ?? 'Inconnu',
+      email: json['email'] ?? '',
+      role:
+          UserRole.values[(json['role'] is int &&
+                  json['role'] < UserRole.values.length)
+              ? json['role']
+              : 0],
+      chantierId: json['chantierId'],
+    );
+  }
   static UserModel mockAdmin() => UserModel(
     id: '1',
     nom: 'Jean Projet',

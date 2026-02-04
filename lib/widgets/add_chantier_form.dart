@@ -35,13 +35,16 @@ class _AddChantierFormState extends State<AddChantierForm> {
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied)
+        if (permission == LocationPermission.denied) {
           throw 'Permission refusée.';
+        }
       }
 
       // 3. Récupérer la position
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
       );
 
       setState(() {
@@ -49,6 +52,7 @@ class _AddChantierFormState extends State<AddChantierForm> {
         _lngController.text = position.longitude.toStringAsFixed(6);
       });
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Position récupérée !"),
@@ -56,6 +60,7 @@ class _AddChantierFormState extends State<AddChantierForm> {
         ),
       );
     } catch (e) {
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Erreur : $e"), backgroundColor: Colors.red),
       );

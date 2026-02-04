@@ -15,7 +15,11 @@ class MaterielScreen extends StatefulWidget {
   State<MaterielScreen> createState() => _MaterielScreenState();
 }
 
-class _MaterielScreenState extends State<MaterielScreen> {
+class _MaterielScreenState extends State<MaterielScreen>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   List<Materiel> inventaire = [];
   // REMPLACE "annuaire_global" par widget.projet.id
   late String currentChantierId;
@@ -65,7 +69,9 @@ class _MaterielScreenState extends State<MaterielScreen> {
       inventaire[index].quantite += delta;
       if (inventaire[index].quantite < 0) inventaire[index].quantite = 0;
     });
-    _saveData();
+
+    if (!mounted) return;
+    DataStorage.saveMateriels(currentChantierId, inventaire);
   }
 
   void _showAddMaterialDialog() {
@@ -135,9 +141,13 @@ class _MaterielScreenState extends State<MaterielScreen> {
                       ),
                     );
                   });
+
                   await _saveData();
-                  if (!mounted) return;
-                  Navigator.pop(context);
+
+                  // On s'assure que le widget est toujours dans l'arbre avant de naviguer
+                  if (!context.mounted) return;
+
+                  Navigator.of(context).pop();
                 }
               },
               child: const Text("Ajouter"),
@@ -198,8 +208,8 @@ class _MaterielScreenState extends State<MaterielScreen> {
                     child: ListTile(
                       leading: CircleAvatar(
                         backgroundColor: item.quantite == 0
-                            ? Colors.red.withOpacity(0.1)
-                            : const Color(0xFF1A334D).withOpacity(0.1),
+                            ? Colors.red.withValues(alpha: 0.1)
+                            : const Color(0xFF1A334D).withValues(alpha: 0.1),
                         child: Icon(
                           item.categorie == CategorieMateriel.outillage
                               ? Icons.handyman
@@ -286,6 +296,7 @@ class _MaterielScreenState extends State<MaterielScreen> {
               },
             ),
       floatingActionButton: FloatingActionButton(
+        heroTag: "fab_materiel",
         backgroundColor: const Color(0xFF1A334D),
         onPressed: _showAddMaterialDialog,
         child: const Icon(Icons.add, color: Colors.white),

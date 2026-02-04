@@ -22,7 +22,7 @@ class ChantierMapPreview extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? Colors.blueGrey[900] : Colors.blue[50],
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.withOpacity(0.2)),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
       ),
       child: Stack(
         children: [
@@ -128,7 +128,7 @@ class ChantierMapPreview extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.red.withOpacity(0.9),
+        color: Colors.red.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(20),
       ),
       child: const Row(

@@ -11,22 +11,33 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   final String _selectedLanguage = 'Français';
   List<Projet> _availableProjects = [];
+  List<UserModel> _cachedUsers = [];
 
   @override
   void initState() {
     super.initState();
-    _loadProjects();
+    _initialLoad();
   }
 
-  // Charge les projets pour pouvoir les assigner aux nouveaux clients
-  Future<void> _loadProjects() async {
-    final projects = await DataStorage.loadAllProjects();
-    setState(() {
-      _availableProjects = projects;
-    });
+  Future<void> _initialLoad() async {
+    final results = await Future.wait([
+      DataStorage.loadAllProjects(),
+      DataStorage.loadAllUsers(),
+    ]);
+
+    if (mounted) {
+      setState(() {
+        _availableProjects = results[0] as List<Projet>;
+        _cachedUsers = results[1] as List<UserModel>;
+      });
+    }
   }
 
   void _showEditAdminDialog(String currentName) {
@@ -85,34 +96,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 15),
                 DropdownButtonFormField<UserRole>(
-                  value: selectedRole,
-                  decoration: const InputDecoration(
-                    labelText: "Rôle de l'utilisateur",
-                  ),
-                  items: UserRole.values.map((role) {
-                    return DropdownMenuItem(
-                      value: role,
-                      child: Text(role.name.toUpperCase()),
-                    );
-                  }).toList(),
-                  onChanged: (val) {
-                    setDialogState(() => selectedRole = val!);
-                  },
+                  initialValue: selectedRole,
+                  decoration: const InputDecoration(labelText: "Rôle"),
+                  items: UserRole.values
+                      .map(
+                        (role) => DropdownMenuItem(
+                          value: role,
+                          child: Text(role.name.toUpperCase()),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (val) => setDialogState(() => selectedRole = val!),
                 ),
-                // SI C'EST UN CLIENT : On affiche la liste des projets pour l'assigner
                 if (selectedRole == UserRole.client) ...[
                   const SizedBox(height: 15),
                   DropdownButtonFormField<String>(
                     decoration: const InputDecoration(
-                      labelText: "Assigner à un projet",
-                      hintText: "Choisir le chantier du client",
+                      labelText: "Assigner au projet",
                     ),
-                    items: _availableProjects.map((p) {
-                      return DropdownMenuItem(value: p.id, child: Text(p.nom));
-                    }).toList(),
-                    onChanged: (val) {
-                      setDialogState(() => selectedProjectId = val);
-                    },
+                    items: _availableProjects
+                        .map(
+                          (p) =>
+                              DropdownMenuItem(value: p.id, child: Text(p.nom)),
+                        )
+                        .toList(),
+                    onChanged: (val) =>
+                        setDialogState(() => selectedProjectId = val),
                   ),
                 ],
               ],
@@ -124,7 +133,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: const Text("Annuler"),
             ),
             ElevatedButton(
-              onPressed: () async {
+              onPressed: () {
                 if (nomController.text.isNotEmpty &&
                     emailController.text.isNotEmpty) {
                   final newUser = UserModel(
@@ -132,15 +141,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     nom: nomController.text,
                     email: emailController.text,
                     role: selectedRole,
-                    chantierId: selectedProjectId, // Liaison cruciale
+                    chantierId: selectedProjectId,
                   );
-
-                  // Sauvegarde dans la liste globale des utilisateurs
-                  List<UserModel> users = await DataStorage.loadAllUsers();
-                  users.add(newUser);
-                  await DataStorage.saveAllUsers(users);
-
-                  if (!context.mounted) return;
+                  _cachedUsers.add(newUser);
+                  DataStorage.saveAllUsers(_cachedUsers);
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -179,7 +183,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: isAdmin ? const Icon(Icons.edit, size: 20) : null,
             onTap: isAdmin ? () => _showEditAdminDialog(user.nom) : null,
           ),
-
           if (isAdmin) ...[
             const Divider(),
             _buildSectionTitle("Administration"),
@@ -191,7 +194,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: _showAddUserDialog,
             ),
           ],
-
           const Divider(),
           _buildSectionTitle("Apparence & Système"),
           SwitchListTile(
@@ -208,7 +210,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: Text(_selectedLanguage),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
           ),
-
           const Divider(),
           _buildSectionTitle("Informations"),
           const ListTile(

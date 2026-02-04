@@ -6,7 +6,6 @@ import '../models/ouvrier_model.dart';
 import '../models/journal_model.dart';
 import '../models/materiel_model.dart';
 import '../models/projet_model.dart';
-import '../data/mock_data.dart';
 import '../services/data_storage.dart';
 import '../services/pdf_service.dart';
 import '../models/report_model.dart';
@@ -36,11 +35,15 @@ class ChantierDetailScreen extends StatefulWidget {
   State<ChantierDetailScreen> createState() => _ChantierDetailScreenState();
 }
 
-class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
+class _ChantierDetailScreenState extends State<ChantierDetailScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   List<Report> _quickReports = [];
   List<JournalEntry> _journalEntries = [];
   List<Ouvrier> _equipe = [];
   List<Materiel> _materiels = [];
+  List<Ouvrier> _availableOuvriers =
+      []; // ✅ FIX: Load from storage instead of global
   bool _isLoading = true;
 
   final List<ConstructionTask> _tasks = [
@@ -54,25 +57,58 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 6, vsync: this);
     _loadChantierData();
   }
 
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadChantierData() async {
-    final savedJournal = await DataStorage.loadJournal(widget.chantier.id);
-    final savedTeam = await DataStorage.loadTeam(widget.chantier.id);
-    final savedMat = await DataStorage.loadMateriels(widget.chantier.id);
-    final savedReports = await DataStorage.loadReportsByChantier(
-      widget.chantier.id,
+    // ✅ FIX: Load all data in parallel with Future.wait
+    final results = await Future.wait([
+      DataStorage.loadJournal(widget.chantier.id),
+      DataStorage.loadTeam(widget.chantier.id),
+      DataStorage.loadMateriels(widget.chantier.id),
+      DataStorage.loadReportsByChantier(widget.chantier.id),
+      DataStorage.loadTeam("annuaire_global"), // ✅ Load available workers
+    ]);
+
+    if (mounted) {
+      setState(() {
+        _journalEntries = results[0] as List<JournalEntry>;
+        _equipe = results[1] as List<Ouvrier>;
+        _materiels = results[2] as List<Materiel>;
+        _quickReports = results[3] as List<Report>;
+        _availableOuvriers =
+            results[4] as List<Ouvrier>; // ✅ Set available workers
+        _isLoading = false;
+        _updateProgression();
+      });
+    }
+  }
+
+  Future<void> _generatePdf() async {
+    // On capture le ScaffoldMessenger avant l'async pour être sûr
+    final messenger = ScaffoldMessenger.of(context);
+
+    messenger.showSnackBar(
+      const SnackBar(content: Text("Génération du PDF en cours...")),
     );
 
-    setState(() {
-      _journalEntries = savedJournal;
-      _equipe = savedTeam;
-      _materiels = savedMat;
-      _quickReports = savedReports;
-      _isLoading = false;
-      _updateProgression();
-    });
+    await PdfService.generateChantierFullReport(
+      chantier: widget.chantier,
+      journal: _journalEntries,
+      reports: _quickReports,
+    );
+
+    if (!mounted) return;
+    messenger.showSnackBar(
+      const SnackBar(content: Text("PDF généré avec succès !")),
+    );
   }
 
   void _updateProgression() {
@@ -80,18 +116,18 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
       widget.chantier.progression = 0.0;
     } else {
       int completed = _tasks.where((t) => t.isDone).length;
-      setState(() {
-        widget.chantier.progression = completed / _tasks.length;
-      });
+      widget.chantier.progression = completed / _tasks.length;
     }
   }
 
   Future<void> _persistAll() async {
-    await DataStorage.saveJournal(widget.chantier.id, _journalEntries);
-    await DataStorage.saveTeam(widget.chantier.id, _equipe);
-    await DataStorage.saveMateriels(widget.chantier.id, _materiels);
-    await DataStorage.saveReports(widget.chantier.id, _quickReports);
-    await DataStorage.saveSingleProject(widget.projet);
+    await Future.wait([
+      DataStorage.saveJournal(widget.chantier.id, _journalEntries),
+      DataStorage.saveTeam(widget.chantier.id, _equipe),
+      DataStorage.saveMateriels(widget.chantier.id, _materiels),
+      DataStorage.saveReports(widget.chantier.id, _quickReports),
+      DataStorage.saveSingleProject(widget.projet),
+    ]);
   }
 
   void _onNewJournalEntry(JournalEntry entry) {
@@ -116,22 +152,11 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
             IconButton(
               icon: const Icon(Icons.picture_as_pdf),
               tooltip: "Exporter le rapport PDF",
-              onPressed: () async {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Génération du PDF en cours..."),
-                  ),
-                );
-                // CORRECTION : Utilisation de la méthode définie dans ton PdfService
-                await PdfService.generateChantierFullReport(
-                  chantier: widget.chantier,
-                  journal: _journalEntries,
-                  reports: _quickReports,
-                );
-              },
+              onPressed: () => _generatePdf(),
             ),
           ],
-          bottom: const TabBar(
+          bottom: TabBar(
+            controller: _tabController,
             isScrollable: true,
             tabAlignment: TabAlignment.start,
             labelColor: Color(0xFFFFD700),
@@ -148,6 +173,7 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
           ),
         ),
         body: TabBarView(
+          controller: _tabController,
           children: [
             _buildOverviewTab(context),
             _buildTasksTab(),
@@ -265,7 +291,6 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
-          // CORRECTION : withValues au lieu de withOpacity
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
@@ -330,90 +355,103 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
   }
 
   Widget _buildTasksTab() {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton(
-        mini: true,
-        backgroundColor: Colors.green,
-        onPressed: _showAddTaskDialog,
-        child: const Icon(Icons.add_task, color: Colors.white),
-      ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _tasks.length,
-        itemBuilder: (context, index) {
-          final task = _tasks[index];
-          return Card(
-            child: CheckboxListTile(
-              title: Text(
-                task.label,
-                style: TextStyle(
-                  decoration: task.isDone ? TextDecoration.lineThrough : null,
-                ),
+    return Stack(
+      children: [
+        ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: _tasks.length,
+          itemBuilder: (context, index) {
+            final task = _tasks[index];
+            return Card(
+              child: CheckboxListTile(
+                title: Text(task.label),
+                value: task.isDone,
+                onChanged: (val) {
+                  setState(() => task.isDone = val!);
+                  _updateProgression();
+                  _persistAll();
+                },
               ),
-              value: task.isDone,
-              onChanged: (val) {
-                setState(() => task.isDone = val!);
-                _updateProgression();
-                _persistAll();
-              },
-            ),
-          );
-        },
-      ),
+            );
+          },
+        ),
+        Positioned(
+          bottom: 16,
+          right: 16,
+          child: FloatingActionButton(
+            heroTag: "fab_tasks", // INDISPENSABLE
+            mini: true,
+            backgroundColor: Colors.green,
+            onPressed: _showAddTaskDialog,
+            child: const Icon(Icons.add_task, color: Colors.white),
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildTeamTab() {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton(
-        mini: true,
-        onPressed: _showAddWorkerDialog,
-        backgroundColor: const Color(0xFF1A334D),
-        child: const Icon(Icons.person_add, color: Colors.white),
-      ),
-      body: ListView.builder(
-        itemCount: _equipe.length,
-        itemBuilder: (context, index) => ListTile(
-          leading: const CircleAvatar(child: Icon(Icons.person)),
-          title: Text(_equipe[index].nom),
-          subtitle: Text(_equipe[index].specialite),
-          trailing: IconButton(
-            icon: const Icon(Icons.delete, color: Colors.red),
-            onPressed: () {
-              setState(() => _equipe.removeAt(index));
-              _persistAll();
-            },
+    return Stack(
+      children: [
+        ListView.builder(
+          itemCount: _equipe.length,
+          itemBuilder: (context, index) => ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.person)),
+            title: Text(_equipe[index].nom),
+            subtitle: Text(_equipe[index].specialite),
+            trailing: IconButton(
+              icon: const Icon(Icons.delete, color: Colors.red),
+              onPressed: () {
+                setState(() => _equipe.removeAt(index));
+                _persistAll();
+              },
+            ),
           ),
         ),
-      ),
+        Positioned(
+          bottom: 16,
+          right: 16,
+          child: FloatingActionButton(
+            heroTag: "fab_team", // INDISPENSABLE
+            mini: true,
+            onPressed: _showAddWorkerDialog,
+            backgroundColor: const Color(0xFF1A334D),
+            child: const Icon(Icons.person_add, color: Colors.white),
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildMaterialsTab() {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton(
-        mini: true,
-        backgroundColor: Colors.orange,
-        onPressed: _showAddMaterialDialog,
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
-      body: ListView.builder(
-        itemCount: _materiels.length,
-        itemBuilder: (context, index) {
-          final m = _materiels[index];
-          return ListTile(
-            leading: const Icon(Icons.inventory, color: Colors.blue),
-            title: Text(m.nom),
-            subtitle: Text("${m.quantite} ${m.unite}"),
-            trailing: Text(
-              "${(m.quantite * m.prixUnitaire).toStringAsFixed(0)} €",
-            ),
-          );
-        },
-      ),
+    return Stack(
+      children: [
+        ListView.builder(
+          itemCount: _materiels.length,
+          itemBuilder: (context, index) {
+            final m = _materiels[index];
+            return ListTile(
+              leading: const Icon(Icons.inventory, color: Colors.blue),
+              title: Text(m.nom),
+              subtitle: Text("${m.quantite} ${m.unite}"),
+              trailing: Text(
+                "${(m.quantite * m.prixUnitaire).toStringAsFixed(0)} €",
+              ),
+            );
+          },
+        ),
+        Positioned(
+          bottom: 16,
+          right: 16,
+          child: FloatingActionButton(
+            heroTag: "fab_materials", // INDISPENSABLE
+            mini: true,
+            backgroundColor: Colors.orange,
+            onPressed: _showAddMaterialDialog,
+            child: const Icon(Icons.add, color: Colors.white),
+          ),
+        ),
+      ],
     );
   }
 
@@ -455,26 +493,33 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen> {
     );
   }
 
+  // ✅ FIX: Use _availableOuvriers from DataStorage instead of globalOuvriers
   void _showAddWorkerDialog() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
+        // Utilise ctx ici
         title: const Text("Ajouter à l'équipe"),
-        content: DropdownButtonFormField<Ouvrier>(
-          items: globalOuvriers
-              .map((o) => DropdownMenuItem(value: o, child: Text(o.nom)))
-              .toList(),
-          onChanged: (val) {
-            if (val != null && !_equipe.any((o) => o.id == val.id)) {
-              setState(() {
-                _equipe.add(val);
-                widget.chantier.depensesActuelles += val.salaireJournalier;
-              });
-              _persistAll();
-            }
-            Navigator.pop(context);
-          },
-        ),
+        content: _availableOuvriers.isEmpty
+            ? const Text("Aucun ouvrier disponible.")
+            : DropdownButtonFormField<Ouvrier>(
+                items: _availableOuvriers
+                    .map((o) => DropdownMenuItem(value: o, child: Text(o.nom)))
+                    .toList(),
+                onChanged: (val) async {
+                  if (val != null && !_equipe.any((o) => o.id == val.id)) {
+                    setState(() {
+                      _equipe.add(val);
+                      widget.chantier.depensesActuelles +=
+                          val.salaireJournalier;
+                    });
+                    await _persistAll();
+                  }
+                  if (ctx.mounted) {
+                    Navigator.pop(ctx);
+                  }
+                },
+              ),
       ),
     );
   }
@@ -595,17 +640,25 @@ class _JournalTabState extends State<JournalTab> {
 
   void _addEntry() {
     if (_textController.text.isNotEmpty || _selectedImage != null) {
+      final now = DateTime.now();
+
+      final String jour = now.day.toString().padLeft(2, '0');
+      final String mois = now.month.toString().padLeft(2, '0');
+      final String heure = now.hour.toString().padLeft(2, '0');
+      final String minute = now.minute.toString().padLeft(2, '0');
+
       final newEntry = JournalEntry(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        date:
-            "Le ${DateTime.now().day}/${DateTime.now().month} à ${DateTime.now().hour}:${DateTime.now().minute}",
+        id: now.millisecondsSinceEpoch.toString(),
+        date: "Le $jour/$mois à $heure:$minute",
         contenu: _textController.text.isEmpty
             ? "Photo sans commentaire"
             : _textController.text,
         auteur: "Chef de chantier",
         imagePath: _selectedImage?.path,
       );
+
       widget.onEntryAdded(newEntry);
+
       setState(() {
         _textController.clear();
         _selectedImage = null;
@@ -632,7 +685,11 @@ class _JournalTabState extends State<JournalTab> {
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.file(_selectedImage!, height: 120),
+                        child: Image.file(
+                          _selectedImage!,
+                          height: 120,
+                          cacheHeight: 240,
+                        ),
                       ),
                       Positioned(
                         right: 0,
@@ -694,6 +751,12 @@ class _JournalTabState extends State<JournalTab> {
                         fit: BoxFit.cover,
                         width: double.infinity,
                         height: 200,
+                        cacheHeight: 400,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          height: 200,
+                          color: Colors.grey[200],
+                          child: const Icon(Icons.broken_image),
+                        ),
                       ),
                     ListTile(
                       title: Text(note.contenu),
@@ -753,7 +816,15 @@ class GalleryTab extends StatelessWidget {
             tag: path,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: Image.file(File(path), fit: BoxFit.cover),
+              child: Image.file(
+                File(path),
+                fit: BoxFit.cover,
+                // ✅ TRÈS IMPORTANT : Force le décodage en basse résolution pour la grille
+                cacheWidth: 300,
+                // Affiche un petit indicateur pendant le chargement du fichier
+                errorBuilder: (context, error, stackTrace) =>
+                    const Icon(Icons.broken_image, color: Colors.grey),
+              ),
             ),
           ),
         );
@@ -773,7 +844,7 @@ class GalleryTab extends StatelessWidget {
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(15),
               ),
-              child: Image.file(File(path)),
+              child: Image.file(File(path), cacheWidth: 1200),
             ),
             Padding(
               padding: const EdgeInsets.all(16),

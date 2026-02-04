@@ -42,6 +42,26 @@ class ChantierAppState extends State<ChantierApp> {
     _loadSettings();
   }
 
+  void updateUser(UserModel user) {
+    setState(() {
+      currentUser = user;
+    });
+  }
+
+  Future<void> updateAdminName(String newName) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('userName', newName);
+    setState(() {
+      currentUser = UserModel(
+        id: currentUser.id,
+        nom: newName,
+        email: currentUser.email,
+        role: currentUser.role,
+        chantierId: currentUser.chantierId,
+      );
+    });
+  }
+
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -55,6 +75,7 @@ class ChantierAppState extends State<ChantierApp> {
           nom: savedName,
           email: currentUser.email,
           role: currentUser.role,
+          chantierId: currentUser.chantierId,
         );
       }
     });
@@ -64,19 +85,6 @@ class ChantierAppState extends State<ChantierApp> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isDarkMode', isDark);
     setState(() => _themeMode = isDark ? ThemeMode.dark : ThemeMode.light);
-  }
-
-  Future<void> updateAdminName(String newName) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('userName', newName);
-    setState(() {
-      currentUser = UserModel(
-        id: currentUser.id,
-        nom: newName,
-        email: currentUser.email,
-        role: currentUser.role,
-      );
-    });
   }
 
   @override
@@ -125,29 +133,87 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
 
+  late final List<Widget> _pages;
+
+  @override
+  void initState() {
+    super.initState();
+    _pages = _buildPages();
+  }
+
+  List<Widget> _buildPages() {
+    final project = widget.currentProject;
+    final user = widget.user;
+
+    return [
+      DashboardView(
+        key: ValueKey('dash_${project.id}'),
+        user: user,
+        projet: project,
+      ),
+      ChantiersScreen(key: ValueKey('chan_${project.id}'), projet: project),
+      user.role != UserRole.client
+          ? OuvriersScreen(
+              key: ValueKey('ouv_${project.id}'),
+              projet: project,
+              user: user,
+            )
+          : SettingsScreen(key: ValueKey('settings')),
+      user.role != UserRole.client
+          ? MaterielScreen(key: ValueKey('mat_${project.id}'), projet: project)
+          : SettingsScreen(key: ValueKey('settings')),
+      user.role == UserRole.chefProjet
+          ? StatsScreen(key: ValueKey('stat_${project.id}'), projet: project)
+          : SettingsScreen(key: ValueKey('settings')),
+      SettingsScreen(key: ValueKey('settings')),
+    ];
+  }
+
+  Widget _getPage(int index) {
+    final project = widget.currentProject;
+    final user = widget.user;
+
+    switch (index) {
+      case 0:
+        return DashboardView(
+          key: ValueKey('dash_${project.id}'),
+          user: user,
+          projet: project,
+        );
+      case 1:
+        return ChantiersScreen(
+          key: ValueKey('chan_${project.id}'),
+          projet: project,
+        );
+      case 2:
+        return user.role != UserRole.client
+            ? OuvriersScreen(
+                key: ValueKey('ouv_${project.id}'),
+                projet: project,
+                user: user,
+              )
+            : const SettingsScreen(key: ValueKey('settings'));
+      case 3:
+        return user.role != UserRole.client
+            ? MaterielScreen(
+                key: ValueKey('mat_${project.id}'),
+                projet: project,
+              )
+            : const SettingsScreen(key: ValueKey('settings'));
+      case 4:
+        return user.role == UserRole.chefProjet
+            ? StatsScreen(key: ValueKey('stat_${project.id}'), projet: project)
+            : const SettingsScreen(key: ValueKey('settings'));
+      case 5:
+        return const SettingsScreen(key: ValueKey('settings'));
+      default:
+        return const SettingsScreen(key: ValueKey('settings'));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     bool isMobile = MediaQuery.of(context).size.width < 800;
-
-    // LA CORRECTION EST ICI : On définit les pages dans un ordre fixe
-    final List<Widget> pages = [];
-    pages.add(
-      DashboardView(user: widget.user, projet: widget.currentProject),
-    ); // 0
-    pages.add(ChantiersScreen(projet: widget.currentProject)); // 1
-
-    if (widget.user.role != UserRole.client) {
-      pages.add(
-        OuvriersScreen(projet: widget.currentProject, user: widget.user),
-      ); // 2
-      pages.add(MaterielScreen(projet: widget.currentProject)); // 3
-    }
-
-    if (widget.user.role == UserRole.chefProjet) {
-      pages.add(StatsScreen(projet: widget.currentProject)); // 4
-    }
-
-    pages.add(const SettingsScreen()); // Dernier Index
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -155,18 +221,16 @@ class _MainShellState extends State<MainShell> {
         title: Text(widget.currentProject.nom),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
-        centerTitle: isMobile,
         elevation: 0,
-        leading: (isMobile || widget.user.role == UserRole.client)
-            ? null
-            : IconButton(
+        leading: (!isMobile && widget.user.role != UserRole.client)
+            ? IconButton(
                 icon: const Icon(Icons.apps_rounded),
-                tooltip: "Changer de projet",
                 onPressed: () => Navigator.pushReplacementNamed(
                   context,
                   '/project_launcher',
                 ),
-              ),
+              )
+            : null,
       ),
       drawer: isMobile
           ? SidebarDrawer(
@@ -175,7 +239,7 @@ class _MainShellState extends State<MainShell> {
               currentProject: widget.currentProject,
               onDestinationSelected: (i) {
                 setState(() => _selectedIndex = i);
-                Navigator.pop(context);
+                if (isMobile) Navigator.pop(context);
               },
             )
           : null,
@@ -190,8 +254,8 @@ class _MainShellState extends State<MainShell> {
             ),
           Expanded(
             child: IndexedStack(
-              index: _selectedIndex >= pages.length ? 0 : _selectedIndex,
-              children: pages,
+              index: _selectedIndex,
+              children: _pages, // ✅ Utiliser la liste pré-construite
             ),
           ),
         ],

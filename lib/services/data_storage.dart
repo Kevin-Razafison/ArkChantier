@@ -7,6 +7,7 @@ import '../models/ouvrier_model.dart';
 import '../models/materiel_model.dart';
 import '../models/report_model.dart';
 import '../models/user_model.dart';
+import 'package:flutter/foundation.dart';
 
 class DataStorage {
   static const String _keyProjects = 'projects_list';
@@ -25,14 +26,20 @@ class DataStorage {
   static Future<List<Projet>> loadAllProjects() async {
     final prefs = await SharedPreferences.getInstance();
     final String? savedData = prefs.getString(_keyProjects);
-    if (savedData == null) return [];
+    if (savedData == null || savedData.isEmpty) return [];
 
-    final List<dynamic> decodedData = jsonDecode(savedData);
-    return decodedData.map((item) => Projet.fromJson(item)).toList();
+    try {
+      final List<dynamic> decodedData = jsonDecode(savedData);
+      return decodedData.map((item) => Projet.fromJson(item)).toList();
+    } catch (e) {
+      debugPrint("Erreur JSON Projets: $e");
+      return [];
+    }
   }
 
+  // --- SAUVEGARDE UNIQUE SÉCURISÉE ---
   static Future<void> saveSingleProject(Projet projet) async {
-    final projets = await loadAllProjects();
+    final List<Projet> projets = await loadAllProjects();
     final index = projets.indexWhere((p) => p.id == projet.id);
 
     if (index != -1) {
@@ -94,10 +101,15 @@ class DataStorage {
   static Future<List<Ouvrier>> loadTeam(String chantierId) async {
     final prefs = await SharedPreferences.getInstance();
     final String? savedData = prefs.getString('team_$chantierId');
-    if (savedData == null) return [];
-    return (jsonDecode(savedData) as List)
-        .map((item) => Ouvrier.fromJson(item))
-        .toList();
+    if (savedData == null || savedData.isEmpty) return [];
+    try {
+      return (jsonDecode(savedData) as List)
+          .map((item) => Ouvrier.fromJson(item))
+          .toList();
+    } catch (e) {
+      debugPrint("Erreur chargement équipe $chantierId: $e");
+      return [];
+    }
   }
 
   // --- GESTION DES MATÉRIELS ---
@@ -113,27 +125,47 @@ class DataStorage {
     );
   }
 
-  static Future<List<Materiel>> loadMateriels(String chantierId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final String? savedData = prefs.getString('materiels_$chantierId');
-    if (savedData == null) return [];
-    return (jsonDecode(savedData) as List)
-        .map((item) => Materiel.fromJson(item))
-        .toList();
-  }
-
-  // --- RÉCUPÉRATION GLOBALE (POUR STATS/INVENTAIRE) ---
+  // --- RÉCUPÉRATION GLOBALE OPTIMISÉE  ---
 
   static Future<List<Materiel>> loadAllMateriels() async {
+    final prefs = await SharedPreferences.getInstance();
+    // 1. On charge les projets une seule fois
     final projets = await loadAllProjects();
+
     List<Materiel> allMat = [];
+
+    // 2. On récupère les données de manière synchrone sur les clés déjà connues
     for (var p in projets) {
       for (var c in p.chantiers) {
-        final mats = await loadMateriels(c.id);
-        allMat.addAll(mats);
+        final String key = 'materiels_${c.id}';
+        final String? data = prefs.getString(key);
+
+        if (data != null && data.isNotEmpty) {
+          try {
+            final List<dynamic> decoded = jsonDecode(data);
+            allMat.addAll(decoded.map((m) => Materiel.fromJson(m)));
+          } catch (e) {
+            debugPrint("Erreur sur matériel ${c.id}: $e");
+          }
+        }
       }
     }
     return allMat;
+  }
+
+  static Future<List<Materiel>> loadMateriels(String chantierId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? savedData = prefs.getString('materiels_$chantierId');
+    if (savedData == null || savedData.isEmpty) return [];
+
+    try {
+      final List<dynamic> decodedData = jsonDecode(savedData);
+      return decodedData.map((item) => Materiel.fromJson(item)).toList();
+    } catch (e) {
+      // ✅ Correction : Utilise debugPrint pour les environnements de développement
+      debugPrint("Erreur chargement matériels $chantierId: $e");
+      return [];
+    }
   }
 
   // --- GESTION DES RAPPORTS (CORRECTIF POUR CHANTIER_DETAIL_SCREEN) ---
@@ -224,16 +256,48 @@ class DataStorage {
     final String? savedData = prefs.getString(_keyUsers);
 
     if (savedData == null || savedData.isEmpty) {
-      // Si vide, on retourne l'admin par défaut
-      return [UserModel.mockAdmin()];
+      // ⬇️ AJOUTE DES UTILISATEURS DE TEST ICI ⬇️
+      final initialUsers = [
+        UserModel(
+          id: '1',
+          nom: 'Admin',
+          email: 'admin@btp.com',
+          role: UserRole.chefProjet,
+        ),
+        UserModel(
+          id: '2',
+          nom: 'Ouvrier Test',
+          email: 'ouvrier@btp.com',
+          role: UserRole.ouvrier,
+        ),
+        UserModel(
+          id: '3',
+          nom: 'Client Test',
+          email: 'client@btp.com',
+          role: UserRole.client,
+          chantierId: 'C_01',
+        ),
+      ];
+      // On les sauvegarde immédiatement pour la prochaine fois
+      await saveAllUsers(initialUsers);
+      return initialUsers;
     }
 
     try {
       final List<dynamic> decodedData = jsonDecode(savedData);
       return decodedData.map((item) => UserModel.fromJson(item)).toList();
     } catch (e) {
-      print("Erreur chargement utilisateurs: $e");
+      debugPrint("Erreur chargement utilisateurs: $e");
       return [UserModel.mockAdmin()];
     }
+  }
+  // --- GESTION DE L'ANNUAIRE GLOBAL DES OUVRIERS ---
+
+  static Future<void> saveGlobalOuvriers(List<Ouvrier> ouvriers) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'team_annuaire_global', // Clé fixe pour l'annuaire
+      jsonEncode(ouvriers.map((o) => o.toJson()).toList()),
+    );
   }
 }

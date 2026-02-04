@@ -59,6 +59,7 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
                   chantiers: [],
                 );
                 await DataStorage.saveSingleProject(newProject);
+                if (!ctx.mounted) return;
                 Navigator.pop(ctx);
                 _loadProjets();
               }
@@ -147,7 +148,7 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
                               ? _buildEmptyState()
                               : ListView.separated(
                                   itemCount: filtered.length,
-                                  separatorBuilder: (_, __) =>
+                                  separatorBuilder: (_, _) =>
                                       const Divider(color: Colors.white10),
                                   itemBuilder: (ctx, i) =>
                                       _buildProjectTile(filtered[i]),
@@ -171,7 +172,7 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
         hintStyle: const TextStyle(color: Colors.grey),
         prefixIcon: const Icon(Icons.search, color: Colors.grey),
         filled: true,
-        fillColor: Colors.white.withOpacity(0.05),
+        fillColor: Colors.white.withValues(alpha: 0.05),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide.none,
@@ -182,13 +183,19 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
 
   Widget _buildProjectTile(Projet p) {
     return ListTile(
-      onTap: () {
-        // Navigation vers le dashboard avec le projet sélectionné
-        Navigator.pushReplacement(
+      onTap: () async {
+        // 1. Un micro-délai pour stabiliser le thread UI
+        await Future.delayed(const Duration(milliseconds: 50));
+
+        if (!mounted) return;
+
+        // 2. Navigation propre
+        Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(
             builder: (ctx) => MainShell(user: widget.user, currentProject: p),
           ),
+          (route) => false, // Efface tout l'historique pour libérer la RAM
         );
       },
       contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
@@ -228,7 +235,7 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
           Icon(
             Icons.architecture,
             size: 80,
-            color: Colors.white.withOpacity(0.1),
+            color: Colors.white.withValues(alpha: 0.1),
           ),
           const SizedBox(height: 16),
           const Text(
