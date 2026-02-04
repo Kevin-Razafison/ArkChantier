@@ -101,13 +101,49 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1A334D),
+      backgroundColor: const Color(0xFF1A334D), // Ton bleu ardoise ARK
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(30),
           child: Column(
             children: [
-              const Icon(Icons.construction, size: 80, color: Colors.white),
+              // ✅ REMPLACEMENT DE L'ICÔNE PAR LE LOGO
+              Hero(
+                tag: 'logo_ark',
+                child: Container(
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Image.asset(
+                    'assets/images/logo.png',
+                    height: 120, // Taille augmentée pour plus d'impact
+                    errorBuilder: (context, error, stackTrace) {
+                      // Fallback si le fichier est manquant pendant tes tests sur CachyOS
+                      return const Icon(
+                        Icons.architecture,
+                        size: 80,
+                        color: Colors.orange,
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 15),
+              const Text(
+                "ARK CHANTIER PRO",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              const Text(
+                "Management & Expertise BTP",
+                style: TextStyle(color: Colors.white60, fontSize: 12),
+              ),
               const SizedBox(height: 40),
               _buildLoginForm(),
             ],

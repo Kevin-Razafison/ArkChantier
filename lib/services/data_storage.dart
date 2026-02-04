@@ -37,6 +37,18 @@ class DataStorage {
     }
   }
 
+  static String encodeProjectForFile(Projet projet) {
+    // On peut ajouter une petite signature au début pour l'authenticité
+    final Map<String, dynamic> data = projet.toJson();
+    return jsonEncode(data);
+  }
+
+  /// Transforme le contenu d'un fichier .ark en objet Projet
+  static Projet decodeProjectFromFile(String content) {
+    final Map<String, dynamic> decoded = jsonDecode(content);
+    return Projet.fromJson(decoded);
+  }
+
   static Future<void> deleteProject(String projectId) async {
     final prefs = await SharedPreferences.getInstance();
     // 1. Récupérer la liste actuelle

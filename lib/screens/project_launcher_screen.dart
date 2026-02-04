@@ -4,6 +4,10 @@ import '../models/projet_model.dart';
 import '../services/data_storage.dart';
 import '../models/user_model.dart';
 import '../main.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 class ProjectLauncherScreen extends StatefulWidget {
   final UserModel user;
@@ -31,6 +35,69 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
         _projets = data;
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _importArkProject() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['ark', 'json'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final file = File(result.files.single.path!);
+        final content = await file.readAsString();
+        final importedProject = DataStorage.decodeProjectFromFile(content);
+
+        await DataStorage.saveSingleProject(importedProject);
+        _loadProjets();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Projet '${importedProject.nom}' importé !"),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("Erreur critique lecteur fichier: $e");
+    }
+  }
+
+  Future<void> _exportProject(Projet p) async {
+    try {
+      final content = DataStorage.encodeProjectForFile(p);
+
+      // Sur Linux, on va enregistrer dans le dossier "Downloads" ou "Documents"
+      final directory =
+          await getDownloadsDirectory() ??
+          await getApplicationDocumentsDirectory();
+      final fileName = '${p.nom.replaceAll(' ', '_')}.ark';
+      final filePath = '${directory.path}/$fileName';
+
+      final file = File(filePath);
+      await file.writeAsString(content);
+
+      if (Platform.isLinux || Platform.isWindows) {
+        // 💡 Puisque SharePlus ne supporte pas les fichiers sur Linux,
+        // on affiche juste un message avec le chemin du fichier.
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Fichier enregistré dans : $filePath")),
+        );
+      } else {
+        await SharePlus.instance.share(
+          ShareParams(
+            files: [XFile(filePath)],
+            subject: 'Export ArkChantier : $fileName',
+            sharePositionOrigin: const Rect.fromLTWH(0, 0, 10, 10),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint("Erreur lors de l'export : $e");
     }
   }
 
@@ -153,21 +220,16 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
             color: const Color(0xFF1E293B),
             child: Column(
               children: [
-                const DrawerHeader(
-                  child: Center(
-                    child: Text(
-                      "ARK CHANTIER\nPRO MANAGER",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.orange,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 20,
-                      ),
-                    ),
+                Image.asset(
+                  'assets/images/logo.png',
+                  height: 150,
+                  errorBuilder: (ctx, err, stack) => const Icon(
+                    Icons.architecture,
+                    color: Colors.orange,
+                    size: 90,
                   ),
                 ),
 
-                // ✅ SECTION RESTREINTE : Visible uniquement pour l'équipe technique
                 if (!isClient) ...[
                   _buildMenuButton(
                     Icons.add_box_outlined,
@@ -177,7 +239,7 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
                   _buildMenuButton(
                     Icons.folder_open,
                     "Ouvrir un dossier",
-                    () {},
+                    _importArkProject,
                   ),
                   _buildMenuButton(
                     Icons.cloud_download_outlined,
@@ -292,7 +354,7 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.orange.withValues(alpha: 0.1), // ✅ Syntax 2026
+          color: Colors.orange.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
@@ -315,10 +377,28 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
         style: const TextStyle(color: Colors.grey, fontSize: 12),
       ),
       trailing: !isClient
-          ? IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.white24),
-              onPressed: () =>
-                  _confirmDeleteProject(p), // ✅ Méthode maintenant définie
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: "Exporter (.ark)",
+                  icon: const Icon(
+                    Icons.share,
+                    color: Colors.blueAccent,
+                    size: 20,
+                  ),
+                  onPressed: () => _exportProject(p),
+                ),
+                IconButton(
+                  tooltip: "Supprimer",
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.white24,
+                    size: 20,
+                  ),
+                  onPressed: () => _confirmDeleteProject(p),
+                ),
+              ],
             )
           : const Icon(
               Icons.arrow_forward_ios,
@@ -330,9 +410,14 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
 
   Widget _buildMenuButton(IconData icon, String label, VoidCallback onTap) {
     return ListTile(
-      leading: Icon(icon, color: Colors.grey),
-      title: Text(label, style: const TextStyle(color: Colors.grey)),
+      leading: Icon(icon, color: Colors.grey, size: 22),
+      title: Text(
+        label,
+        style: const TextStyle(color: Colors.grey, fontSize: 14),
+      ),
       onTap: onTap,
+      // Petit effet au survol (optionnel)
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     );
   }
 

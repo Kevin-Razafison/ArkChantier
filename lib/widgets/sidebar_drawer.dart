@@ -84,19 +84,15 @@ class SidebarDrawer extends StatelessWidget {
           child: Column(
             children: [
               const SizedBox(height: 60),
-              const Icon(Icons.architecture, color: Colors.white, size: 40),
-              const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text(
-                  "ArkChantier PRO",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
+              Image.asset(
+                'assets/images/logo.png',
+                height: 120,
+                errorBuilder: (ctx, err, stack) => const Icon(
+                  Icons.architecture,
+                  color: Colors.white,
+                  size: 90,
                 ),
               ),
-              const Divider(color: Colors.white24, indent: 20, endIndent: 20),
 
               Expanded(
                 child: ListView(
