@@ -176,7 +176,6 @@ class DataStorage {
       final List<dynamic> decodedData = jsonDecode(savedData);
       return decodedData.map((item) => Materiel.fromJson(item)).toList();
     } catch (e) {
-      // ✅ Correction : Utilise debugPrint pour les environnements de développement
       debugPrint("Erreur chargement matériels $chantierId: $e");
       return [];
     }
@@ -270,31 +269,7 @@ class DataStorage {
     final String? savedData = prefs.getString(_keyUsers);
 
     if (savedData == null || savedData.isEmpty) {
-      // ⬇️ AJOUTE DES UTILISATEURS DE TEST ICI ⬇️
-      final initialUsers = [
-        UserModel(
-          id: '1',
-          nom: 'Admin',
-          email: 'admin@btp.com',
-          role: UserRole.chefProjet,
-        ),
-        UserModel(
-          id: '2',
-          nom: 'Ouvrier Test',
-          email: 'ouvrier@btp.com',
-          role: UserRole.ouvrier,
-        ),
-        UserModel(
-          id: '3',
-          nom: 'Client Test',
-          email: 'client@btp.com',
-          role: UserRole.client,
-          chantierId: 'C_01',
-        ),
-      ];
-      // On les sauvegarde immédiatement pour la prochaine fois
-      await saveAllUsers(initialUsers);
-      return initialUsers;
+      return [];
     }
 
     try {

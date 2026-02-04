@@ -310,8 +310,10 @@ class _DashboardViewState extends State<DashboardView>
                               ),
                               _buildKpiItem(
                                 label: "SANTÉ BUDGET",
-                                value:
-                                    "${((globalBudgetConsomme / globalBudgetInitial) * 100).toStringAsFixed(1)}%",
+                                // Ajout d'une condition : si le budget est 0, on affiche "0.0%" au lieu de calculer
+                                value: globalBudgetInitial > 0
+                                    ? "${((globalBudgetConsomme / globalBudgetInitial) * 100).toStringAsFixed(1)}%"
+                                    : "0.0%",
                                 color:
                                     (globalBudgetConsomme > globalBudgetInitial)
                                     ? Colors.red

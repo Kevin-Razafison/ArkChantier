@@ -202,14 +202,21 @@ class Chantier {
 }
 
 extension ChantierAnalytics on Chantier {
+  double get budgetConsommePercent {
+    // Si le budget est 0, on évite le NaN en retournant 0.0
+    if (budgetInitial <= 0) return 0.0;
+    return (depensesActuelles / budgetInitial).clamp(0.0, 1.0);
+  }
+
   Color get healthColor {
     if (progression <= 0) return Colors.blue;
+    if (budgetInitial <= 0) {
+      return Colors.green;
+    }
+
     double ratio = (depensesActuelles / budgetInitial) / progression;
     if (ratio > 1.2) return Colors.red;
     if (ratio > 1.0) return Colors.orange;
     return Colors.green;
   }
-
-  double get budgetConsommePercent =>
-      (depensesActuelles / budgetInitial).clamp(0.0, 1.0);
 }
