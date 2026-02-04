@@ -198,11 +198,13 @@ class _StatsScreenState extends State<StatsScreen>
                       ),
                     ),
                     const SizedBox(height: 20),
-                    FinancialPieChart(
-                      montantMO: _statsData!['mo']!,
-                      montantMat: _statsData!['materiel']!,
+                    SizedBox(
+                      height: 250, // Ajuste cette valeur selon tes besoins
+                      child: FinancialPieChart(
+                        montantMO: _statsData!['mo']!,
+                        montantMat: _statsData!['materiel']!,
+                      ),
                     ),
-
                     const SizedBox(height: 30),
                     const Text(
                       "Rapports PDF",
@@ -217,17 +219,26 @@ class _StatsScreenState extends State<StatsScreen>
                     _buildReportCard(
                       context,
                       title: "Bilan Financier Projet",
-                      subtitle: "Rapport détaillé Budget vs Réel",
+                      subtitle:
+                          "Générer et partager le rapport", // Texte mis à jour
                       icon: Icons.analytics,
                       iconColor: Colors.blueAccent,
                       bgColor: Colors.blue.shade50,
                       onTap: () async {
-                        await PdfService.generateFinancialReport(
-                          projet: widget.projet,
-                          totalMat: _statsData!['materiel']!,
-                          totalMO: _statsData!['mo']!,
-                          totalEngage: _statsData!['global']!,
-                        );
+                        setState(
+                          () => _isSyncing = true,
+                        ); // On active le loader de l'AppBar
+
+                        try {
+                          await PdfService.generateFinancialReport(
+                            projet: widget.projet,
+                            totalMat: _statsData!['materiel']!,
+                            totalMO: _statsData!['mo']!,
+                            totalEngage: _statsData!['global']!,
+                          );
+                        } finally {
+                          if (mounted) setState(() => _isSyncing = false);
+                        }
                       },
                     ),
                     const SizedBox(height: 8),
@@ -236,7 +247,8 @@ class _StatsScreenState extends State<StatsScreen>
                     _buildReportCard(
                       context,
                       title: "Inventaire des Matériaux",
-                      subtitle: "Liste exhaustive des stocks",
+                      subtitle:
+                          "Liste et partage des stocks", // Texte mis à jour
                       icon: Icons.inventory_2,
                       iconColor: Colors.redAccent,
                       bgColor: Colors.red.shade50,
@@ -250,10 +262,15 @@ class _StatsScreenState extends State<StatsScreen>
                             .toList();
 
                         if (filtered.isNotEmpty) {
-                          await PdfService.generateInventoryReport(
-                            filtered,
-                            widget.projet.devise,
-                          );
+                          setState(() => _isSyncing = true);
+                          try {
+                            await PdfService.generateInventoryReport(
+                              filtered,
+                              widget.projet.devise,
+                            );
+                          } finally {
+                            if (mounted) setState(() => _isSyncing = false);
+                          }
                         } else {
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(

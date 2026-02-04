@@ -1,19 +1,50 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:http/http.dart' as http;
 import 'package:printing/printing.dart';
-import 'dart:typed_data';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart';
+
 import '../models/ouvrier_model.dart';
 import '../models/materiel_model.dart';
 import '../models/chantier_model.dart';
 import '../models/projet_model.dart';
 
 class PdfService {
+  // --- NOUVELLE MÉTHODE : PRÉVISUALISATION, IMPRESSION ET PARTAGE ---
+  static Future<void> _handlePdfOutput(pw.Document pdf, String fileName) async {
+    try {
+      // 1. Convertir le PDF en octets
+      final Uint8List bytes = await pdf.save();
+
+      // 2. Obtenir un dossier temporaire sur le téléphone
+      final Directory tempDir = await getTemporaryDirectory();
+      final String path = "${tempDir.path}/$fileName";
+      final File file = File(path);
+
+      // 3. Écrire le fichier physiquement
+      await file.writeAsBytes(bytes);
+
+      // 4. Ouvrir DIRECTEMENT le menu de partage (WhatsApp, Email, etc.)
+
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(path)],
+          subject: 'Export ArkChantier : $fileName',
+          sharePositionOrigin: Rect.fromLTWH(0, 0, 10, 10),
+        ),
+      );
+    } catch (e) {
+      debugPrint("Erreur lors de l'export/partage : $e");
+    }
+  }
+
   static Future<pw.MemoryImage> _getLogo() async {
     try {
-      // ByteData est maintenant reconnu grâce à dart:typed_data
       final ByteData logoData = await rootBundle.load('assets/images/logo.png');
       return pw.MemoryImage(logoData.buffer.asUint8List());
     } catch (e) {
@@ -24,7 +55,6 @@ class PdfService {
     }
   }
 
-  // --- HEADER REUTILISABLE ---
   static pw.Widget _buildHeader(
     pw.MemoryImage logo,
     String title,
@@ -49,8 +79,8 @@ class PdfService {
                 ),
                 pw.Text("Date : ${date.day}/${date.month}/${date.year}"),
                 pw.Text(
-                  "Systeme ArkChantier Pro",
-                  style: pw.TextStyle(fontSize: 8, color: PdfColors.grey),
+                  "Système ArkChantier Pro",
+                  style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey),
                 ),
               ],
             ),
@@ -73,7 +103,9 @@ class PdfService {
     final pdf = pw.Document();
     final now = DateTime.now();
     final logo = await _getLogo();
+
     final font = await PdfGoogleFonts.robotoRegular();
+    final boldFont = await PdfGoogleFonts.robotoBold();
 
     double budgetGlobal = projet.chantiers.fold(
       0,
@@ -86,7 +118,7 @@ class PdfService {
 
     pdf.addPage(
       pw.MultiPage(
-        theme: pw.ThemeData.withFont(base: font),
+        theme: pw.ThemeData.withFont(base: font, bold: boldFont),
         pageFormat: PdfPageFormat.a4,
         build: (pw.Context context) => [
           _buildHeader(
@@ -94,9 +126,8 @@ class PdfService {
             "BILAN FINANCIER : ${projet.nom.toUpperCase()}",
             now,
           ),
-
           pw.Text(
-            "Resume de l'avancement",
+            "Résumé de l'avancement",
             style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
           ),
           pw.SizedBox(height: 10),
@@ -123,9 +154,8 @@ class PdfService {
             ],
           ),
           pw.SizedBox(height: 20),
-
           pw.Text(
-            "Analyse des Depenses Engages",
+            "Analyse des Dépenses Engagées",
             style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
           ),
           pw.SizedBox(height: 10),
@@ -138,38 +168,37 @@ class PdfService {
               fontWeight: pw.FontWeight.bold,
             ),
             headers: [
-              'Poste de depense',
+              'Poste de dépense',
               'Montant (${projet.devise})',
               '% du total',
             ],
             data: [
               [
-                'Materiels et Stocks',
+                'Matériels et Stocks',
                 '${totalMat.toStringAsFixed(2)} ${projet.devise}',
                 '${totalEngage > 0 ? (totalMat / totalEngage * 100).toInt() : 0}%',
               ],
               [
-                'Main d\'oeuvre',
+                'Main d\'œuvre',
                 '${totalMO.toStringAsFixed(2)} ${projet.devise}',
                 '${totalEngage > 0 ? (totalMO / totalEngage * 100).toInt() : 0}%',
               ],
               [
-                'TOTAL ENGAGE',
+                'TOTAL ENGAGÉ',
                 '${totalEngage.toStringAsFixed(2)} ${projet.devise}',
                 '100%',
               ],
             ],
           ),
-
           pw.SizedBox(height: 30),
           pw.Text(
-            "Detail par Chantier",
+            "Détail par Chantier",
             style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
           ),
           pw.SizedBox(height: 10),
           pw.TableHelper.fromTextArray(
             headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
-            headers: ['Chantier', 'Budget Initial', 'Depenses', 'Ecart'],
+            headers: ['Chantier', 'Budget Initial', 'Dépenses', 'Écart'],
             data: projet.chantiers
                 .map(
                   (c) => [
@@ -185,10 +214,7 @@ class PdfService {
       ),
     );
 
-    await Printing.layoutPdf(
-      onLayout: (format) async => pdf.save(),
-      name: 'Bilan_Financier_${projet.nom}.pdf',
-    );
+    await _handlePdfOutput(pdf, 'Bilan_Financier_${projet.nom}.pdf');
   }
 
   static pw.Widget _buildStatTile(String label, String value) {
@@ -234,7 +260,7 @@ class PdfService {
         theme: pw.ThemeData.withFont(base: font),
         pageFormat: PdfPageFormat.a4,
         build: (pw.Context context) => [
-          _buildHeader(logo, "ETAT CONSOLIDE DES STOCKS", now),
+          _buildHeader(logo, "ÉTAT CONSOLIDÉ DES STOCKS", now),
           pw.TableHelper.fromTextArray(
             border: pw.TableBorder.all(color: PdfColors.grey300),
             headerStyle: pw.TextStyle(
@@ -244,7 +270,7 @@ class PdfService {
             headerDecoration: const pw.BoxDecoration(
               color: PdfColors.blueGrey900,
             ),
-            headers: ['Designation', 'Qte', 'Unite', 'Total ($devise)'],
+            headers: ['Désignation', 'Qté', 'Unité', 'Total ($devise)'],
             data: inventaire
                 .map(
                   (item) => [
@@ -277,10 +303,7 @@ class PdfService {
       ),
     );
 
-    await Printing.layoutPdf(
-      onLayout: (format) async => pdf.save(),
-      name: 'Inventaire_Global.pdf',
-    );
+    await _handlePdfOutput(pdf, 'Inventaire_Global.pdf');
   }
 
   // --- 3. BULLETIN DE PAIE OUVRIER ---
@@ -310,19 +333,19 @@ class PdfService {
             children: [
               _buildHeader(logo, "BULLETIN DE PAIE", now),
               pw.Text(
-                "EMPLOYE : ${worker.nom.toUpperCase()}",
+                "EMPLOYÉ : ${worker.nom.toUpperCase()}",
                 style: pw.TextStyle(
                   fontWeight: pw.FontWeight.bold,
                   fontSize: 14,
                 ),
               ),
-              pw.Text("Specialite : ${worker.specialite}"),
+              pw.Text("Spécialité : ${worker.specialite}"),
               pw.SizedBox(height: 30),
               pw.TableHelper.fromTextArray(
-                headerDecoration: pw.BoxDecoration(
+                headerDecoration: const pw.BoxDecoration(
                   color: PdfColors.blueGrey800,
                 ),
-                headers: ['Designation', 'Volume', 'Taux Journalier', 'Total'],
+                headers: ['Désignation', 'Volume', 'Taux Journalier', 'Total'],
                 data: [
                   [
                     'Prestation Travail',
@@ -337,7 +360,7 @@ class PdfService {
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Text(
-                    "Signature employe",
+                    "Signature employé",
                     style: pw.TextStyle(
                       fontSize: 8,
                       fontStyle: pw.FontStyle.italic,
@@ -347,7 +370,7 @@ class PdfService {
                     padding: const pw.EdgeInsets.all(10),
                     color: PdfColors.blue50,
                     child: pw.Text(
-                      "NET A PAYER : ${totalDu.toStringAsFixed(2)} $devise",
+                      "NET À PAYER : ${totalDu.toStringAsFixed(2)} $devise",
                       style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
                     ),
                   ),
@@ -359,16 +382,12 @@ class PdfService {
       ),
     );
 
-    await Printing.layoutPdf(
-      onLayout: (format) async => pdf.save(),
-      name: 'Paye_${worker.nom}.pdf',
-    );
+    await _handlePdfOutput(pdf, 'Paye_${worker.nom}.pdf');
   }
 
-  // --- 4. RAPPORT COMPLET CHANTIER (AVEC PHOTOS) ---
+  // --- 4. RAPPORT COMPLET CHANTIER ---
   static Future<void> generateChantierFullReport({
     required Chantier chantier,
-    // On ajoute les incidents ici
     required List<Incident> incidents,
   }) async {
     final pdf = pw.Document();
@@ -387,8 +406,6 @@ class PdfService {
             "RAPPORT D'ACTIVITÉ : ${chantier.nom.toUpperCase()}",
             now,
           ),
-
-          // --- SECTION RÉSUMÉ ---
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
@@ -403,12 +420,8 @@ class PdfService {
             ],
           ),
           pw.SizedBox(height: 20),
-
-          // --- INSERTION DE LA CARTE ---
           mapWidget,
           pw.SizedBox(height: 20),
-
-          // --- SECTION INCIDENTS ---
           pw.Text(
             "JOURNAL DES INCIDENTS",
             style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
@@ -460,16 +473,14 @@ class PdfService {
                         incident.imagePath!.isNotEmpty)
                       pw.Padding(
                         padding: const pw.EdgeInsets.only(top: 10),
-                        child:
-                            (incident.imagePath != null &&
-                                File(incident.imagePath!).existsSync())
+                        child: File(incident.imagePath!).existsSync()
                             ? pw.Image(
                                 pw.MemoryImage(
                                   File(incident.imagePath!).readAsBytesSync(),
                                 ),
                                 height: 150,
                               )
-                            : pw.SizedBox(), // Si pas d'image, on ne met rien
+                            : pw.SizedBox(),
                       ),
                   ],
                 ),
@@ -479,16 +490,12 @@ class PdfService {
       ),
     );
 
-    await Printing.layoutPdf(
-      onLayout: (format) async => pdf.save(),
-      name: 'Rapport_Complet_${chantier.nom}.pdf',
-    );
+    await _handlePdfOutput(pdf, 'Rapport_Complet_${chantier.nom}.pdf');
   }
 
   static Future<pw.Widget> _buildMapSection(Chantier chantier) async {
     final mapUrl =
         'https://static-maps.yandex.ru/1.x/?ll=${chantier.longitude},${chantier.latitude}&z=14&l=map&size=450,200';
-
     try {
       final response = await http.get(Uri.parse(mapUrl));
       if (response.statusCode == 200) {
