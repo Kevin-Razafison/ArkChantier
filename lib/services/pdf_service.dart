@@ -389,6 +389,7 @@ class PdfService {
   static Future<void> generateChantierFullReport({
     required Chantier chantier,
     required List<Incident> incidents,
+    required List<Ouvrier> equipage,
   }) async {
     final pdf = pw.Document();
     final now = DateTime.now();
@@ -419,6 +420,23 @@ class PdfService {
               ),
             ],
           ),
+          pw.Text(
+            "ÉQUIPE PRÉSENTE AUJOURD'HUI",
+            style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 10),
+          pw.TableHelper.fromTextArray(
+            headerDecoration: const pw.BoxDecoration(color: PdfColors.blue100),
+            headers: ['Nom', 'Spécialité', 'Statut'],
+            data: equipage.map((o) {
+              final String today = DateTime.now().toIso8601String().split(
+                'T',
+              )[0];
+              final bool isPresent = o.joursPointes.contains(today);
+              return [o.nom, o.specialite, isPresent ? "PRÉSENT" : "ABSENT"];
+            }).toList(),
+          ),
+          pw.SizedBox(height: 20),
           pw.SizedBox(height: 20),
           mapWidget,
           pw.SizedBox(height: 20),

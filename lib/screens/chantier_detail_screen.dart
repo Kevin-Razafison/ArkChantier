@@ -16,11 +16,20 @@ class ConstructionTask {
   String id;
   String label;
   bool isDone;
+  DateTime startDate;
+  DateTime endDate;
+  double progression;
+
   ConstructionTask({
     required this.id,
     required this.label,
+    required this.startDate,
+    required this.endDate,
+    this.progression = 0.0,
     this.isDone = false,
   });
+
+  bool get isDelayed => !isDone && DateTime.now().isAfter(endDate);
 }
 
 class ChantierDetailScreen extends StatefulWidget {
@@ -44,18 +53,44 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen>
   List<JournalEntry> _journalEntries = [];
   List<Ouvrier> _equipe = [];
   List<Materiel> _materiels = [];
-  List<Ouvrier> _availableOuvriers =
-      []; // ✅ FIX: Load from storage instead of global
+  List<Ouvrier> _availableOuvriers = [];
   bool _isLoading = true;
 
   final List<ConstructionTask> _tasks = [
-    ConstructionTask(id: "1", label: "Terrassement"),
-    ConstructionTask(id: "2", label: "Fondations"),
-    ConstructionTask(id: "3", label: "Dalle RDC"),
-    ConstructionTask(id: "4", label: "Murs"),
-    ConstructionTask(id: "5", label: "Toiture"),
+    ConstructionTask(
+      id: "1",
+      label: "Terrassement",
+      startDate: DateTime.now().subtract(const Duration(days: 5)),
+      endDate: DateTime.now().subtract(const Duration(days: 1)),
+      progression: 1.0,
+      isDone: true,
+    ),
+    ConstructionTask(
+      id: "2",
+      label: "Fondations",
+      startDate: DateTime.now(),
+      endDate: DateTime.now().add(const Duration(days: 7)),
+      progression: 0.4,
+    ),
+    ConstructionTask(
+      id: "3",
+      label: "Dalle RDC",
+      startDate: DateTime.now().add(const Duration(days: 8)),
+      endDate: DateTime.now().add(const Duration(days: 12)),
+    ),
+    ConstructionTask(
+      id: "4",
+      label: "Murs",
+      startDate: DateTime.now().add(const Duration(days: 13)),
+      endDate: DateTime.now().add(const Duration(days: 25)),
+    ),
+    ConstructionTask(
+      id: "5",
+      label: "Toiture",
+      startDate: DateTime.now().add(const Duration(days: 26)),
+      endDate: DateTime.now().add(const Duration(days: 35)),
+    ),
   ];
-
   @override
   void initState() {
     super.initState();
@@ -70,13 +105,12 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen>
   }
 
   Future<void> _loadChantierData() async {
-    // ✅ FIX: Load all data in parallel with Future.wait
     final results = await Future.wait([
       DataStorage.loadJournal(widget.chantier.id),
       DataStorage.loadTeam(widget.chantier.id),
       DataStorage.loadMateriels(widget.chantier.id),
       DataStorage.loadReportsByChantier(widget.chantier.id),
-      DataStorage.loadTeam("annuaire_global"), // ✅ Load available workers
+      DataStorage.loadTeam("annuaire_global"),
     ]);
 
     if (mounted) {
@@ -85,8 +119,7 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen>
         _equipe = results[1] as List<Ouvrier>;
         _materiels = results[2] as List<Materiel>;
         _quickReports = results[3] as List<Report>;
-        _availableOuvriers =
-            results[4] as List<Ouvrier>; // ✅ Set available workers
+        _availableOuvriers = results[4] as List<Ouvrier>;
         _isLoading = false;
         _updateProgression();
       });
@@ -100,16 +133,26 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen>
       const SnackBar(content: Text("Génération du PDF en cours...")),
     );
 
-    // Correction de l'appel :
-    await PdfService.generateChantierFullReport(
-      chantier: widget.chantier,
-      incidents: widget.chantier.incidents, // On passe les incidents ici
-    );
+    try {
+      await PdfService.generateChantierFullReport(
+        chantier: widget.chantier,
+        incidents: widget.chantier.incidents,
+        equipage:
+            _equipe, // On passe la liste des ouvriers chargés en initState
+      );
 
-    if (!mounted) return;
-    messenger.showSnackBar(
-      const SnackBar(content: Text("PDF généré avec succès !")),
-    );
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text("PDF généré avec succès !")),
+      );
+    } catch (e) {
+      debugPrint("Erreur PDF: $e");
+      if (mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text("Erreur lors de la génération du PDF")),
+        );
+      }
+    }
   }
 
   void _updateProgression() {
@@ -240,7 +283,7 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen>
   }
 
   void _showAddIncidentDialog() {
-    String? capturedImagePath; // 👈 On stocke le chemin ici
+    String? capturedImagePath;
     final titleController = TextEditingController();
     final descController = TextEditingController();
     Priorite selectedPriorite = Priorite.moyenne;
@@ -288,7 +331,7 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen>
                     description: descController.text,
                     date: DateTime.now(),
                     priorite: selectedPriorite,
-                    imagePath: capturedImagePath, // 👈 ON AJOUTE LA PHOTO ICI
+                    imagePath: capturedImagePath,
                   );
 
                   setState(() {
@@ -475,36 +518,227 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen>
   Widget _buildTasksTab() {
     return Stack(
       children: [
-        ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: _tasks.length,
-          itemBuilder: (context, index) {
-            final task = _tasks[index];
-            return Card(
-              child: CheckboxListTile(
-                title: Text(task.label),
-                value: task.isDone,
-                onChanged: (val) {
-                  setState(() => task.isDone = val!);
-                  _updateProgression();
-                  _persistAll();
-                },
+        Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              color: Colors.grey[100],
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.calendar_today,
+                    size: 16,
+                    color: Color(0xFF1A334D),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    "Planning & Avancement",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blueGrey[800],
+                    ),
+                  ),
+                ],
               ),
-            );
-          },
+            ),
+            Expanded(
+              child: _tasks.isEmpty
+                  ? const Center(child: Text("Aucune tâche au planning"))
+                  : ListView.builder(
+                      padding: const EdgeInsets.only(top: 10, bottom: 80),
+                      itemCount: _tasks.length,
+                      itemBuilder: (context, index) {
+                        final task = _tasks[index];
+                        final bool delayed = task.isDelayed;
+
+                        return Dismissible(
+                          key: Key(task.id),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            color: Colors.red,
+                            child: const Icon(
+                              Icons.delete,
+                              color: Colors.white,
+                            ),
+                          ),
+                          onDismissed: (direction) {
+                            setState(() => _tasks.removeAt(index));
+                            _updateProgression();
+                            _persistAll();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text("${task.label} supprimé")),
+                            );
+                          },
+                          child: Card(
+                            margin: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            elevation: delayed ? 4 : 1,
+                            shadowColor: delayed ? Colors.redAccent : null,
+                            child: InkWell(
+                              onTap: () => _showEditTaskProgression(task),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            task.label,
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: delayed
+                                                  ? Colors.red
+                                                  : Colors.black87,
+                                            ),
+                                          ),
+                                        ),
+                                        if (delayed)
+                                          const Icon(
+                                            Icons.warning_amber_rounded,
+                                            color: Colors.red,
+                                            size: 18,
+                                          ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          "${(task.progression * 100).toInt()}%",
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Stack(
+                                      children: [
+                                        Container(
+                                          height: 8,
+                                          width: double.infinity,
+                                          decoration: BoxDecoration(
+                                            color: Colors.grey[200],
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                          ),
+                                        ),
+                                        FractionallySizedBox(
+                                          widthFactor: task.progression,
+                                          child: Container(
+                                            height: 8,
+                                            decoration: BoxDecoration(
+                                              gradient: LinearGradient(
+                                                colors: delayed
+                                                    ? [
+                                                        Colors.red,
+                                                        Colors.orange,
+                                                      ]
+                                                    : [
+                                                        const Color(0xFF1A334D),
+                                                        Colors.blue,
+                                                      ],
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          "Du ${task.startDate.day}/${task.startDate.month} au ${task.endDate.day}/${task.endDate.month}",
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: delayed
+                                                ? Colors.red
+                                                : Colors.grey[600],
+                                            fontWeight: delayed
+                                                ? FontWeight.bold
+                                                : FontWeight.normal,
+                                          ),
+                                        ),
+                                        if (delayed)
+                                          const Text(
+                                            "EN RETARD",
+                                            style: TextStyle(
+                                              color: Colors.red,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
         ),
         Positioned(
           bottom: 16,
           right: 16,
           child: FloatingActionButton(
-            heroTag: "fab_tasks", // INDISPENSABLE
-            mini: true,
+            heroTag: "fab_add_task_planning",
             backgroundColor: Colors.green,
             onPressed: _showAddTaskDialog,
             child: const Icon(Icons.add_task, color: Colors.white),
           ),
         ),
       ],
+    );
+  }
+
+  // Dialogue pour mettre à jour l'avancement d'une tâche
+  void _showEditTaskProgression(ConstructionTask task) {
+    double tempVal = task.progression;
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text("Avancement : ${task.label}"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text("${(tempVal * 100).toInt()}% réalisé"),
+              Slider(
+                value: tempVal,
+                activeColor: const Color(0xFF1A334D),
+                onChanged: (v) => setDialogState(() => tempVal = v),
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  task.progression = tempVal;
+                  task.isDone = tempVal == 1.0;
+                  _updateProgression();
+                });
+                _persistAll();
+                Navigator.pop(ctx);
+              },
+              child: const Text("Valider"),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -575,43 +809,115 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen>
 
   void _showAddTaskDialog() {
     final ctrl = TextEditingController();
+    DateTime startDate = DateTime.now();
+    DateTime endDate = DateTime.now().add(const Duration(days: 7));
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Nouvelle Tâche"),
-        content: TextField(
-          controller: ctrl,
-          decoration: const InputDecoration(hintText: "Nom"),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("Annuler"),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (ctrl.text.isNotEmpty) {
-                setState(
-                  () => _tasks.add(
-                    ConstructionTask(
-                      id: DateTime.now().toString(),
-                      label: ctrl.text,
-                    ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text("Nouvelle Tâche Planning"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: ctrl,
+                  decoration: const InputDecoration(
+                    labelText: "Nom de la tâche",
+                    hintText: "ex: Charpente",
                   ),
-                );
-                _updateProgression();
-                _persistAll();
-                Navigator.pop(ctx);
-              }
-            },
-            child: const Text("Ajouter"),
+                ),
+                const SizedBox(height: 10),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.calendar_today, color: Colors.blue),
+                  title: const Text(
+                    "Date de début",
+                    style: TextStyle(fontSize: 14),
+                  ),
+                  subtitle: Text(
+                    "${startDate.day}/${startDate.month}/${startDate.year}",
+                  ),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      initialDate: startDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2030),
+                    );
+                    if (picked != null) {
+                      setDialogState(() => startDate = picked);
+                    }
+                  },
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(
+                    Icons.event_available,
+                    color: Colors.orange,
+                  ),
+                  title: const Text(
+                    "Date de fin prévue",
+                    style: TextStyle(fontSize: 14),
+                  ),
+                  subtitle: Text(
+                    "${endDate.day}/${endDate.month}/${endDate.year}",
+                  ),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      initialDate: endDate,
+                      firstDate:
+                          startDate, // Empêche de finir avant de commencer
+                      lastDate: DateTime(2030),
+                    );
+                    if (picked != null) {
+                      setDialogState(() => endDate = picked);
+                    }
+                  },
+                ),
+              ],
+            ),
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Annuler"),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1A334D),
+              ),
+              onPressed: () {
+                if (ctrl.text.isNotEmpty) {
+                  setState(() {
+                    _tasks.add(
+                      ConstructionTask(
+                        id: DateTime.now().millisecondsSinceEpoch.toString(),
+                        label: ctrl.text,
+                        startDate: startDate,
+                        endDate: endDate,
+                        progression: 0.0,
+                      ),
+                    );
+                  });
+                  _updateProgression();
+                  _persistAll();
+                  Navigator.pop(ctx);
+                }
+              },
+              child: const Text(
+                "Ajouter",
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  // ✅ FIX: Use _availableOuvriers from DataStorage instead of globalOuvriers
   void _showAddWorkerDialog() {
     showDialog(
       context: context,
