@@ -211,7 +211,7 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
     switch (role) {
       case UserRole.chefProjet:
         return Colors.purple;
-      case UserRole.ouvrier: // 🛠️ Remplacé 'chefChantier' par 'ouvrier'
+      case UserRole.ouvrier:
         return Colors.orange;
       case UserRole.client:
         return Colors.blue;
