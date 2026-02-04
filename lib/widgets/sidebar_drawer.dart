@@ -30,7 +30,7 @@ class SidebarDrawer extends StatelessWidget {
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(ctx); // Ferme le dialogue d'abord
+              Navigator.pop(ctx);
               Navigator.pushNamedAndRemoveUntil(
                 context,
                 '/login',
@@ -52,16 +52,17 @@ class SidebarDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool isMobile = MediaQuery.of(context).size.width < 800;
 
-    // Liste des onglets synchronisés avec l'IndexedStack
     final List<_MenuItemData> tabs = [];
     tabs.add(_MenuItemData(Icons.dashboard, "Dashboard"));
     tabs.add(_MenuItemData(Icons.business, "Chantiers"));
 
+    // Seuls les non-clients voient les ouvriers et le matériel
     if (role != UserRole.client) {
       tabs.add(_MenuItemData(Icons.people, "Ouvriers"));
       tabs.add(_MenuItemData(Icons.inventory_2, "Matériel"));
     }
 
+    // Seul le Chef de projet voit les stats
     if (role == UserRole.chefProjet) {
       tabs.add(_MenuItemData(Icons.bar_chart, "Statistiques"));
     }
@@ -74,8 +75,8 @@ class SidebarDrawer extends StatelessWidget {
         elevation: 0,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.only(
-            topRight: Radius.circular(15),
-            bottomRight: Radius.circular(15),
+            topRight: Radius.circular(1),
+            bottomRight: Radius.circular(1),
           ),
         ),
         child: Container(
@@ -101,19 +102,18 @@ class SidebarDrawer extends StatelessWidget {
                 child: ListView(
                   padding: EdgeInsets.zero,
                   children: [
-                    // Rendu des onglets normaux
                     ...tabs.asMap().entries.map((entry) {
                       return _buildItem(
                         context,
                         entry.value.icon,
                         entry.value.label,
                         entry.key,
-                        false, // isSpecial est false ici
+                        false,
                         isMobile,
                       );
                     }),
 
-                    // Item spécial (Navigation directe vers un nouvel écran)
+                    // Item spécial : Uniquement Chef de projet (pas client)
                     if (role == UserRole.chefProjet) ...[
                       const Divider(
                         color: Colors.white10,
@@ -125,7 +125,7 @@ class SidebarDrawer extends StatelessWidget {
                         Icons.group_work,
                         "Équipe Projet",
                         -1,
-                        true, // isSpecial est true ici
+                        true,
                         isMobile,
                       ),
                     ],
@@ -162,7 +162,7 @@ class SidebarDrawer extends StatelessWidget {
     String label,
     int index,
     bool isSpecial,
-    bool isMobile, //
+    bool isMobile,
   ) {
     bool isSelected = !isSpecial && currentIndex == index;
 
@@ -188,7 +188,7 @@ class SidebarDrawer extends StatelessWidget {
           ),
         ),
         onTap: () {
-          if (currentIndex == index) {
+          if (!isSpecial && currentIndex == index) {
             if (isMobile) Navigator.pop(context);
             return;
           }
@@ -255,7 +255,6 @@ class SidebarDrawer extends StatelessWidget {
   }
 }
 
-// CORRECTION : Suppression du paramètre inutilisé 'isSpecial'
 class _MenuItemData {
   final IconData icon;
   final String label;

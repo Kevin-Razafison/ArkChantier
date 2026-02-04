@@ -3,7 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../models/projet_model.dart';
 import '../services/data_storage.dart';
 import '../models/user_model.dart';
-import '../main.dart'; // Pour accéder à MainShell
+import '../main.dart';
 
 class ProjectLauncherScreen extends StatefulWidget {
   final UserModel user;
@@ -26,10 +26,12 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
 
   Future<void> _loadProjets() async {
     final data = await DataStorage.loadAllProjects();
-    setState(() {
-      _projets = data;
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _projets = data;
+        _isLoading = false;
+      });
+    }
   }
 
   void _showCreateProjectDialog() {
@@ -73,15 +75,26 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _projets
-        .where((p) => p.nom.toLowerCase().contains(_searchQuery.toLowerCase()))
-        .toList();
+    final bool isClient = widget.user.role == UserRole.client;
+
+    // Filtrage des projets : Si client, on ne montre que son projet (lié à chantierId)
+    // Sinon, on montre tout pour l'admin/chef
+    final filtered = _projets.where((p) {
+      final matchesSearch = p.nom.toLowerCase().contains(
+        _searchQuery.toLowerCase(),
+      );
+      if (isClient) {
+        return matchesSearch &&
+            p.chantiers.any((c) => c.id == widget.user.chantierId);
+      }
+      return matchesSearch;
+    }).toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       body: Row(
         children: [
-          // BARRE LATÉRALE GAUCHE (Actions)
+          // BARRE LATÉRALE GAUCHE (Actions Filtrées)
           Container(
             width: 280,
             color: const Color(0xFF1E293B),
@@ -100,17 +113,48 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
                     ),
                   ),
                 ),
-                _buildMenuButton(
-                  Icons.add_box_outlined,
-                  "Nouveau Projet",
-                  _showCreateProjectDialog,
-                ),
-                _buildMenuButton(Icons.folder_open, "Ouvrir un dossier", () {}),
-                _buildMenuButton(
-                  Icons.cloud_download_outlined,
-                  "Importer de l'ERP",
-                  () {},
-                ),
+
+                // ✅ SECTION RESTREINTE : Visible uniquement pour l'équipe technique
+                if (!isClient) ...[
+                  _buildMenuButton(
+                    Icons.add_box_outlined,
+                    "Nouveau Projet",
+                    _showCreateProjectDialog,
+                  ),
+                  _buildMenuButton(
+                    Icons.folder_open,
+                    "Ouvrir un dossier",
+                    () {},
+                  ),
+                  _buildMenuButton(
+                    Icons.cloud_download_outlined,
+                    "Importer de l'ERP",
+                    () {},
+                  ),
+                ] else ...[
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    child: Text(
+                      "ESPACE CLIENT",
+                      style: TextStyle(
+                        color: Colors.orange,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ),
+                  _buildMenuButton(
+                    Icons.dashboard_customize,
+                    "Mes Chantiers",
+                    () {},
+                  ),
+                  _buildMenuButton(
+                    Icons.support_agent,
+                    "Contacter le Chef",
+                    () {},
+                  ),
+                ],
+
                 const Spacer(),
                 const Padding(
                   padding: EdgeInsets.all(16.0),
@@ -130,9 +174,9 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    "Projets Récents",
-                    style: TextStyle(
+                  Text(
+                    isClient ? "Votre Projet" : "Projets Récents",
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 32,
                       fontWeight: FontWeight.w300,
@@ -145,7 +189,7 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
                       ? const Center(child: CircularProgressIndicator())
                       : Expanded(
                           child: filtered.isEmpty
-                              ? _buildEmptyState()
+                              ? _buildEmptyState(isClient)
                               : ListView.separated(
                                   itemCount: filtered.length,
                                   separatorBuilder: (_, _) =>
@@ -168,7 +212,7 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
       onChanged: (v) => setState(() => _searchQuery = v),
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
-        hintText: "Rechercher un projet...",
+        hintText: "Rechercher un dossier...",
         hintStyle: const TextStyle(color: Colors.grey),
         prefixIcon: const Icon(Icons.search, color: Colors.grey),
         filled: true,
@@ -182,20 +226,19 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
   }
 
   Widget _buildProjectTile(Projet p) {
+    final bool isClient = widget.user.role == UserRole.client;
+
     return ListTile(
       onTap: () async {
-        // 1. Un micro-délai pour stabiliser le thread UI
         await Future.delayed(const Duration(milliseconds: 50));
-
         if (!mounted) return;
 
-        // 2. Navigation propre
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(
             builder: (ctx) => MainShell(user: widget.user, currentProject: p),
           ),
-          (route) => false, // Efface tout l'historique pour libérer la RAM
+          (route) => false,
         );
       },
       contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
@@ -207,13 +250,15 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
         ),
       ),
       subtitle: Text(
-        "${p.chantiers.length} chantiers actifs • Créé le ${p.dateCreation.day}/${p.dateCreation.month}",
+        isClient
+            ? "Accès en lecture seule • Mis à jour aujourd'hui"
+            : "${p.chantiers.length} chantiers actifs • Créé le ${p.dateCreation.day}/${p.dateCreation.month}",
         style: const TextStyle(color: Colors.grey, fontSize: 12),
       ),
-      trailing: const Icon(
-        Icons.arrow_forward_ios,
-        color: Colors.white24,
-        size: 14,
+      trailing: Icon(
+        isClient ? Icons.remove_red_eye : Icons.arrow_forward_ios,
+        color: isClient ? Colors.orange : Colors.white24,
+        size: 16,
       ),
       hoverColor: Colors.white10,
     );
@@ -227,20 +272,22 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(bool isClient) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.architecture,
+            isClient ? Icons.lock_person : Icons.architecture,
             size: 80,
             color: Colors.white.withValues(alpha: 0.1),
           ),
           const SizedBox(height: 16),
-          const Text(
-            "Aucun projet trouvé",
-            style: TextStyle(color: Colors.grey),
+          Text(
+            isClient
+                ? "Aucun projet n'est lié à votre compte client."
+                : "Aucun projet trouvé",
+            style: const TextStyle(color: Colors.grey),
           ),
         ],
       ),

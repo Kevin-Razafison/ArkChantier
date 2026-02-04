@@ -12,6 +12,7 @@ import '../widgets/photo_reporter.dart';
 import '../models/report_model.dart';
 import '../models/ouvrier_model.dart';
 import '../models/materiel_model.dart';
+import '../widgets/weather_banner.dart';
 
 class ChecklistTask {
   final String title;
@@ -161,11 +162,15 @@ class _DashboardViewState extends State<DashboardView>
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // Header Section
             SliverPadding(
               padding: const EdgeInsets.all(24.0),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
+                  // --- AJOUT ICI ---
+                  WeatherBanner(city: actuel.lieu),
+                  const SizedBox(height: 20),
+
+                  // ------------------
                   Text(
                     "PROJET : ${widget.projet.nom.toUpperCase()}",
                     style: const TextStyle(
@@ -182,12 +187,11 @@ class _DashboardViewState extends State<DashboardView>
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 10), // Un peu réduit pour l'équilibre
                 ]),
               ),
             ),
 
-            // Grid Section avec SliverGrid
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               sliver: SliverGrid(
@@ -237,7 +241,6 @@ class _DashboardViewState extends State<DashboardView>
       floatingActionButton: isClient ? null : _buildFAB(context),
     );
   }
-
   // --- Widgets internes sans ListView.builder (car déjà dans un Sliver) ---
 
   Widget _listProgresSliver() {
