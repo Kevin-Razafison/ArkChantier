@@ -45,13 +45,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // 2. VÉRIFICATION : L'utilisateur doit exister ET le mot de passe doit être correct
       // Note : On utilise "1234" comme exemple, à remplacer par user.password si tu l'as ajouté
-      if (user == null || password != "1234") {
+      if (user == null ||
+          !EncryptionService.verifyPassword(password, user.passwordHash)) {
         if (!mounted) return;
         _showError("Identifiants incorrects");
         setState(() => _isLoading = false);
         return;
       }
-
       if (!mounted) return;
 
       // 3. CONNEXION RÉUSSIE
