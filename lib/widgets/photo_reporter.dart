@@ -65,7 +65,10 @@ class _PhotoReporterState extends State<PhotoReporter> {
                   backgroundColor: Colors.red,
                   child: IconButton(
                     icon: const Icon(Icons.delete, color: Colors.white),
-                    onPressed: () => setState(() => _image = null),
+                    onPressed: () => {
+                      setState(() => _image = null),
+                      widget.onImageSaved(""),
+                    },
                   ),
                 ),
               ),

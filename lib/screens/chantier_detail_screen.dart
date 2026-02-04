@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:uuid/uuid.dart';
+import '../widgets/photo_reporter.dart';
 import 'dart:io';
 import '../models/chantier_model.dart';
 import '../models/ouvrier_model.dart';
@@ -57,7 +59,7 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 6, vsync: this);
+    _tabController = TabController(length: 7, vsync: this);
     _loadChantierData();
   }
 
@@ -169,6 +171,13 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen>
               Tab(icon: Icon(Icons.build), text: "Matériels"),
               Tab(icon: Icon(Icons.history), text: "Journal"),
               Tab(icon: Icon(Icons.photo_library), text: "Galerie"),
+              Tab(
+                icon: Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.redAccent,
+                ),
+                text: "Incidents",
+              ),
             ],
           ),
         ),
@@ -184,6 +193,116 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen>
               entries: _journalEntries,
             ),
             GalleryTab(entries: _journalEntries, quickReports: _quickReports),
+            _buildIncidentsTab(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIncidentsTab() {
+    return Stack(
+      children: [
+        ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: widget.chantier.incidents.length,
+          itemBuilder: (context, index) {
+            final incident = widget.chantier.incidents[index];
+            return Card(
+              child: ListTile(
+                leading: Icon(
+                  Icons.report_problem,
+                  color: incident.priorite == Priorite.critique
+                      ? Colors.red
+                      : Colors.orange,
+                ),
+                title: Text(
+                  incident.titre,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text(incident.description),
+                trailing: Text("${incident.date.day}/${incident.date.month}"),
+              ),
+            );
+          },
+        ),
+        Positioned(
+          bottom: 16,
+          right: 16,
+          child: FloatingActionButton(
+            heroTag: "fab_incidents",
+            backgroundColor: Colors.redAccent,
+            onPressed: _showAddIncidentDialog,
+            child: const Icon(Icons.add_alert, color: Colors.white),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showAddIncidentDialog() {
+    String? capturedImagePath; // 👈 On stocke le chemin ici
+    final titleController = TextEditingController();
+    final descController = TextEditingController();
+    Priorite selectedPriorite = Priorite.moyenne;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+          left: 20,
+          right: 20,
+          top: 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              "SIGNALER UN INCIDENT",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 15),
+
+            // --- TON WIDGET PHOTO ICI ---
+            PhotoReporter(onImageSaved: (path) => capturedImagePath = path),
+
+            const SizedBox(height: 15),
+            TextField(
+              controller: titleController,
+              decoration: const InputDecoration(labelText: "Titre"),
+            ),
+            TextField(
+              controller: descController,
+              decoration: const InputDecoration(labelText: "Description"),
+            ),
+
+            // ... (Menu pour choisir la priorité)
+            ElevatedButton(
+              onPressed: () {
+                if (titleController.text.isNotEmpty) {
+                  final newIncident = Incident(
+                    id: const Uuid().v4(),
+                    chantierId: widget.chantier.id,
+                    titre: titleController.text,
+                    description: descController.text,
+                    date: DateTime.now(),
+                    priorite: selectedPriorite,
+                    imagePath: capturedImagePath, // 👈 ON AJOUTE LA PHOTO ICI
+                  );
+
+                  setState(() {
+                    widget.chantier.incidents.add(newIncident);
+                  });
+
+                  // Sauvegarde via ton DataStorage
+                  DataStorage.saveSingleProject(widget.projet);
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text("ENREGISTRER L'INCIDENT"),
+            ),
           ],
         ),
       ),
@@ -819,9 +938,7 @@ class GalleryTab extends StatelessWidget {
               child: Image.file(
                 File(path),
                 fit: BoxFit.cover,
-                // ✅ TRÈS IMPORTANT : Force le décodage en basse résolution pour la grille
                 cacheWidth: 300,
-                // Affiche un petit indicateur pendant le chargement du fichier
                 errorBuilder: (context, error, stackTrace) =>
                     const Icon(Icons.broken_image, color: Colors.grey),
               ),

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class WeatherData {
@@ -37,7 +38,7 @@ class WeatherService {
         return WeatherData.fromJson(jsonDecode(response.body));
       }
     } catch (e) {
-      print("Erreur météo: $e");
+      debugPrint("Erreur météo: $e");
     }
     return null;
   }

@@ -13,6 +13,7 @@ import '../models/report_model.dart';
 import '../models/ouvrier_model.dart';
 import '../models/materiel_model.dart';
 import '../widgets/weather_banner.dart';
+import '../widgets/incident_widget.dart';
 
 class ChecklistTask {
   final String title;
@@ -231,6 +232,25 @@ class _DashboardViewState extends State<DashboardView>
                       ),
                     ),
                   InfoCard(title: "PROGRÈS", child: _listProgresSliver()),
+                  InfoCard(
+                    title: "JOURNAL D'INCIDENTS",
+                    child: SingleChildScrollView(
+                      child: IncidentList(
+                        incidents: [
+                          // Exemple manuel pour tester le rendu
+                          Incident(
+                            id: "1",
+                            chantierId: actuel.id,
+                            titre: "Retard Livraison",
+                            description:
+                                "Le camion de béton est bloqué en douane",
+                            date: DateTime.now(),
+                            priorite: Priorite.haute,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ]),
               ),
             ),

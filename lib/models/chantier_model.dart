@@ -15,6 +15,48 @@ extension StatutChantierExtension on StatutChantier {
 
 enum TypeDepense { materiel, mainOeuvre, transport, divers }
 
+enum Priorite { basse, moyenne, haute, critique }
+
+class Incident {
+  final String id;
+  final String chantierId;
+  final String titre;
+  final String description;
+  final DateTime date;
+  final Priorite priorite;
+  final String? imagePath;
+
+  Incident({
+    required this.id,
+    required this.chantierId,
+    required this.titre,
+    required this.description,
+    required this.date,
+    this.priorite = Priorite.moyenne,
+    this.imagePath,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'chantierId': chantierId,
+    'titre': titre,
+    'description': description,
+    'date': date.toIso8601String(),
+    'priorite': priorite.index,
+    'imagePath': imagePath,
+  };
+
+  factory Incident.fromJson(Map<String, dynamic> json) => Incident(
+    id: json['id'],
+    chantierId: json['chantierId'],
+    titre: json['titre'],
+    description: json['description'],
+    date: DateTime.parse(json['date']),
+    priorite: Priorite.values[json['priorite'] as int],
+    imagePath: json['imagePath'],
+  );
+}
+
 class Depense {
   final String id;
   final String titre;
@@ -59,6 +101,7 @@ class Chantier {
   final double latitude;
   final double longitude;
   List<Depense> depenses;
+  List<Incident> incidents; // Type maintenant reconnu
 
   Chantier({
     required this.id,
@@ -72,7 +115,8 @@ class Chantier {
     this.latitude = 48.8566,
     this.longitude = 2.3522,
     this.depenses = const [],
-  });
+    List<Incident>? incidents,
+  }) : incidents = incidents ?? []; // Retrait du "this." inutile selon ton log
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -86,6 +130,7 @@ class Chantier {
     'latitude': latitude,
     'longitude': longitude,
     'depenses': depenses.map((d) => d.toJson()).toList(),
+    'incidents': incidents.map((i) => i.toJson()).toList(), // Sauvegarde
   };
 
   factory Chantier.fromJson(Map<String, dynamic> json) => Chantier(
@@ -101,6 +146,9 @@ class Chantier {
     longitude: (json['longitude'] as num? ?? 2.3522).toDouble(),
     depenses: json['depenses'] != null
         ? (json['depenses'] as List).map((d) => Depense.fromJson(d)).toList()
+        : [],
+    incidents: json['incidents'] != null
+        ? (json['incidents'] as List).map((i) => Incident.fromJson(i)).toList()
         : [],
   );
 }
