@@ -22,6 +22,10 @@ class _OuvriersScreenState extends State<OuvriersScreen>
   @override
   bool get wantKeepAlive => true;
 
+  // Variables pour la sélection multiple
+  final Set<String> _selectedIds = {};
+  bool get _isSelectionMode => _selectedIds.isNotEmpty;
+
   List<Ouvrier> _allOuvriers = [];
   List<Ouvrier> _filteredOuvriers = [];
   final TextEditingController _searchController = TextEditingController();
@@ -36,7 +40,6 @@ class _OuvriersScreenState extends State<OuvriersScreen>
 
   Future<void> _loadData() async {
     try {
-      // Chargement depuis l'annuaire global
       final savedOuvriers = await DataStorage.loadTeam("annuaire_global");
       if (mounted) {
         setState(() {
@@ -63,26 +66,81 @@ class _OuvriersScreenState extends State<OuvriersScreen>
     });
   }
 
+  // --- ACTIONS DE GROUPE (BATCH ACTIONS) ---
+
+  Future<void> _batchPointage() async {
+    if (widget.projet.chantiers.isEmpty) return;
+
+    final String chantierId = widget.projet.chantiers.first.id;
+    int count = 0;
+
+    for (String id in _selectedIds) {
+      final worker = _allOuvriers.firstWhere((o) => o.id == id);
+      if (!worker.joursPointes.contains(_today)) {
+        await _togglePointage(worker, chantierId);
+        count++;
+      }
+    }
+
+    setState(() => _selectedIds.clear());
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("$count ouvrier(s) pointé(s) présent(s).")),
+      );
+    }
+  }
+
+  Future<void> _batchDelete() async {
+    final confirm = await _showDeleteConfirmSelection();
+    if (confirm == true) {
+      setState(() {
+        _allOuvriers.removeWhere((o) => _selectedIds.contains(o.id));
+        _selectedIds.clear();
+        _filterOuvriers(_searchController.text);
+      });
+      await DataStorage.saveTeam("annuaire_global", _allOuvriers);
+    }
+  }
+
+  Future<bool?> _showDeleteConfirmSelection() {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Supprimer la sélection ?"),
+        content: Text(
+          "Voulez-vous retirer ces ${_selectedIds.length} ouvriers de l'annuaire ?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("ANNULER"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("SUPPRIMER", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- LOGIQUE DE POINTAGE INDIVIDUEL ---
+
   Future<void> _togglePointage(Ouvrier worker, String chantierId) async {
-    final String today = DateTime.now().toIso8601String().split('T')[0];
-
     setState(() {
-      if (worker.joursPointes.contains(today)) {
-        worker.joursPointes.remove(today);
-        // Optionnel : Retirer la dépense correspondante si tu veux être ultra précis
+      if (worker.joursPointes.contains(_today)) {
+        worker.joursPointes.remove(_today);
       } else {
-        worker.joursPointes.add(today);
+        worker.joursPointes.add(_today);
 
-        // AJOUT : Créer une dépense automatique pour le chantier
         final newDepense = Depense(
-          id: "pay_${worker.id}_$today",
+          id: "pay_${worker.id}_$_today",
           titre: "Paie : ${worker.nom}",
           montant: worker.salaireJournalier,
           date: DateTime.now(),
           type: TypeDepense.mainOeuvre,
         );
 
-        // Trouver le chantier actuel et lui ajouter la dépense
         final indexChantier = widget.projet.chantiers.indexWhere(
           (c) => c.id == chantierId,
         );
@@ -94,7 +152,6 @@ class _OuvriersScreenState extends State<OuvriersScreen>
       }
     });
 
-    // Sauvegarde globale
     await DataStorage.saveTeam("annuaire_global", _allOuvriers);
     await DataStorage.saveSingleProject(widget.projet);
   }
@@ -105,17 +162,7 @@ class _OuvriersScreenState extends State<OuvriersScreen>
     final bool canEdit = widget.user.role != UserRole.client;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Gestion de l'Équipe"),
-        backgroundColor: const Color(0xFF1A334D),
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.qr_code_scanner),
-            onPressed: () => _openScanner(),
-          ),
-        ],
-      ),
+      appBar: _isSelectionMode ? _buildSelectionAppBar() : _buildNormalAppBar(),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
@@ -144,55 +191,58 @@ class _OuvriersScreenState extends State<OuvriersScreen>
                           itemCount: _filteredOuvriers.length,
                           itemBuilder: (context, index) {
                             final worker = _filteredOuvriers[index];
-
-                            // Version simple sans Hero pour éviter les freezes GPU
-                            if (!canEdit) {
-                              return _buildWorkerCard(worker, false);
-                            }
-
-                            return Dismissible(
-                              key: Key("worker_${worker.id}"),
-                              direction: DismissDirection.endToStart,
-                              confirmDismiss: (direction) async {
-                                return await _showDeleteConfirm(worker);
-                              },
-                              onDismissed: (_) async {
-                                setState(() {
-                                  _allOuvriers.removeWhere(
-                                    (o) => o.id == worker.id,
-                                  );
-                                  _filterOuvriers(_searchController.text);
-                                });
-                                await DataStorage.saveTeam(
-                                  "annuaire_global",
-                                  _allOuvriers,
-                                );
-                              },
-                              background: Container(
-                                color: Colors.red,
-                                alignment: Alignment.centerRight,
-                                padding: const EdgeInsets.only(right: 20),
-                                child: const Icon(
-                                  Icons.delete,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              child: _buildWorkerCard(worker, true),
-                            );
+                            return _buildWorkerCard(worker, canEdit);
                           },
                         ),
                 ),
               ],
             ),
-      floatingActionButton: canEdit
+      floatingActionButton: canEdit && !_isSelectionMode
           ? FloatingActionButton(
-              heroTag:
-                  "fab_add_worker", // Tag unique pour éviter les erreurs Hero de navigation
+              heroTag: "fab_add_worker",
               backgroundColor: Colors.orange,
               onPressed: _showAddWorkerDialog,
               child: const Icon(Icons.person_add, color: Colors.white),
             )
           : null,
+    );
+  }
+
+  AppBar _buildNormalAppBar() {
+    return AppBar(
+      title: const Text("Gestion de l'Équipe"),
+      backgroundColor: const Color(0xFF1A334D),
+      foregroundColor: Colors.white,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.qr_code_scanner),
+          onPressed: () => _openScanner(),
+        ),
+      ],
+    );
+  }
+
+  AppBar _buildSelectionAppBar() {
+    return AppBar(
+      leading: IconButton(
+        icon: const Icon(Icons.close),
+        onPressed: () => setState(() => _selectedIds.clear()),
+      ),
+      title: Text("${_selectedIds.length} sélectionné(s)"),
+      backgroundColor: Colors.orange,
+      foregroundColor: Colors.white,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.done_all),
+          tooltip: "Pointer la sélection",
+          onPressed: _batchPointage,
+        ),
+        IconButton(
+          icon: const Icon(Icons.delete),
+          tooltip: "Supprimer la sélection",
+          onPressed: _batchDelete,
+        ),
+      ],
     );
   }
 
@@ -219,67 +269,73 @@ class _OuvriersScreenState extends State<OuvriersScreen>
 
   Widget _buildWorkerCard(Ouvrier worker, bool canEdit) {
     bool isPresent = worker.joursPointes.contains(_today);
+    bool isSelected = _selectedIds.contains(worker.id);
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      elevation: 2,
+      color: isSelected ? Colors.orange.withValues(alpha: 0.1) : null,
+      elevation: isSelected ? 4 : 1,
       child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: isPresent ? Colors.green : Colors.blueGrey,
-          child: isPresent
-              ? const Icon(Icons.check, color: Colors.white)
-              : Text(
-                  worker.nom.isNotEmpty ? worker.nom[0].toUpperCase() : "?",
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
+        onLongPress: () {
+          if (canEdit) setState(() => _selectedIds.add(worker.id));
+        },
+        onTap: () {
+          if (_isSelectionMode) {
+            setState(() {
+              isSelected
+                  ? _selectedIds.remove(worker.id)
+                  : _selectedIds.add(worker.id);
+            });
+          } else {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) =>
+                    OuvrierDetailScreen(worker: worker, projet: widget.projet),
+              ),
+            );
+          }
+        },
+        leading: _isSelectionMode
+            ? Checkbox(
+                value: isSelected,
+                activeColor: Colors.orange,
+                onChanged: (bool? value) {
+                  setState(() {
+                    value!
+                        ? _selectedIds.add(worker.id)
+                        : _selectedIds.remove(worker.id);
+                  });
+                },
+              )
+            : Stack(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: Colors.blueGrey.shade100,
+                    child: Text(
+                      worker.nom.isNotEmpty ? worker.nom[0].toUpperCase() : "?",
+                    ),
                   ),
-                ),
-        ),
+                  if (isPresent)
+                    const Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: CircleAvatar(
+                        radius: 8,
+                        backgroundColor: Colors.green,
+                        child: Icon(Icons.check, size: 10, color: Colors.white),
+                      ),
+                    ),
+                ],
+              ),
         title: Text(
           worker.nom,
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: Text(worker.specialite),
-        trailing: canEdit
-            ? IconButton(
-                icon: Icon(
-                  isPresent ? Icons.check_circle : Icons.radio_button_unchecked,
-                  color: isPresent ? Colors.green : Colors.grey,
-                ),
-                onPressed: () =>
-                    _togglePointage(worker, widget.projet.chantiers.first.id),
-              )
-            : const Icon(Icons.chevron_right),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) =>
-                OuvrierDetailScreen(worker: worker, projet: widget.projet),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<bool?> _showDeleteConfirm(Ouvrier worker) {
-    return showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Supprimer l'ouvrier ?"),
-        content: Text(
-          "Voulez-vous vraiment retirer ${worker.nom} de l'annuaire ?",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text("ANNULER"),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("SUPPRIMER", style: TextStyle(color: Colors.red)),
-          ),
-        ],
+        trailing: _isSelectionMode
+            ? null
+            : Icon(Icons.chevron_right, color: Colors.grey.shade400),
       ),
     );
   }
@@ -358,9 +414,8 @@ class _OuvriersScreenState extends State<OuvriersScreen>
               final List<Barcode> barcodes = capture.barcodes;
               for (final barcode in barcodes) {
                 if (barcode.rawValue != null) {
-                  final String workerId = barcode.rawValue!;
-                  _handleQRScan(workerId);
-                  Navigator.pop(context); // Ferme le scanner après détection
+                  _handleQRScan(barcode.rawValue!);
+                  Navigator.pop(context);
                   break;
                 }
               }
@@ -374,9 +429,7 @@ class _OuvriersScreenState extends State<OuvriersScreen>
   void _handleQRScan(String workerId) {
     try {
       final worker = _allOuvriers.firstWhere((o) => o.id == workerId);
-      // On appelle la fonction de pointage qu'on a déjà corrigée
       _togglePointage(worker, widget.projet.chantiers.first.id);
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Pointage validé pour : ${worker.nom}"),
@@ -386,7 +439,7 @@ class _OuvriersScreenState extends State<OuvriersScreen>
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Ouvrier non reconnu ou absent de l'annuaire"),
+          content: Text("Ouvrier non reconnu"),
           backgroundColor: Colors.red,
         ),
       );
