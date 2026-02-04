@@ -228,8 +228,6 @@ class SidebarDrawer extends StatelessWidget {
         roleLabel = "OPÉRATEUR";
         roleColor = Colors.orangeAccent;
         break;
-      default:
-        break;
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

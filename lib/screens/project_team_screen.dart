@@ -42,13 +42,13 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
     final index = _allUsers.indexWhere((u) => u.id == user.id);
 
     if (index != -1) {
-      // 1. Mise à jour immédiate de la mémoire pour la fluidité
       _allUsers[index] = UserModel(
         id: user.id,
         nom: user.nom,
         email: user.email,
         role: user.role,
         chantierId: widget.projet.id,
+        passwordHash: user.passwordHash,
       );
 
       // 2. Rafraîchissement UI instantané (pas de freeze)
@@ -74,6 +74,7 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
         email: user.email,
         role: user.role,
         chantierId: null,
+        passwordHash: user.passwordHash,
       );
 
       setState(() {
@@ -210,12 +211,10 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
     switch (role) {
       case UserRole.chefProjet:
         return Colors.purple;
-      case UserRole.chefChantier:
+      case UserRole.ouvrier: // 🛠️ Remplacé 'chefChantier' par 'ouvrier'
         return Colors.orange;
       case UserRole.client:
         return Colors.blue;
-      default:
-        return Colors.grey;
     }
   }
 }

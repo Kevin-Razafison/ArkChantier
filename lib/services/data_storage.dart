@@ -51,16 +51,22 @@ class DataStorage {
 
   static Future<void> deleteProject(String projectId) async {
     final prefs = await SharedPreferences.getInstance();
-    // 1. Récupérer la liste actuelle
-    List<Projet> projects = await loadAllProjects();
-    // 2. Filtrer pour enlever celui qui correspond à l'ID
-    projects.removeWhere((p) => p.id == projectId);
-    // 3. Sauvegarder la nouvelle liste
-    final String encoded = jsonEncode(projects.map((p) => p.toJson()).toList());
-    await prefs.setString('all_projects', encoded);
 
+    // 1. Charger et Filtrer (On utilise la constante _keyProjects pour la cohérence)
+    List<Projet> projects = await loadAllProjects();
+    projects.removeWhere((p) => p.id == projectId);
+
+    // 2. Sauvegarder la liste nettoyée via la méthode centralisée
+    await saveAllProjects(projects);
+
+    // 3. Nettoyage des données liées (Supprime tout ce qui est rattaché à cet ID)
+    // On boucle sur les chantiers potentiels pour nettoyer leurs données spécifiques
+    // car projectId != chantierId dans ton architecture
     await prefs.remove("team_$projectId");
     await prefs.remove("reports_$projectId");
+    await prefs.remove("materiels_$projectId");
+
+    debugPrint("Projet $projectId et données associées supprimés.");
   }
 
   // --- SAUVEGARDE UNIQUE SÉCURISÉE ---

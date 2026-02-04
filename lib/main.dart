@@ -11,6 +11,7 @@ import 'screens/materiel_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/project_launcher_screen.dart';
 import 'screens/login_screen.dart';
+import 'services/encryption_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,6 +35,7 @@ class ChantierAppState extends State<ChantierApp> {
     nom: 'Admin',
     email: 'admin@chantier.com',
     role: UserRole.chefProjet,
+    passwordHash: EncryptionService.hashPassword("1234"),
   );
 
   @override
@@ -58,6 +60,7 @@ class ChantierAppState extends State<ChantierApp> {
         email: currentUser.email,
         role: currentUser.role,
         chantierId: currentUser.chantierId,
+        passwordHash: currentUser.passwordHash,
       );
     });
   }
@@ -76,6 +79,7 @@ class ChantierAppState extends State<ChantierApp> {
           email: currentUser.email,
           role: currentUser.role,
           chantierId: currentUser.chantierId,
+          passwordHash: currentUser.passwordHash,
         );
       }
     });

@@ -3,6 +3,7 @@ import '../main.dart';
 import '../models/user_model.dart';
 import '../models/projet_model.dart';
 import '../services/data_storage.dart';
+import '../services/encryption_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -75,6 +76,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     final emailController = TextEditingController();
     UserRole selectedRole = UserRole.ouvrier;
     String? selectedProjectId;
+    final passwordController = TextEditingController();
 
     showDialog(
       context: context,
@@ -142,6 +144,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                     email: emailController.text,
                     role: selectedRole,
                     chantierId: selectedProjectId,
+                    passwordHash: EncryptionService.hashPassword(
+                      passwordController.text,
+                    ), // 🛡️ Hashé ici
                   );
                   _cachedUsers.add(newUser);
                   DataStorage.saveAllUsers(_cachedUsers);

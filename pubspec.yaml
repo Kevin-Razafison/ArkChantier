@@ -40,6 +40,7 @@ dependencies:
   qr_flutter: ^4.1.0  # Pour afficher le QR Code de l'ouvrier
   mobile_scanner: ^5.1.0 # Pour scanner le code avec la caméra
   file_picker: ^8.0.0
+  crypto: ^3.0.3
 
 
   # The following adds the Cupertino Icons font to your application.

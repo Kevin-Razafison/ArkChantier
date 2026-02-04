@@ -1,9 +1,6 @@
-enum UserRole {
-  client,
-  ouvrier, // Ajouté pour correspondre à ton Login et Main
-  chefChantier,
-  chefProjet,
-}
+import '../services/encryption_service.dart';
+
+enum UserRole { chefProjet, client, ouvrier }
 
 class UserModel {
   final String id;
@@ -11,6 +8,7 @@ class UserModel {
   final String email;
   final UserRole role;
   final String? chantierId;
+  final String passwordHash; // 👈 AJOUTE CETTE LIGNE
 
   UserModel({
     required this.id,
@@ -18,33 +16,39 @@ class UserModel {
     required this.email,
     required this.role,
     this.chantierId,
+    required this.passwordHash, // 👈 AJOUTE CE PARAMÈTRE
   });
 
+  // N'oublie pas de mettre à jour tes méthodes de sérialisation JSON si tu en as
   Map<String, dynamic> toJson() => {
     'id': id,
     'nom': nom,
     'email': email,
     'role': role.index,
     'chantierId': chantierId,
+    'passwordHash': passwordHash, // 👈 ICI AUSSI
   };
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
-      id: json['id']?.toString() ?? '0',
-      nom: json['nom'] ?? 'Inconnu',
-      email: json['email'] ?? '',
-      role:
-          UserRole.values[(json['role'] is int &&
-                  json['role'] < UserRole.values.length)
-              ? json['role']
-              : 0],
+      id: json['id'],
+      nom: json['nom'],
+      email: json['email'],
+      role: UserRole.values[json['role']],
       chantierId: json['chantierId'],
+      passwordHash:
+          json['passwordHash'] ?? '', // Sécurité pour les anciens comptes
     );
   }
-  static UserModel mockAdmin() => UserModel(
-    id: '1',
-    nom: 'Jean Projet',
-    email: 'admin@btp.com',
-    role: UserRole.chefProjet,
-  );
+
+  static UserModel mockAdmin() {
+    return UserModel(
+      id: 'admin_default',
+      nom: 'Administrateur ARK',
+      email: 'admin@ark.com',
+      role: UserRole.chefProjet,
+      // On génère un hash pour le mot de passe par défaut "admin123"
+      passwordHash: EncryptionService.hashPassword("admin123"),
+    );
+  }
 }
