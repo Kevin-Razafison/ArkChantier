@@ -50,6 +50,7 @@ class _ChantiersScreenState extends State<ChantiersScreen>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final query = _searchQuery.trim().toLowerCase();
 

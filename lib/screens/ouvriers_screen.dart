@@ -76,6 +76,7 @@ class _OuvriersScreenState extends State<OuvriersScreen>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final bool canEdit = widget.user.role != UserRole.client;
 
     return Scaffold(

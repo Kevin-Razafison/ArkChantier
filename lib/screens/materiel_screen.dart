@@ -160,6 +160,7 @@ class _MaterielScreenState extends State<MaterielScreen>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text("Gestion du Matériel"),

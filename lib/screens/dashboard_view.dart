@@ -150,6 +150,7 @@ class _DashboardViewState extends State<DashboardView>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     bool isMobile = MediaQuery.of(context).size.width < 800;
     bool isClient = widget.user.role == UserRole.client;
     final actuel = _getChantierActuel();

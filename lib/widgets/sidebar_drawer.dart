@@ -199,6 +199,7 @@ class SidebarDrawer extends StatelessWidget {
 
           Future.delayed(const Duration(milliseconds: 100), () {
             if (isSpecial) {
+              if (!context.mounted) return;
               Navigator.push(
                 context,
                 MaterialPageRoute(

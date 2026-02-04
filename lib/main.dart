@@ -169,48 +169,6 @@ class _MainShellState extends State<MainShell> {
     ];
   }
 
-  Widget _getPage(int index) {
-    final project = widget.currentProject;
-    final user = widget.user;
-
-    switch (index) {
-      case 0:
-        return DashboardView(
-          key: ValueKey('dash_${project.id}'),
-          user: user,
-          projet: project,
-        );
-      case 1:
-        return ChantiersScreen(
-          key: ValueKey('chan_${project.id}'),
-          projet: project,
-        );
-      case 2:
-        return user.role != UserRole.client
-            ? OuvriersScreen(
-                key: ValueKey('ouv_${project.id}'),
-                projet: project,
-                user: user,
-              )
-            : const SettingsScreen(key: ValueKey('settings'));
-      case 3:
-        return user.role != UserRole.client
-            ? MaterielScreen(
-                key: ValueKey('mat_${project.id}'),
-                projet: project,
-              )
-            : const SettingsScreen(key: ValueKey('settings'));
-      case 4:
-        return user.role == UserRole.chefProjet
-            ? StatsScreen(key: ValueKey('stat_${project.id}'), projet: project)
-            : const SettingsScreen(key: ValueKey('settings'));
-      case 5:
-        return const SettingsScreen(key: ValueKey('settings'));
-      default:
-        return const SettingsScreen(key: ValueKey('settings'));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     bool isMobile = MediaQuery.of(context).size.width < 800;
