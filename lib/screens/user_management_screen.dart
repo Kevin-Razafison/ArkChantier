@@ -3,6 +3,7 @@ import '../models/user_model.dart';
 import '../services/data_storage.dart';
 import '../services/encryption_service.dart';
 import '../models/projet_model.dart';
+import '../models/ouvrier_model.dart';
 
 class UserManagementScreen extends StatefulWidget {
   const UserManagementScreen({super.key});
@@ -121,7 +122,8 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
   void _showAddUserDialog() {
     final nomController = TextEditingController();
     final emailController = TextEditingController();
-    final passwordController = TextEditingController(); // Déjà là
+    final passwordController = TextEditingController();
+    final salaryController = TextEditingController(text: "25000");
     UserRole selectedRole = UserRole.ouvrier;
     String? selectedProjectId;
 
@@ -141,17 +143,11 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                 TextField(
                   controller: emailController,
                   decoration: const InputDecoration(labelText: "Email"),
-                  keyboardType: TextInputType.emailAddress,
                 ),
-                // 🛡️ NOUVEAU : Champ Mot de passe
                 TextField(
                   controller: passwordController,
-                  decoration: const InputDecoration(
-                    labelText: "Mot de passe",
-                    hintText: "Saisissez un mot de passe",
-                    prefixIcon: Icon(Icons.lock_outline, size: 20),
-                  ),
-                  obscureText: true, // Pour masquer la saisie
+                  decoration: const InputDecoration(labelText: "Mot de passe"),
+                  obscureText: true,
                 ),
                 const SizedBox(height: 15),
                 DropdownButtonFormField<UserRole>(
@@ -165,8 +161,25 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                         ),
                       )
                       .toList(),
-                  onChanged: (val) => setDialogState(() => selectedRole = val!),
+                  onChanged: (val) {
+                    if (val != null) {
+                      setDialogState(() => selectedRole = val);
+                    }
+                  },
                 ),
+
+                if (selectedRole == UserRole.ouvrier) ...[
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: salaryController,
+                    decoration: const InputDecoration(
+                      labelText: "Salaire journalier (Ar)",
+                      prefixIcon: Icon(Icons.payments_outlined),
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                ],
+
                 if (selectedRole == UserRole.client) ...[
                   const SizedBox(height: 15),
                   DropdownButtonFormField<String>(
@@ -192,12 +205,19 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
               child: const Text("Annuler"),
             ),
             ElevatedButton(
-              onPressed: () {
+              // ... à l'intérieur de ton ElevatedButton onPressed ...
+              onPressed: () async {
                 if (nomController.text.isNotEmpty &&
                     emailController.text.isNotEmpty &&
                     passwordController.text.isNotEmpty) {
+                  // On génère l'ID une seule fois pour les deux objets
+                  final String generatedId = DateTime.now()
+                      .millisecondsSinceEpoch
+                      .toString();
+
+                  // 1. L'Utilisateur pour le login
                   final newUser = UserModel(
-                    id: DateTime.now().millisecondsSinceEpoch.toString(),
+                    id: generatedId,
                     nom: nomController.text,
                     email: emailController.text,
                     role: selectedRole,
@@ -207,26 +227,41 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                     ),
                   );
 
+                  // 2. Si c'est un ouvrier, on crée sa fiche technique
+                  if (selectedRole == UserRole.ouvrier) {
+                    final double salary =
+                        double.tryParse(salaryController.text) ?? 25000.0;
+
+                    // On charge l'annuaire actuel
+                    List<Ouvrier> currentTeam = await DataStorage.loadTeam(
+                      "annuaire_global",
+                    );
+
+                    // On ajoute la nouvelle fiche avec le MÊME ID
+                    currentTeam.add(
+                      Ouvrier(
+                        id: generatedId,
+                        nom: nomController.text,
+                        specialite: "Ouvrier",
+                        telephone: "",
+                        salaireJournalier: salary,
+                        joursPointes: [],
+                      ),
+                    );
+
+                    // Sauvegarde de l'annuaire
+                    await DataStorage.saveTeam("annuaire_global", currentTeam);
+                  }
+
+                  // Mise à jour de l'UI et sauvegarde des utilisateurs
                   setState(() {
-                    _allUsers.add(newUser); // On ajoute à la liste locale
-                    _applyFilters(); // On rafraîchit le filtre
+                    _allUsers.add(newUser);
+                    _applyFilters();
                   });
 
-                  DataStorage.saveAllUsers(_allUsers); // On sauvegarde
+                  await DataStorage.saveAllUsers(_allUsers);
 
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Utilisateur créé avec succès"),
-                    ),
-                  );
-                } else {
-                  // Optionnel : un petit message si le mot de passe est oublié
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Veuillez remplir tous les champs"),
-                    ),
-                  );
+                  if (context.mounted) Navigator.pop(context);
                 }
               },
               child: const Text("Créer l'accès"),

@@ -358,7 +358,6 @@ class _OuvriersScreenState extends State<OuvriersScreen>
   }
 
   Future<void> _loadProjectTeamAndShowDialog() async {
-    // 1. Charger tous les utilisateurs du projet
     final allUsers = await DataStorage.loadAllUsers();
     final projectWorkers = allUsers
         .where(
@@ -366,7 +365,6 @@ class _OuvriersScreenState extends State<OuvriersScreen>
         )
         .toList();
 
-    // 2. Filtrer ceux qui ont déjà une fiche dans _allOuvriers
     final availableToAdd = projectWorkers
         .where((u) => !_allOuvriers.any((o) => o.id == u.id))
         .toList();
@@ -375,57 +373,94 @@ class _OuvriersScreenState extends State<OuvriersScreen>
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Lier un membre de l'équipe"),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: availableToAdd.isEmpty
-              ? const Text(
-                  "Tous les ouvriers de l'équipe ont déjà une fiche de pointage.",
-                )
-              : ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: availableToAdd.length,
-                  itemBuilder: (context, index) {
-                    final user = availableToAdd[index];
-                    return ListTile(
-                      leading: const CircleAvatar(child: Icon(Icons.person)),
-                      title: Text(user.nom),
-                      subtitle: const Text("Cliquer pour créer sa fiche"),
-                      onTap: () async {
-                        // CRÉATION DE LA FICHE AVEC LE MÊME ID QUE LE USER
-                        final newWorker = Ouvrier(
-                          id: user.id, // <--- TRÈS IMPORTANT : ID IDENTIQUE
-                          nom: user.nom,
-                          specialite:
-                              "Ouvrier", // À modifier plus tard dans les détails
-                          telephone: "",
-                          salaireJournalier: 25000.0,
-                          joursPointes: [],
-                        );
+      builder: (ctx) {
+        // On crée un contrôleur pour le salaire
+        final TextEditingController salaryController = TextEditingController(
+          text: "25000",
+        );
 
-                        setState(() {
-                          _allOuvriers.add(newWorker);
-                          _filterOuvriers(_searchController.text);
-                        });
+        return AlertDialog(
+          title: const Text("Lier un membre de l'équipe"),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: availableToAdd.isEmpty
+                ? const Text(
+                    "Tous les ouvriers de l'équipe ont déjà une fiche.",
+                  )
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        "Définissez le salaire journalier par défaut :",
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: salaryController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText:
+                              "Salaire Journalier (${widget.projet.devise})",
+                          border: const OutlineInputBorder(),
+                          prefixIcon: const Icon(Icons.payments),
+                        ),
+                      ),
+                      const Divider(height: 30),
+                      const Text(
+                        "Sélectionnez l'ouvrier à ajouter :",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 10),
+                      Expanded(
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: availableToAdd.length,
+                          itemBuilder: (context, index) {
+                            final user = availableToAdd[index];
+                            return ListTile(
+                              leading: const CircleAvatar(
+                                child: Icon(Icons.person),
+                              ),
+                              title: Text(user.nom),
+                              subtitle: const Text(
+                                "Cliquer pour valider l'ajout",
+                              ),
+                              onTap: () async {
+                                // On récupère la valeur saisie
+                                double dailySalary =
+                                    double.tryParse(salaryController.text) ??
+                                    25000.0;
 
-                        await DataStorage.saveTeam(
-                          "annuaire_global",
-                          _allOuvriers,
-                        );
-                        if (ctx.mounted) Navigator.pop(ctx);
-                      },
-                    );
-                  },
-                ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("FERMER"),
+                                final newWorker = Ouvrier(
+                                  id: user.id,
+                                  nom: user.nom,
+                                  specialite: "Ouvrier",
+                                  telephone: "",
+                                  salaireJournalier:
+                                      dailySalary, // 👈 UTILISATION DU SALAIRE SAISI
+                                  joursPointes: [],
+                                );
+
+                                setState(() {
+                                  _allOuvriers.add(newWorker);
+                                  _filterOuvriers(_searchController.text);
+                                });
+
+                                await DataStorage.saveTeam(
+                                  "annuaire_global",
+                                  _allOuvriers,
+                                );
+                                if (ctx.mounted) Navigator.pop(ctx);
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
