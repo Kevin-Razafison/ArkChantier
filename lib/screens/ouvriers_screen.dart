@@ -6,6 +6,7 @@ import '../services/data_storage.dart';
 import 'ouvrier_detail_screen.dart';
 import '../models/chantier_model.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import '../models/depense_model.dart';
 
 class OuvriersScreen extends StatefulWidget {
   final Projet projet;

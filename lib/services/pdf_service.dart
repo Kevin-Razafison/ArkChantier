@@ -8,7 +8,7 @@ import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
-
+import '../models/depense_model.dart';
 import '../models/ouvrier_model.dart';
 import '../models/materiel_model.dart';
 import '../models/chantier_model.dart';
@@ -390,6 +390,8 @@ class PdfService {
     required Chantier chantier,
     required List<Incident> incidents,
     required List<Ouvrier> equipage,
+    required List<Materiel> stocks,
+    required List<Depense> depenses,
   }) async {
     final pdf = pw.Document();
     final now = DateTime.now();
@@ -407,6 +409,11 @@ class PdfService {
             "RAPPORT D'ACTIVITÉ : ${chantier.nom.toUpperCase()}",
             now,
           ),
+          _buildStockTable(stocks),
+          pw.SizedBox(height: 20),
+
+          pw.SizedBox(height: 20),
+          _buildReceiptsSection(depenses),
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
@@ -509,6 +516,64 @@ class PdfService {
     );
 
     await _handlePdfOutput(pdf, 'Rapport_Complet_${chantier.nom}.pdf');
+  }
+
+  static pw.Widget _buildReceiptsSection(List<Depense> depenses) {
+    final depensesAvecPhotos = depenses
+        .where((d) => d.imageTicket != null)
+        .toList();
+
+    if (depensesAvecPhotos.isEmpty) return pw.SizedBox();
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          "JUSTIFICATIFS (TICKETS)",
+          style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+        ),
+        pw.SizedBox(height: 10),
+        pw.Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: depensesAvecPhotos.map((d) {
+            final file = File(d.imageTicket!);
+            if (!file.existsSync()) return pw.SizedBox();
+            return pw.Column(
+              children: [
+                pw.Image(
+                  pw.MemoryImage(file.readAsBytesSync()),
+                  width: 150,
+                  height: 200,
+                ),
+                pw.Text(d.titre, style: const pw.TextStyle(fontSize: 8)),
+              ],
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  static pw.Widget _buildStockTable(List<Materiel> stocks) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          "ÉTAT DES STOCKS SUR SITE",
+          style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+        ),
+        pw.SizedBox(height: 10),
+        pw.TableHelper.fromTextArray(
+          headers: ['Désignation', 'Quantité', 'Unité'],
+          data: stocks
+              .map((s) => [s.nom, s.quantite.toString(), s.unite])
+              .toList(),
+          headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+          cellPadding: const pw.EdgeInsets.all(5),
+        ),
+      ],
+    );
   }
 
   static Future<pw.Widget> _buildMapSection(Chantier chantier) async {

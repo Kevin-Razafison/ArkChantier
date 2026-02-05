@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'depense_model.dart';
 
 enum StatutChantier { enCours, enRetard, termine }
 
@@ -96,38 +97,6 @@ class Incident {
   );
 }
 
-class Depense {
-  final String id;
-  final String titre;
-  final double montant;
-  final DateTime date;
-  final TypeDepense type;
-
-  Depense({
-    required this.id,
-    required this.titre,
-    required this.montant,
-    required this.date,
-    required this.type,
-  });
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'titre': titre,
-    'montant': montant,
-    'date': date.toIso8601String(),
-    'type': type.index,
-  };
-
-  factory Depense.fromJson(Map<String, dynamic> json) => Depense(
-    id: json['id'],
-    titre: json['titre'],
-    montant: (json['montant'] as num).toDouble(),
-    date: DateTime.parse(json['date']),
-    type: TypeDepense.values[json['type'] as int],
-  );
-}
-
 class Chantier {
   final String id;
   final String nom;
@@ -139,9 +108,9 @@ class Chantier {
   double depensesActuelles;
   final double latitude;
   final double longitude;
-  List<Depense> depenses;
   List<Incident> incidents;
-  List<ConstructionTask> tasks; // 1. DÉCLARATION DE LA PROPRIÉTÉ
+  List<ConstructionTask> tasks;
+  List<Depense> depenses;
 
   Chantier({
     required this.id,
@@ -154,10 +123,32 @@ class Chantier {
     this.depensesActuelles = 0.0,
     this.latitude = 48.8566,
     this.longitude = 2.3522,
+    this.tasks = const [],
     this.depenses = const [],
-    this.tasks = const [], // 2. VALEUR PAR DÉFAUT (Vide par défaut)
     List<Incident>? incidents,
   }) : incidents = incidents ?? [];
+
+  // Correction de la factory fromJson pour inclure les listes
+  factory Chantier.fromJson(Map<String, dynamic> json) => Chantier(
+    id: json['id'],
+    nom: json['nom'],
+    lieu: json['lieu'],
+    progression: (json['progression'] as num).toDouble(),
+    statut: StatutChantier.values[json['statut'] as int],
+    imageAppercu: json['imageAppercu'] ?? 'assets/chantier_placeholder.jpg',
+    budgetInitial: (json['budgetInitial'] as num? ?? 0.0).toDouble(),
+    depensesActuelles: (json['depensesActuelles'] as num? ?? 0.0).toDouble(),
+    latitude: (json['latitude'] as num? ?? 48.8566).toDouble(),
+    longitude: (json['longitude'] as num? ?? 2.3522).toDouble(),
+    incidents: json['incidents'] != null
+        ? (json['incidents'] as List).map((i) => Incident.fromJson(i)).toList()
+        : [],
+    tasks: json['tasks'] != null
+        ? (json['tasks'] as List)
+              .map((t) => ConstructionTask.fromJson(t))
+              .toList()
+        : [],
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -170,35 +161,9 @@ class Chantier {
     'depensesActuelles': depensesActuelles,
     'latitude': latitude,
     'longitude': longitude,
-    'depenses': depenses.map((d) => d.toJson()).toList(),
     'incidents': incidents.map((i) => i.toJson()).toList(),
-    'tasks': tasks.map((t) => t.toJson()).toList(), // Sauvegarde OK
+    'tasks': tasks.map((t) => t.toJson()).toList(),
   };
-
-  factory Chantier.fromJson(Map<String, dynamic> json) => Chantier(
-    id: json['id'],
-    nom: json['nom'],
-    lieu: json['lieu'],
-    progression: (json['progression'] as num).toDouble(),
-    statut: StatutChantier.values[json['statut'] as int],
-    imageAppercu: json['imageAppercu'] ?? 'assets/chantier_placeholder.jpg',
-    budgetInitial: (json['budgetInitial'] as num? ?? 0.0).toDouble(),
-    depensesActuelles: (json['depensesActuelles'] as num? ?? 0.0).toDouble(),
-    latitude: (json['latitude'] as num? ?? 48.8566).toDouble(),
-    longitude: (json['longitude'] as num? ?? 2.3522).toDouble(),
-    depenses: json['depenses'] != null
-        ? (json['depenses'] as List).map((d) => Depense.fromJson(d)).toList()
-        : [],
-    incidents: json['incidents'] != null
-        ? (json['incidents'] as List).map((i) => Incident.fromJson(i)).toList()
-        : [],
-    // 3. RÉCUPÉRATION DEPUIS LE JSON
-    tasks: json['tasks'] != null
-        ? (json['tasks'] as List)
-              .map((t) => ConstructionTask.fromJson(t))
-              .toList()
-        : [],
-  );
 }
 
 extension ChantierAnalytics on Chantier {

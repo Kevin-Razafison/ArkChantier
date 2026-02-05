@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../models/chantier_model.dart';
 import '../models/projet_model.dart';
+import '../models/depense_model.dart';
 
 class AddDepenseModal extends StatefulWidget {
   final List<Chantier> chantiers; // Reçoit les chantiers du projet actuel

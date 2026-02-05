@@ -20,9 +20,15 @@ class ForemanSidebar extends StatelessWidget {
           _buildHeader(),
           _buildMenuItem(Icons.dashboard_outlined, "Tableau de Bord", 0),
           _buildMenuItem(Icons.qr_code_scanner, "Pointage Ouvriers", 1),
-          _buildMenuItem(Icons.inventory_2_outlined, "Matériel & Stocks", 2),
-          _buildMenuItem(Icons.add_a_photo_outlined, "Rapports Photos", 3),
+          _buildMenuItem(Icons.add_a_photo_outlined, "Rapports Photos", 2),
+          _buildMenuItem(Icons.inventory_2_outlined, "Matériel & Stocks", 3),
           _buildMenuItem(Icons.warning_amber_rounded, "Journal d'Incidents", 4),
+          _buildMenuItem(
+            Icons.monetization_on_outlined,
+            "Dépenses & Reçus",
+            5,
+            color: Colors.orangeAccent,
+          ),
           const Spacer(),
           const Divider(color: Colors.white24),
           _buildMenuItem(

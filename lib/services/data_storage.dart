@@ -8,6 +8,7 @@ import '../models/materiel_model.dart';
 import '../models/report_model.dart';
 import '../models/user_model.dart';
 import 'package:flutter/foundation.dart';
+import '../models/depense_model.dart';
 
 class DataStorage {
   static const String _keyProjects = 'projects_list';
@@ -292,5 +293,83 @@ class DataStorage {
       'team_annuaire_global', // Clé fixe pour l'annuaire
       jsonEncode(ouvriers.map((o) => o.toJson()).toList()),
     );
+  }
+
+  // --- GESTION DES STOCKS ---
+
+  static String _keyStocks(String chantierId) => 'stocks_$chantierId';
+
+  static Future<void> saveStocks(
+    String chantierId,
+    List<Materiel> stocks,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String encodedData = jsonEncode(
+      stocks.map((m) => m.toJson()).toList(),
+    );
+    await prefs.setString(_keyStocks(chantierId), encodedData);
+  }
+
+  static Future<List<Materiel>> loadStocks(String chantierId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? savedData = prefs.getString(_keyStocks(chantierId));
+
+    if (savedData == null || savedData.isEmpty) {
+      return [
+        Materiel(
+          id: '1',
+          nom: 'Ciment CPJ45',
+          quantite: 50,
+          unite: 'Sacs',
+          prixUnitaire: 5000,
+          categorie: CategorieMateriel.consommable,
+        ),
+        Materiel(
+          id: '2',
+          nom: 'Sable 0/4',
+          quantite: 10,
+          unite: 'm3',
+          prixUnitaire: 12000,
+          categorie: CategorieMateriel.consommable,
+        ),
+        Materiel(
+          id: '3',
+          nom: 'Gravier 15/25',
+          quantite: 15,
+          unite: 'm3',
+          prixUnitaire: 15000,
+          categorie: CategorieMateriel.consommable,
+        ),
+      ];
+    }
+
+    try {
+      final List<dynamic> decodedData = jsonDecode(savedData);
+      return decodedData.map((item) => Materiel.fromJson(item)).toList();
+    } catch (e) {
+      debugPrint("Erreur chargement stocks: $e");
+      return [];
+    }
+  }
+
+  static String _keyDepenses(String chantierId) => 'depenses_$chantierId';
+
+  static Future<void> saveDepenses(
+    String chantierId,
+    List<Depense> depenses,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String encodedData = jsonEncode(
+      depenses.map((d) => d.toJson()).toList(),
+    );
+    await prefs.setString(_keyDepenses(chantierId), encodedData);
+  }
+
+  static Future<List<Depense>> loadDepenses(String chantierId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? savedData = prefs.getString(_keyDepenses(chantierId));
+    if (savedData == null || savedData.isEmpty) return [];
+    final List<dynamic> decodedData = jsonDecode(savedData);
+    return decodedData.map((item) => Depense.fromJson(item)).toList();
   }
 }

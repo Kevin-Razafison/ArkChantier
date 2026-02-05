@@ -134,11 +134,16 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen>
     );
 
     try {
+      // 1. On charge les stocks spécifiques à ce chantier avant de générer
+      final stocks = await DataStorage.loadStocks(widget.chantier.id);
+
+      // 2. On appelle la méthode avec le nouvel argument requis : stocks
       await PdfService.generateChantierFullReport(
         chantier: widget.chantier,
         incidents: widget.chantier.incidents,
-        equipage:
-            _equipe, // On passe la liste des ouvriers chargés en initState
+        equipage: _equipe,
+        stocks: stocks,
+        depenses: widget.chantier.depenses,
       );
 
       if (!mounted) return;

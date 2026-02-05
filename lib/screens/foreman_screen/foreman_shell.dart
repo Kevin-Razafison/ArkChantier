@@ -8,9 +8,13 @@ import '../../widgets/info_card.dart';
 import 'foreman_sidebar.dart';
 import 'foreman_attendance_view.dart';
 import 'foreman_report_view.dart';
-import 'foreman_incident_view.dart'; // Assure-toi que ce fichier existe
+import 'foreman_incident_view.dart';
+import 'foreman_stock_view.dart';
+import 'foreman_expense_view.dart';
 import '../../services/pdf_service.dart';
 import '../../services/data_storage.dart';
+import '../../widgets/chantier_map_preview.dart';
+import '../../models/depense_model.dart' as dm;
 
 class ForemanShell extends StatefulWidget {
   final UserModel user;
@@ -36,11 +40,17 @@ class _ForemanShellState extends State<ForemanShell> {
 
     try {
       final equipe = await DataStorage.loadTeam(chantier.id);
-
+      final stocks = await DataStorage.loadStocks(chantier.id);
+      // 1. Charger les dépenses depuis le stockage local
+      final List<dm.Depense> depenses = await DataStorage.loadDepenses(
+        chantier.id,
+      );
       await PdfService.generateChantierFullReport(
         chantier: chantier,
         incidents: chantier.incidents,
         equipage: equipe,
+        stocks: stocks,
+        depenses: depenses, // 2. Ajouter l'argument manquant ici
       );
     } catch (e) {
       if (!mounted) return;
@@ -63,16 +73,10 @@ class _ForemanShellState extends State<ForemanShell> {
     final List<Widget> pages = [
       _buildDashboard(monChantier), // 0
       ForemanAttendanceView(chantier: monChantier), // 1
-      const Center(
-        child: Text(
-          "Gestion des Stocks",
-          style: TextStyle(color: Colors.white),
-        ),
-      ), // 2
       ForemanReportView(chantier: monChantier), // 3
-      ForemanIncidentView(
-        chantier: monChantier,
-      ), // 4: Ajout de la vue incidents
+      ForemanStockView(chantier: monChantier), // 2
+      ForemanIncidentView(chantier: monChantier), // 4
+      ForemanExpenseView(chantier: monChantier, devise: widget.projet.devise),
     ];
 
     return Scaffold(
@@ -128,6 +132,10 @@ class _ForemanShellState extends State<ForemanShell> {
             icon: Icon(Icons.add_a_photo),
             label: 'Rapports',
           ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.inventory_2), // Icone plus adaptée pour le stock
+            label: 'Stocks',
+          ),
         ],
       ),
     );
@@ -145,6 +153,8 @@ class _ForemanShellState extends State<ForemanShell> {
         return "RAPPORTS PHOTOS";
       case 4:
         return "JOURNAL D'INCIDENTS";
+      case 5:
+        return "DÉPENSES & REÇUS";
       default:
         return "CHANTIER";
     }
@@ -161,6 +171,28 @@ class _ForemanShellState extends State<ForemanShell> {
           lon: chantier.longitude,
         ),
         const SizedBox(height: 20),
+        Text(
+          "EMPLACEMENT DU CHANTIER",
+          style: TextStyle(
+            color: Colors.orange.shade700,
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+            letterSpacing: 1.1,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          height: 200, // Hauteur fixe pour éviter l'erreur "Unbounded height"
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: ChantierMapPreview(
+            chantiers: [chantier], // On n'envoie que son chantier
+            chantierActuel: chantier,
+          ),
+        ),
 
         Container(
           padding: const EdgeInsets.all(20),
@@ -218,6 +250,9 @@ class _ForemanShellState extends State<ForemanShell> {
       children: [
         _quickActionBtn("MATÉRIEL", Icons.inventory, Colors.blue, () {
           setState(() => _currentIndex = 2);
+        }),
+        _quickActionBtn("DÉPENSES", Icons.receipt_long, Colors.orange, () {
+          setState(() => _currentIndex = 5);
         }),
         _quickActionBtn(
           "INCIDENTS",
