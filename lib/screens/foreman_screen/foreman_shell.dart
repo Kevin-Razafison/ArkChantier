@@ -71,38 +71,49 @@ class _ForemanShellState extends State<ForemanShell> {
     );
 
     final List<Widget> pages = [
-      _buildDashboard(monChantier), // 0
-      ForemanAttendanceView(chantier: monChantier), // 1
-      ForemanReportView(chantier: monChantier), // 3
-      ForemanStockView(chantier: monChantier), // 2
-      ForemanIncidentView(chantier: monChantier), // 4
+      _buildDashboard(monChantier),
+      ForemanAttendanceView(chantier: monChantier),
+      ForemanStockView(chantier: monChantier),
+      ForemanReportView(chantier: monChantier),
+      ForemanIncidentView(chantier: monChantier),
       ForemanExpenseView(chantier: monChantier, devise: widget.projet.devise),
     ];
 
+    // On définit le seuil de bascule (ex: 1000 pixels de large)
+    bool isLargeScreen = MediaQuery.of(context).size.width > 1000;
+
     return Scaffold(
       key: _scaffoldKey,
-      drawer: ForemanSidebar(
-        user: widget.user,
-        onDestinationSelected: (index) {
-          if (index == -1) {
-            Navigator.pushReplacementNamed(context, '/login');
-          } else {
-            setState(() => _currentIndex = index);
-            Navigator.pop(context);
-          }
-        },
-      ),
+      // Le Drawer n'apparaît que sur petit écran
+      drawer: isLargeScreen
+          ? null
+          : ForemanSidebar(
+              user: widget.user,
+              onDestinationSelected: (index) {
+                if (index == -1) {
+                  Navigator.pushReplacementNamed(context, '/login');
+                } else {
+                  setState(() => _currentIndex = index);
+                  Navigator.pop(context); // Ferme le drawer sur mobile
+                }
+              },
+            ),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1A334D),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.only(
+            topRight: Radius.circular(0),
+            bottomRight: Radius.circular(0),
+          ),
+        ),
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.menu),
-          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-        ),
-        title: Text(
-          _getTitle(_currentIndex),
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-        ),
+        leading: isLargeScreen
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+              ),
+        title: Text(_getTitle(_currentIndex)),
         centerTitle: true,
         actions: [
           IconButton(
@@ -112,29 +123,29 @@ class _ForemanShellState extends State<ForemanShell> {
           const SizedBox(width: 8),
         ],
       ),
-      body: pages[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex > 2 ? 0 : _currentIndex,
-        selectedItemColor: Colors.orangeAccent,
-        unselectedItemColor: Colors.white54,
-        backgroundColor: const Color(0xFF1A334D),
-        onTap: (index) => setState(() => _currentIndex = index),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_work),
-            label: 'Mon Site',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.qr_code_scanner),
-            label: 'Pointage',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.add_a_photo),
-            label: 'Rapports',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.inventory_2), // Icone plus adaptée pour le stock
-            label: 'Stocks',
+      // LOGIQUE RESPONSIVE ICI
+      body: Row(
+        children: [
+          if (isLargeScreen)
+            SizedBox(
+              width: 280, // Largeur fixe identique au Drawer standard
+              child: ForemanSidebar(
+                user: widget.user,
+                onDestinationSelected: (index) {
+                  if (index == -1) {
+                    Navigator.pushReplacementNamed(context, '/login');
+                  } else {
+                    setState(() => _currentIndex = index);
+                    // Pas de Navigator.pop ici car ce n'est pas un Drawer coulissant
+                  }
+                },
+              ),
+            ),
+          Expanded(
+            child: Container(
+              color: const Color(0xFF0D1B2A), // Fond pour harmoniser
+              child: pages[_currentIndex],
+            ),
           ),
         ],
       ),

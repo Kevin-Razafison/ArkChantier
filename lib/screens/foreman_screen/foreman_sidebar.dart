@@ -15,6 +15,12 @@ class ForemanSidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Drawer(
       backgroundColor: const Color(0xFF1A334D),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.only(
+          topRight: Radius.circular(3),
+          bottomRight: Radius.circular(3),
+        ),
+      ),
       child: Column(
         children: [
           _buildHeader(),
@@ -45,7 +51,10 @@ class ForemanSidebar extends StatelessWidget {
 
   Widget _buildHeader() {
     return DrawerHeader(
-      decoration: const BoxDecoration(color: Color(0xFF142638)),
+      decoration: BoxDecoration(
+        color: Color(0xFF142638),
+        borderRadius: BorderRadius.circular(1),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
