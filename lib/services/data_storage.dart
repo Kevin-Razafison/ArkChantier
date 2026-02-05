@@ -11,7 +11,6 @@ import 'package:flutter/foundation.dart';
 
 class DataStorage {
   static const String _keyProjects = 'projects_list';
-  static const String _reportsKey = 'reports_data';
 
   // --- GESTION DES PROJETS (LOGIQUE LAUNCHER) ---
 
@@ -60,8 +59,6 @@ class DataStorage {
     await saveAllProjects(projects);
 
     // 3. Nettoyage des données liées (Supprime tout ce qui est rattaché à cet ID)
-    // On boucle sur les chantiers potentiels pour nettoyer leurs données spécifiques
-    // car projectId != chantierId dans ton architecture
     await prefs.remove("team_$projectId");
     await prefs.remove("reports_$projectId");
     await prefs.remove("materiels_$projectId");
@@ -214,34 +211,23 @@ class DataStorage {
     );
   }
 
-  // Nouvelle méthode pour charger les rapports spécifiques à un chantier
-  static Future<List<Report>> loadReportsByChantier(String chantierId) async {
+  static Future<List<Report>> loadReports(String chantierId) async {
     final prefs = await SharedPreferences.getInstance();
     final String? savedData = prefs.getString('reports_$chantierId');
-    if (savedData == null) return [];
-    return (jsonDecode(savedData) as List)
-        .map((item) => Report.fromJson(item))
-        .toList();
+    if (savedData == null || savedData.isEmpty) return [];
+    try {
+      final List<dynamic> decodedData = jsonDecode(savedData);
+      return decodedData.map((item) => Report.fromJson(item)).toList();
+    } catch (e) {
+      debugPrint("Erreur chargement rapports $chantierId: $e");
+      return [];
+    }
   }
 
-  // Anciennes méthodes maintenues pour compatibilité globale si nécessaire
-  static Future<void> saveReport(Report report) async {
-    final reports = await loadReports();
+  static Future<void> addSingleReport(String chantierId, Report report) async {
+    final reports = await loadReports(chantierId);
     reports.add(report);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _reportsKey,
-      jsonEncode(reports.map((r) => r.toJson()).toList()),
-    );
-  }
-
-  static Future<List<Report>> loadReports() async {
-    final prefs = await SharedPreferences.getInstance();
-    final String? reportsData = prefs.getString(_reportsKey);
-    if (reportsData == null) return [];
-    return (jsonDecode(reportsData) as List)
-        .map((item) => Report.fromJson(item as Map<String, dynamic>))
-        .toList();
+    await saveReports(chantierId, reports);
   }
 
   // --- PONT POUR STATS_SCREEN (RÉCUPÉRATION GLOBALE DES CHANTIERS) ---

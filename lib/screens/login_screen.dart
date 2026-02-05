@@ -5,6 +5,7 @@ import '../main.dart';
 import '../services/data_storage.dart';
 import '../services/encryption_service.dart';
 import './worker/worker_shell.dart';
+import './foreman_screen/foreman_shell.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -78,7 +79,6 @@ class _LoginScreenState extends State<LoginScreen> {
         }
 
         if (user.role == UserRole.ouvrier) {
-          // REDIRECTION OUVRIER -> Interface simplifiée (WorkerShell)
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
@@ -86,10 +86,19 @@ class _LoginScreenState extends State<LoginScreen> {
                   WorkerShell(user: user, projet: projetRattache!),
             ),
           );
-        } else if (user.role == UserRole.chefDeChantier ||
-            user.role == UserRole.client) {
-          // REDIRECTION CHEF DE CHANTIER ou CLIENT -> Interface complète (MainShell)
-          // Note : Le MainShell filtrera les accès selon le rôle
+        }
+        // --- NOUVELLE LOGIQUE POUR LE CHEF DE CHANTIER ---
+        else if (user.role == UserRole.chefDeChantier) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  ForemanShell(user: user, projet: projetRattache!),
+            ),
+          );
+        }
+        // --- RESTE DES RÔLES (CLIENT) ---
+        else if (user.role == UserRole.client) {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(

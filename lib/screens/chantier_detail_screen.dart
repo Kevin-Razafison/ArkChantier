@@ -109,7 +109,7 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen>
       DataStorage.loadJournal(widget.chantier.id),
       DataStorage.loadTeam(widget.chantier.id),
       DataStorage.loadMateriels(widget.chantier.id),
-      DataStorage.loadReportsByChantier(widget.chantier.id),
+      DataStorage.loadReports(widget.chantier.id),
       DataStorage.loadTeam("annuaire_global"),
     ]);
 

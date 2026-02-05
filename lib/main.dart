@@ -29,6 +29,7 @@ class ChantierApp extends StatefulWidget {
 }
 
 class ChantierAppState extends State<ChantierApp> {
+  // Utilisateur par défaut pour éviter les erreurs de null au démarrage
   UserModel currentUser = UserModel(
     id: '0',
     nom: 'Admin',
@@ -36,15 +37,15 @@ class ChantierAppState extends State<ChantierApp> {
     role: UserRole.chefProjet,
     passwordHash: EncryptionService.hashPassword("1234"),
   );
+
   ThemeMode _adminThemeMode = ThemeMode.light;
   ThemeMode _workerThemeMode = ThemeMode.light;
 
   ThemeMode get effectiveTheme {
-    if (currentUser.role == UserRole.chefProjet) {
-      return _adminThemeMode;
-    } else {
-      return _workerThemeMode;
-    }
+    // Admin = Thème clair/sombre classique. Terrain = Thème spécifique.
+    return (currentUser.role == UserRole.chefProjet)
+        ? _adminThemeMode
+        : _workerThemeMode;
   }
 
   @override
@@ -54,8 +55,29 @@ class ChantierAppState extends State<ChantierApp> {
   }
 
   void updateUser(UserModel user) {
+    setState(() => currentUser = user);
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
     setState(() {
-      currentUser = user;
+      _adminThemeMode = (prefs.getBool('isAdminDarkMode') ?? false)
+          ? ThemeMode.dark
+          : ThemeMode.light;
+      _workerThemeMode = (prefs.getBool('isWorkerDarkMode') ?? false)
+          ? ThemeMode.dark
+          : ThemeMode.light;
+      final savedName = prefs.getString('userName');
+      if (savedName != null) {
+        currentUser = UserModel(
+          id: currentUser.id,
+          nom: savedName,
+          email: currentUser.email,
+          role: currentUser.role,
+          chantierId: currentUser.chantierId,
+          passwordHash: currentUser.passwordHash,
+        );
+      }
     });
   }
 
@@ -71,29 +93,6 @@ class ChantierAppState extends State<ChantierApp> {
         chantierId: currentUser.chantierId,
         passwordHash: currentUser.passwordHash,
       );
-    });
-  }
-
-  Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      final adminDark = prefs.getBool('isAdminDarkMode') ?? false;
-      final workerDark = prefs.getBool('isWorkerDarkMode') ?? false;
-
-      _adminThemeMode = adminDark ? ThemeMode.dark : ThemeMode.light;
-      _workerThemeMode = workerDark ? ThemeMode.dark : ThemeMode.light;
-
-      final savedName = prefs.getString('userName');
-      if (savedName != null) {
-        currentUser = UserModel(
-          id: currentUser.id,
-          nom: savedName,
-          email: currentUser.email,
-          role: currentUser.role,
-          chantierId: currentUser.chantierId,
-          passwordHash: currentUser.passwordHash,
-        );
-      }
     });
   }
 
@@ -117,16 +116,13 @@ class ChantierAppState extends State<ChantierApp> {
       themeMode: effectiveTheme,
       theme: ThemeData(
         useMaterial3: true,
-        brightness: Brightness.light,
         primaryColor: const Color(0xFF1A334D),
         scaffoldBackgroundColor: const Color(0xFFF4F7F9),
-        cardColor: Colors.white,
       ),
       darkTheme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF0F172A),
-        cardColor: const Color(0xFF1E293B),
       ),
       initialRoute: '/',
       routes: {
@@ -139,6 +135,7 @@ class ChantierAppState extends State<ChantierApp> {
   }
 }
 
+// --- LE MAINSHELL (DÉDIÉ ADMIN / CLIENT) ---
 class MainShell extends StatefulWidget {
   final UserModel user;
   final Projet currentProject;
@@ -155,84 +152,57 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
-  late final List<Widget> _pages;
-
-  @override
-  void initState() {
-    super.initState();
-    _pages = _buildPages();
-  }
-
-  List<Widget> _buildPages() {
-    final project = widget.currentProject;
-    final user = widget.user;
-
-    // --- LOGIQUE DE NAVIGATION POUR ADMIN / CLIENT ---
-    return [
-      DashboardView(
-        key: ValueKey('dash_${project.id}'),
-        user: user,
-        projet: project,
-      ),
-      ChantiersScreen(key: ValueKey('chan_${project.id}'), projet: project),
-      user.role != UserRole.client
-          ? OuvriersScreen(
-              key: ValueKey('ouv_${project.id}'),
-              projet: project,
-              user: user,
-            )
-          : const SettingsScreen(key: ValueKey('settings_client')),
-      user.role != UserRole.client
-          ? MaterielScreen(key: ValueKey('mat_${project.id}'), projet: project)
-          : const SettingsScreen(key: ValueKey('settings_client_2')),
-      user.role == UserRole.chefProjet
-          ? StatsScreen(key: ValueKey('stat_${project.id}'), projet: project)
-          : const SettingsScreen(key: ValueKey('settings_client_3')),
-      const SettingsScreen(key: ValueKey('settings_final')),
-    ];
-  }
 
   @override
   Widget build(BuildContext context) {
-    bool isMobile = MediaQuery.of(context).size.width < 800;
-    bool isOuvrier = widget.user.role == UserRole.ouvrier;
+    final isLargeScreen = MediaQuery.of(context).size.width > 900;
+
+    // On définit les pages ici pour qu'elles se rafraîchissent si le projet change
+    final List<Widget> pages = [
+      DashboardView(user: widget.user, projet: widget.currentProject),
+      ChantiersScreen(projet: widget.currentProject),
+      widget.user.role != UserRole.client
+          ? OuvriersScreen(projet: widget.currentProject, user: widget.user)
+          : const SettingsScreen(),
+      widget.user.role != UserRole.client
+          ? MaterielScreen(projet: widget.currentProject)
+          : const SettingsScreen(),
+      widget.user.role == UserRole.chefProjet
+          ? StatsScreen(projet: widget.currentProject)
+          : const SettingsScreen(),
+      const SettingsScreen(),
+    ];
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      // On n'affiche l'AppBar que si ce n'est pas un mobile ouvrier (pour utiliser le SliverAppBar de WorkerHomeView)
-      appBar: (isMobile && isOuvrier && _selectedIndex == 0)
-          ? null
-          : AppBar(
-              title: Text(
-                isOuvrier && _selectedIndex == 0
-                    ? "Mon Espace"
-                    : widget.currentProject.nom,
-              ),
-              backgroundColor: const Color(0xFF1A334D),
-              foregroundColor: Colors.white,
-              elevation: 0,
-              leading: (!isMobile && widget.user.role == UserRole.chefProjet)
-                  ? IconButton(
-                      icon: const Icon(Icons.apps_rounded),
-                      onPressed: () => Navigator.pushReplacementNamed(
-                        context,
-                        '/project_launcher',
-                      ),
-                    )
-                  : null,
-            ),
-      drawer: SidebarDrawer(
-        role: widget.user.role,
-        currentIndex: _selectedIndex,
-        currentProject: widget.currentProject,
-        onDestinationSelected: (i) {
-          setState(() => _selectedIndex = i);
-          if (isMobile) Navigator.pop(context);
-        },
+      appBar: AppBar(
+        title: Text(widget.currentProject.nom),
+        backgroundColor: const Color(0xFF1A334D),
+        foregroundColor: Colors.white,
+        leading: widget.user.role == UserRole.chefProjet
+            ? IconButton(
+                icon: const Icon(Icons.grid_view_rounded),
+                tooltip: "Changer de projet",
+                onPressed: () => Navigator.pushReplacementNamed(
+                  context,
+                  '/project_launcher',
+                ),
+              )
+            : null,
       ),
+      drawer: !isLargeScreen
+          ? SidebarDrawer(
+              role: widget.user.role,
+              currentIndex: _selectedIndex,
+              currentProject: widget.currentProject,
+              onDestinationSelected: (i) {
+                setState(() => _selectedIndex = i);
+                Navigator.pop(context);
+              },
+            )
+          : null,
       body: Row(
         children: [
-          if (!isMobile)
+          if (isLargeScreen)
             SidebarDrawer(
               role: widget.user.role,
               currentIndex: _selectedIndex,
@@ -240,7 +210,7 @@ class _MainShellState extends State<MainShell> {
               onDestinationSelected: (i) => setState(() => _selectedIndex = i),
             ),
           Expanded(
-            child: IndexedStack(index: _selectedIndex, children: _pages),
+            child: IndexedStack(index: _selectedIndex, children: pages),
           ),
         ],
       ),

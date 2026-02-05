@@ -4,6 +4,8 @@ class Report {
   final String comment;
   final String imagePath;
   final DateTime date;
+  final bool isIncident;
+  final String priority;
 
   Report({
     required this.id,
@@ -11,6 +13,8 @@ class Report {
     required this.comment,
     required this.imagePath,
     required this.date,
+    this.isIncident = false,
+    this.priority = "Basse",
   });
 
   Map<String, dynamic> toJson() => {
@@ -19,6 +23,8 @@ class Report {
     'comment': comment,
     'imagePath': imagePath,
     'date': date.toIso8601String(),
+    'isIncident': isIncident,
+    'priority': priority,
   };
 
   factory Report.fromJson(Map<String, dynamic> json) => Report(
@@ -27,5 +33,7 @@ class Report {
     comment: json['comment'],
     imagePath: json['imagePath'],
     date: DateTime.parse(json['date']),
+    isIncident: json['isIncident'] ?? false,
+    priority: json['priority'] ?? "Basse",
   );
 }

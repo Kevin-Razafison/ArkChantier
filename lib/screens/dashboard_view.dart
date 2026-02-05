@@ -566,10 +566,15 @@ class _DashboardViewState extends State<DashboardView>
                     comment: commentController.text,
                     imagePath: capturedImagePath!,
                     date: DateTime.now(),
+                    isIncident: false,
                   );
-                  await DataStorage.saveReport(report);
+
+                  await DataStorage.addSingleReport(actuel.id, report);
+
                   if (!context.mounted) return;
                   Navigator.pop(context);
+
+                  _loadDashboardData();
                 }
               },
               child: const Text(
