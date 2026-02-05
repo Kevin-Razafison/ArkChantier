@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
-import '../models/projet_model.dart';
-import '../services/data_storage.dart';
-import '../models/user_model.dart';
-import '../main.dart';
+import '../../models/projet_model.dart';
+import '../../services/data_storage.dart';
+import '../../models/user_model.dart';
+import '../../main.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';

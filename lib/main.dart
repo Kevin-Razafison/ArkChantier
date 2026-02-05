@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:intl/intl.dart';
 import 'models/user_model.dart';
 import 'models/projet_model.dart';
 import 'widgets/sidebar_drawer.dart';
-import 'screens/dashboard_view.dart';
-import 'screens/chantiers_screen.dart';
-import 'screens/ouvriers_screen.dart';
-import 'screens/stats_screen.dart';
-import 'screens/materiel_screen.dart';
-import 'screens/settings_screen.dart';
-import 'screens/project_launcher_screen.dart';
-import 'screens/login_screen.dart';
+import 'screens/admin/dashboard_view.dart';
+import 'screens/admin/chantiers_screen.dart';
+import 'screens/admin/ouvriers_screen.dart';
+import 'screens/admin/stats_screen.dart';
+import 'screens/admin/materiel_screen.dart';
+import 'screens/admin/settings_screen.dart';
+import 'screens/admin/project_launcher_screen.dart';
+import 'screens/admin/login_screen.dart';
 import 'services/encryption_service.dart';
+import 'screens/admin/admin_profile_view.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -180,6 +180,7 @@ class _MainShellState extends State<MainShell> {
       widget.user.role == UserRole.chefProjet
           ? StatsScreen(projet: widget.currentProject)
           : const SettingsScreen(),
+      AdminProfileScreen(user: widget.user, projet: widget.currentProject),
       const SettingsScreen(),
     ];
 

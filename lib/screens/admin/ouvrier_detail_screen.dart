@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../models/ouvrier_model.dart';
-import '../services/pdf_service.dart';
-import '../services/data_storage.dart';
+import '../../models/ouvrier_model.dart';
+import '../../services/pdf_service.dart';
+import '../../services/data_storage.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import '../models/projet_model.dart';
+import '../../models/projet_model.dart';
 
 class OuvrierDetailScreen extends StatefulWidget {
   final Ouvrier worker;

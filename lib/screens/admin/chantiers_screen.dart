@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import '../models/chantier_model.dart';
-import '../models/projet_model.dart';
-import '../widgets/add_chantier_form.dart';
-import '../services/data_storage.dart';
+import '../../models/chantier_model.dart';
+import '../../models/projet_model.dart';
+import '../../widgets/add_chantier_form.dart';
+import '../../services/data_storage.dart';
 import 'chantier_detail_screen.dart';
-import '../models/user_model.dart';
+import '../../models/user_model.dart';
 
 class ChantiersScreen extends StatefulWidget {
   final Projet projet;

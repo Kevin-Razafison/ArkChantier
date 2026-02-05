@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import '../models/user_model.dart';
-import '../services/data_storage.dart';
-import '../services/encryption_service.dart';
-import '../models/projet_model.dart';
-import '../models/ouvrier_model.dart';
+import '../../models/user_model.dart';
+import '../../services/data_storage.dart';
+import '../../services/encryption_service.dart';
+import '../../models/projet_model.dart';
+import '../../models/ouvrier_model.dart';
 
 class UserManagementScreen extends StatefulWidget {
   const UserManagementScreen({super.key});

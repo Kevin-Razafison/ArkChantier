@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/user_model.dart';
 import '../models/projet_model.dart';
-import '../screens/project_team_screen.dart';
+import '../screens/admin/project_team_screen.dart';
 
 class SidebarDrawer extends StatelessWidget {
   final UserRole role;
@@ -66,6 +66,7 @@ class SidebarDrawer extends StatelessWidget {
     if (role == UserRole.chefProjet) {
       tabs.add(_MenuItemData(Icons.bar_chart, "Statistiques"));
     }
+    tabs.add(_MenuItemData(Icons.person, "Mon Profil"));
 
     tabs.add(_MenuItemData(Icons.settings, "Paramètres"));
 

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import '../models/materiel_model.dart';
-import '../services/data_storage.dart';
-import '../services/pdf_service.dart';
-import '../models/projet_model.dart';
+import '../../models/materiel_model.dart';
+import '../../services/data_storage.dart';
+import '../../services/pdf_service.dart';
+import '../../models/projet_model.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 class MaterielScreen extends StatefulWidget {

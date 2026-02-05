@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../models/chantier_model.dart';
-import '../widgets/chantier_map_preview.dart';
+import '../../models/chantier_model.dart';
+import '../../widgets/chantier_map_preview.dart';
 
 class FullScreenMapView extends StatelessWidget {
   final List<Chantier> chantiers;

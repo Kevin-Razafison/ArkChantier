@@ -5,7 +5,7 @@ import '../../models/chantier_model.dart';
 import 'worker_sidebar.dart'; // Import de ta sidebar
 import 'worker_profile_view.dart';
 import 'worker_chantier_view.dart';
-import '../settings_screen.dart';
+import '../admin/settings_screen.dart';
 
 class WorkerShell extends StatefulWidget {
   final UserModel user;

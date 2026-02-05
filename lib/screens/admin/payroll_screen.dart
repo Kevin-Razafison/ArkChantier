@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import '../models/ouvrier_model.dart';
-import '../models/projet_model.dart';
-import '../services/data_storage.dart';
-import '../services/pdf_service.dart';
+import '../../models/ouvrier_model.dart';
+import '../../models/projet_model.dart';
+import '../../services/data_storage.dart';
+import '../../services/pdf_service.dart';
 
 class PayrollScreen extends StatefulWidget {
   final Projet projet;

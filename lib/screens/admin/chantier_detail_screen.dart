@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
-import '../widgets/photo_reporter.dart';
+import '../../widgets/photo_reporter.dart';
 import 'dart:io';
-import '../models/chantier_model.dart';
-import '../models/ouvrier_model.dart';
-import '../models/journal_model.dart';
-import '../models/materiel_model.dart';
-import '../models/projet_model.dart';
-import '../services/data_storage.dart';
-import '../services/pdf_service.dart';
-import '../models/report_model.dart';
+import '../../models/chantier_model.dart';
+import '../../models/ouvrier_model.dart';
+import '../../models/journal_model.dart';
+import '../../models/materiel_model.dart';
+import '../../models/projet_model.dart';
+import '../../services/data_storage.dart';
+import '../../services/pdf_service.dart';
+import '../../models/report_model.dart';
 
 class ConstructionTask {
   String id;

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import '../models/user_model.dart';
-import '../models/projet_model.dart';
-import '../main.dart';
-import '../services/data_storage.dart';
-import '../services/encryption_service.dart';
-import './worker/worker_shell.dart';
-import './foreman_screen/foreman_shell.dart';
+import '../../models/user_model.dart';
+import '../../models/projet_model.dart';
+import '../../main.dart';
+import '../../services/data_storage.dart';
+import '../../services/encryption_service.dart';
+import '../worker/worker_shell.dart';
+import '../foreman_screen/foreman_shell.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});

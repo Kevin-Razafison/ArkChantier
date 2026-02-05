@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import '../models/chantier_model.dart';
-import '../services/pdf_service.dart';
-import '../services/data_storage.dart';
-import '../models/materiel_model.dart';
-import '../widgets/financial_stats_card.dart';
-import '../widgets/financial_pie_chart.dart';
-import '../widgets/add_depense_modal.dart';
-import '../models/projet_model.dart';
+import '../../models/chantier_model.dart';
+import '../../services/pdf_service.dart';
+import '../../services/data_storage.dart';
+import '../../models/materiel_model.dart';
+import '../../widgets/financial_stats_card.dart';
+import '../../widgets/financial_pie_chart.dart';
+import '../../widgets/add_depense_modal.dart';
+import '../../models/projet_model.dart';
 
 class StatsScreen extends StatefulWidget {
   final Projet projet;

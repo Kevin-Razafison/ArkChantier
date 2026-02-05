@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
-import '../models/user_model.dart';
-import '../models/chantier_model.dart';
-import '../models/projet_model.dart';
-import '../services/data_storage.dart';
-import '../widgets/info_card.dart';
-import '../widgets/chantier_map_preview.dart';
-import '../widgets/financial_stats_card.dart';
-import '../widgets/financial_pie_chart.dart';
-import '../widgets/photo_reporter.dart';
-import '../models/report_model.dart';
-import '../models/ouvrier_model.dart';
-import '../models/materiel_model.dart';
-import '../widgets/weather_banner.dart';
-import '../widgets/incident_widget.dart';
-import '../widgets/add_chantier_form.dart';
+import '../../models/user_model.dart';
+import '../../models/chantier_model.dart';
+import '../../models/projet_model.dart';
+import '../../services/data_storage.dart';
+import '../../widgets/info_card.dart';
+import '../../widgets/chantier_map_preview.dart';
+import '../../widgets/financial_stats_card.dart';
+import '../../widgets/financial_pie_chart.dart';
+import '../../widgets/photo_reporter.dart';
+import '../../models/report_model.dart';
+import '../../models/ouvrier_model.dart';
+import '../../models/materiel_model.dart';
+import '../../widgets/weather_banner.dart';
+import '../../widgets/incident_widget.dart';
+import '../../widgets/add_chantier_form.dart';
 import 'full_screen_map_view.dart';
 
 class ChecklistTask {
