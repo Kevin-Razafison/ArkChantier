@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../models/chantier_model.dart';
-import 'dart:io';
 
 class IncidentList extends StatelessWidget {
   final List<Incident> incidents;
@@ -10,76 +9,119 @@ class IncidentList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (incidents.isEmpty) {
-      return const Center(
-        child: Text(
-          "RAS - Aucun incident",
-          style: TextStyle(color: Colors.grey, fontSize: 12),
+      return const Padding(
+        padding: EdgeInsets.all(20.0),
+        child: Center(
+          child: Text(
+            "Aucun incident signalé",
+            style: TextStyle(color: Colors.grey),
+          ),
         ),
       );
     }
 
-    return Column(
-      children: incidents
-          .map((incident) => _buildIncidentTile(incident))
-          .toList(),
+    // ✅ FIX: Use shrinkWrap and remove Expanded
+    return ListView.separated(
+      shrinkWrap: true, // ← CRITICAL FIX: Let ListView size itself
+      physics:
+          const NeverScrollableScrollPhysics(), // ← Disable internal scrolling
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: incidents.length > 3 ? 3 : incidents.length,
+      separatorBuilder: (context, index) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final incident = incidents[index];
+        return ListTile(
+          dense: true,
+          leading: Icon(
+            Icons.warning_amber_rounded,
+            color: _getPriorityColor(incident.priorite),
+            size: 20,
+          ),
+          title: Text(
+            incident.titre,
+            style: const TextStyle(fontSize: 13),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            incident.description,
+            style: const TextStyle(fontSize: 11, color: Colors.grey),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: _getPriorityColor(
+                incident.priorite,
+              ).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              incident.priorite.name.toUpperCase(),
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.bold,
+                color: _getPriorityColor(incident.priorite),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildIncidentTile(Incident incident) {
-    Color priorityColor = Colors.green;
-    if (incident.priorite == Priorite.haute) priorityColor = Colors.orange;
-    if (incident.priorite == Priorite.critique) priorityColor = Colors.red;
+  Color _getPriorityColor(Priorite priorite) {
+    switch (priorite) {
+      case Priorite.critique:
+        return Colors.red;
+      case Priorite.haute:
+        return Colors.orange;
+      case Priorite.moyenne:
+        return Colors.amber;
+      case Priorite.basse:
+        return Colors.blue;
+    }
+  }
+}
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(8),
-        border: Border(left: BorderSide(color: priorityColor, width: 4)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  incident.titre,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                ),
-                Text(
-                  incident.description,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.grey, fontSize: 11),
-                ),
-              ],
-            ),
+// Alternative simpler widget if you just want a summary
+class IncidentSummary extends StatelessWidget {
+  final List<Incident> incidents;
+
+  const IncidentSummary({super.key, required this.incidents});
+
+  @override
+  Widget build(BuildContext context) {
+    final critiques = incidents
+        .where((i) => i.priorite == Priorite.critique)
+        .length;
+    final hautes = incidents.where((i) => i.priorite == Priorite.haute).length;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceAround,
+      children: [
+        _buildStat("Critiques", critiques, Colors.red),
+        _buildStat("Hautes", hautes, Colors.orange),
+        _buildStat("Total", incidents.length, Colors.blueGrey),
+      ],
+    );
+  }
+
+  Widget _buildStat(String label, int count, Color color) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          count.toString(),
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: color,
           ),
-          Text(
-            "${incident.date.day}/${incident.date.month}",
-            style: const TextStyle(color: Colors.white24, fontSize: 10),
-          ),
-          if (incident.imagePath != null && incident.imagePath!.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.file(
-                  File(incident.imagePath!),
-                  height: 150,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                ),
-              ),
-            ),
-        ],
-      ),
+        ),
+        Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+      ],
     );
   }
 }

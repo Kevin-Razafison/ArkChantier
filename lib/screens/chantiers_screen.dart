@@ -4,6 +4,7 @@ import '../models/projet_model.dart';
 import '../widgets/add_chantier_form.dart';
 import '../services/data_storage.dart';
 import 'chantier_detail_screen.dart';
+import '../models/user_model.dart';
 
 class ChantiersScreen extends StatefulWidget {
   final Projet projet;
@@ -257,15 +258,26 @@ class _ChantiersScreenState extends State<ChantiersScreen>
                 ),
               ],
             ),
-            trailing: _buildStatusBadge(c.statut),
+            trailing: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              children: [
+                _buildStatusBadge(c.statut),
+                IconButton(
+                  icon: const Icon(
+                    Icons.admin_panel_settings,
+                    color: Colors.teal,
+                  ),
+                  onPressed: () => _showAssignChefDialog(c),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  // Les autres widgets (_buildSectionHeader, _buildStatusBadge, etc.)
-  // restent identiques à ta version précédente.
   Widget _buildSectionHeader(String title, IconData icon, Color color) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
@@ -338,6 +350,92 @@ class _ChantiersScreenState extends State<ChantiersScreen>
           bottom: MediaQuery.of(context).viewInsets.bottom,
         ),
         child: AddChantierForm(onAdd: _addNewChantier, projet: widget.projet),
+      ),
+    );
+  }
+
+  void _showAssignChefDialog(Chantier chantier) async {
+    // 1. Charger tous les utilisateurs
+    final allUsers = await DataStorage.loadAllUsers();
+
+    // 2. Filtrer pour n'avoir que les chefs de chantier
+    final chefs = allUsers
+        .where((u) => u.role == UserRole.chefDeChantier)
+        .toList();
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text("Responsable : ${chantier.nom}"),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: chefs.isEmpty
+              ? const Text("Aucun Chef de Chantier créé dans l'annuaire.")
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: chefs.length,
+                  separatorBuilder: (_, _) => const Divider(),
+                  itemBuilder: (context, index) {
+                    final chef = chefs[index];
+                    // On vérifie si ce chef est déjà assigné à CE chantier
+                    bool isAlreadyAssigned = chef.chantierId == chantier.id;
+
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: isAlreadyAssigned
+                            ? Colors.teal
+                            : Colors.grey,
+                        child: const Icon(Icons.person, color: Colors.white),
+                      ),
+                      title: Text(chef.nom),
+                      subtitle: Text(
+                        isAlreadyAssigned
+                            ? "Déjà assigné ici"
+                            : "Cliquez pour assigner",
+                      ),
+                      trailing: isAlreadyAssigned
+                          ? const Icon(Icons.check_circle, color: Colors.teal)
+                          : null,
+                      onTap: () async {
+                        // LOGIQUE D'ASSIGNATION
+                        // On met à jour le chantierId de l'utilisateur choisi
+                        final updatedUsers = allUsers.map((u) {
+                          if (u.id == chef.id) {
+                            return UserModel(
+                              id: u.id,
+                              nom: u.nom,
+                              email: u.email,
+                              role: u.role,
+                              passwordHash: u.passwordHash,
+                              chantierId: chantier.id, // On lie au chantier !
+                            );
+                          }
+                          return u;
+                        }).toList();
+
+                        await DataStorage.saveAllUsers(updatedUsers);
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              "${chef.nom} est maintenant responsable de ${chantier.nom}",
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("FERMER"),
+          ),
+        ],
       ),
     );
   }

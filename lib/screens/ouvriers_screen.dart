@@ -22,15 +22,24 @@ class _OuvriersScreenState extends State<OuvriersScreen>
   @override
   bool get wantKeepAlive => true;
 
-  // Variables pour la sélection multiple
   final Set<String> _selectedIds = {};
   bool get _isSelectionMode => _selectedIds.isNotEmpty;
 
+  String? _selectedChantierId;
   List<Ouvrier> _allOuvriers = [];
-  List<Ouvrier> _filteredOuvriers = [];
+  // ✅ _filteredOuvriers SUPPRIMÉ ICI
   final TextEditingController _searchController = TextEditingController();
   final String _today = DateTime.now().toIso8601String().split('T')[0];
   bool _isLoading = true;
+
+  // Ce getter remplace avantageusement le filtrage manuel
+  List<Ouvrier> get _ouvriersAffiches {
+    return _allOuvriers.where((o) {
+      final query = _searchController.text.toLowerCase();
+      return o.nom.toLowerCase().contains(query) ||
+          o.specialite.toLowerCase().contains(query);
+    }).toList();
+  }
 
   @override
   void initState() {
@@ -44,49 +53,34 @@ class _OuvriersScreenState extends State<OuvriersScreen>
       if (mounted) {
         setState(() {
           _allOuvriers = savedOuvriers;
-          _filteredOuvriers = savedOuvriers;
           _isLoading = false;
         });
       }
     } catch (e) {
-      debugPrint("Erreur de chargement des ouvriers : $e");
+      debugPrint("Erreur de chargement : $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _filterOuvriers(String query) {
-    setState(() {
-      _filteredOuvriers = _allOuvriers
-          .where(
-            (o) =>
-                o.nom.toLowerCase().contains(query.toLowerCase()) ||
-                o.specialite.toLowerCase().contains(query.toLowerCase()),
-          )
-          .toList();
-    });
-  }
+  // ✅ _filterOuvriers SUPPRIMÉ ICI (Inutile avec le getter)
 
-  // --- ACTIONS DE GROUPE (BATCH ACTIONS) ---
+  // --- ACTIONS DE GROUPE ---
 
   Future<void> _batchPointage() async {
-    if (widget.projet.chantiers.isEmpty) return;
-
-    final String chantierId = widget.projet.chantiers.first.id;
+    if (_selectedChantierId == null) return;
     int count = 0;
-
     for (String id in _selectedIds) {
       final worker = _allOuvriers.firstWhere((o) => o.id == id);
       if (!worker.joursPointes.contains(_today)) {
-        await _togglePointage(worker, chantierId);
+        await _togglePointage(worker, _selectedChantierId!);
         count++;
       }
     }
-
     setState(() => _selectedIds.clear());
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("$count ouvrier(s) pointé(s) présent(s).")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("$count ouvrier(s) pointé(s).")));
     }
   }
 
@@ -96,7 +90,6 @@ class _OuvriersScreenState extends State<OuvriersScreen>
       setState(() {
         _allOuvriers.removeWhere((o) => _selectedIds.contains(o.id));
         _selectedIds.clear();
-        _filterOuvriers(_searchController.text);
       });
       await DataStorage.saveTeam("annuaire_global", _allOuvriers);
     }
@@ -107,9 +100,7 @@ class _OuvriersScreenState extends State<OuvriersScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("Supprimer la sélection ?"),
-        content: Text(
-          "Voulez-vous retirer ces ${_selectedIds.length} ouvriers de l'annuaire ?",
-        ),
+        content: Text("Retirer ces ${_selectedIds.length} ouvriers ?"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -124,15 +115,13 @@ class _OuvriersScreenState extends State<OuvriersScreen>
     );
   }
 
-  // --- LOGIQUE DE POINTAGE INDIVIDUEL ---
   Future<void> _togglePointage(Ouvrier worker, String chantierId) async {
     setState(() {
+      final indexChantier = widget.projet.chantiers.indexWhere(
+        (c) => c.id == chantierId,
+      );
       if (worker.joursPointes.contains(_today)) {
         worker.joursPointes.remove(_today);
-
-        final indexChantier = widget.projet.chantiers.indexWhere(
-          (c) => c.id == chantierId,
-        );
         if (indexChantier != -1) {
           widget.projet.chantiers[indexChantier].depensesActuelles -=
               worker.salaireJournalier;
@@ -142,14 +131,9 @@ class _OuvriersScreenState extends State<OuvriersScreen>
         }
       } else {
         worker.joursPointes.add(_today);
-
-        final indexChantier = widget.projet.chantiers.indexWhere(
-          (c) => c.id == chantierId,
-        );
         if (indexChantier != -1) {
           widget.projet.chantiers[indexChantier].depensesActuelles +=
               worker.salaireJournalier;
-
           widget.projet.chantiers[indexChantier].depenses.add(
             Depense(
               id: "pay_${worker.id}_$_today",
@@ -162,8 +146,6 @@ class _OuvriersScreenState extends State<OuvriersScreen>
         }
       }
     });
-
-    // Sauvegarde globale
     await DataStorage.saveTeam("annuaire_global", _allOuvriers);
     await DataStorage.saveSingleProject(widget.projet);
   }
@@ -172,6 +154,11 @@ class _OuvriersScreenState extends State<OuvriersScreen>
   Widget build(BuildContext context) {
     super.build(context);
     final bool canEdit = widget.user.role != UserRole.client;
+    if (_selectedChantierId == null && widget.projet.chantiers.isNotEmpty) {
+      _selectedChantierId = widget.projet.chantiers.first.id;
+    }
+
+    final listToDisplay = _ouvriersAffiches;
 
     return Scaffold(
       appBar: _isSelectionMode ? _buildSelectionAppBar() : _buildNormalAppBar(),
@@ -179,12 +166,39 @@ class _OuvriersScreenState extends State<OuvriersScreen>
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  color: Colors.white,
+                  child: DropdownButtonFormField<String>(
+                    decoration: const InputDecoration(
+                      labelText: "Chantier de travail actuel",
+                      prefixIcon: Icon(
+                        Icons.construction,
+                        color: Colors.orange,
+                      ),
+                    ),
+                    initialValue: _selectedChantierId,
+                    items: widget.projet.chantiers
+                        .map(
+                          (c) =>
+                              DropdownMenuItem(value: c.id, child: Text(c.nom)),
+                        )
+                        .toList(),
+                    onChanged: (val) => setState(() {
+                      _selectedChantierId = val;
+                      _selectedIds.clear();
+                    }),
+                  ),
+                ),
                 _buildHeaderInfo(),
                 Padding(
                   padding: const EdgeInsets.all(12.0),
                   child: TextField(
                     controller: _searchController,
-                    onChanged: _filterOuvriers,
+                    onChanged: (val) => setState(() {}),
                     decoration: InputDecoration(
                       hintText: "Rechercher un ouvrier...",
                       prefixIcon: const Icon(Icons.search),
@@ -192,19 +206,17 @@ class _OuvriersScreenState extends State<OuvriersScreen>
                         borderRadius: BorderRadius.circular(12),
                       ),
                       filled: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                      contentPadding: EdgeInsets.zero,
                     ),
                   ),
                 ),
                 Expanded(
-                  child: _filteredOuvriers.isEmpty
+                  child: listToDisplay.isEmpty
                       ? const Center(child: Text("Aucun ouvrier trouvé"))
                       : ListView.builder(
-                          itemCount: _filteredOuvriers.length,
-                          itemBuilder: (context, index) {
-                            final worker = _filteredOuvriers[index];
-                            return _buildWorkerCard(worker, canEdit);
-                          },
+                          itemCount: listToDisplay.length,
+                          itemBuilder: (context, index) =>
+                              _buildWorkerCard(listToDisplay[index], canEdit),
                         ),
                 ),
               ],
@@ -220,6 +232,8 @@ class _OuvriersScreenState extends State<OuvriersScreen>
     );
   }
 
+  // ... (Garder les méthodes _buildNormalAppBar, _buildSelectionAppBar, _buildHeaderInfo, _buildWorkerCard, _showAddWorkerDialog, _loadProjectTeamAndShowDialog, _openScanner, _handleQRScan identiques à ton code précédent)
+
   AppBar _buildNormalAppBar() {
     return AppBar(
       title: const Text("Gestion de l'Équipe"),
@@ -228,7 +242,7 @@ class _OuvriersScreenState extends State<OuvriersScreen>
       actions: [
         IconButton(
           icon: const Icon(Icons.qr_code_scanner),
-          onPressed: () => _openScanner(),
+          onPressed: _openScanner,
         ),
       ],
     );
@@ -244,16 +258,8 @@ class _OuvriersScreenState extends State<OuvriersScreen>
       backgroundColor: Colors.orange,
       foregroundColor: Colors.white,
       actions: [
-        IconButton(
-          icon: const Icon(Icons.done_all),
-          tooltip: "Pointer la sélection",
-          onPressed: _batchPointage,
-        ),
-        IconButton(
-          icon: const Icon(Icons.delete),
-          tooltip: "Supprimer la sélection",
-          onPressed: _batchDelete,
-        ),
+        IconButton(icon: const Icon(Icons.done_all), onPressed: _batchPointage),
+        IconButton(icon: const Icon(Icons.delete), onPressed: _batchDelete),
       ],
     );
   }
@@ -282,22 +288,20 @@ class _OuvriersScreenState extends State<OuvriersScreen>
   Widget _buildWorkerCard(Ouvrier worker, bool canEdit) {
     bool isPresent = worker.joursPointes.contains(_today);
     bool isSelected = _selectedIds.contains(worker.id);
-
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       color: isSelected ? Colors.orange.withValues(alpha: 0.1) : null,
-      elevation: isSelected ? 4 : 1,
       child: ListTile(
         onLongPress: () {
           if (canEdit) setState(() => _selectedIds.add(worker.id));
         },
         onTap: () {
           if (_isSelectionMode) {
-            setState(() {
-              isSelected
+            setState(
+              () => isSelected
                   ? _selectedIds.remove(worker.id)
-                  : _selectedIds.add(worker.id);
-            });
+                  : _selectedIds.add(worker.id),
+            );
           } else {
             Navigator.push(
               context,
@@ -312,50 +316,33 @@ class _OuvriersScreenState extends State<OuvriersScreen>
             ? Checkbox(
                 value: isSelected,
                 activeColor: Colors.orange,
-                onChanged: (bool? value) {
-                  setState(() {
-                    value!
-                        ? _selectedIds.add(worker.id)
-                        : _selectedIds.remove(worker.id);
-                  });
-                },
+                onChanged: (val) => setState(
+                  () => val!
+                      ? _selectedIds.add(worker.id)
+                      : _selectedIds.remove(worker.id),
+                ),
               )
-            : Stack(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: Colors.blueGrey.shade100,
-                    child: Text(
-                      worker.nom.isNotEmpty ? worker.nom[0].toUpperCase() : "?",
-                    ),
-                  ),
-                  if (isPresent)
-                    const Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: CircleAvatar(
-                        radius: 8,
-                        backgroundColor: Colors.green,
-                        child: Icon(Icons.check, size: 10, color: Colors.white),
+            : CircleAvatar(
+                backgroundColor: Colors.blueGrey.shade100,
+                child: isPresent
+                    ? const Icon(Icons.check, color: Colors.green)
+                    : Text(
+                        worker.nom.isNotEmpty
+                            ? worker.nom[0].toUpperCase()
+                            : "?",
                       ),
-                    ),
-                ],
               ),
         title: Text(
           worker.nom,
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: Text(worker.specialite),
-        trailing: _isSelectionMode
-            ? null
-            : Icon(Icons.chevron_right, color: Colors.grey.shade400),
+        trailing: const Icon(Icons.chevron_right, size: 16),
       ),
     );
   }
 
-  void _showAddWorkerDialog() {
-    // On récupère les utilisateurs qui sont dans ce projet ET qui sont des ouvriers
-    _loadProjectTeamAndShowDialog();
-  }
+  void _showAddWorkerDialog() => _loadProjectTeamAndShowDialog();
 
   Future<void> _loadProjectTeamAndShowDialog() async {
     final allUsers = await DataStorage.loadAllUsers();
@@ -364,96 +351,58 @@ class _OuvriersScreenState extends State<OuvriersScreen>
           (u) => u.chantierId == widget.projet.id && u.role == UserRole.ouvrier,
         )
         .toList();
-
     final availableToAdd = projectWorkers
         .where((u) => !_allOuvriers.any((o) => o.id == u.id))
         .toList();
-
     if (!mounted) return;
 
     showDialog(
       context: context,
       builder: (ctx) {
-        // On crée un contrôleur pour le salaire
-        final TextEditingController salaryController = TextEditingController(
-          text: "25000",
-        );
-
+        final salaryController = TextEditingController(text: "25000");
         return AlertDialog(
-          title: const Text("Lier un membre de l'équipe"),
+          title: const Text("Ajouter un membre"),
           content: SizedBox(
             width: double.maxFinite,
             child: availableToAdd.isEmpty
-                ? const Text(
-                    "Tous les ouvriers de l'équipe ont déjà une fiche.",
-                  )
+                ? const Text("Aucun ouvrier disponible.")
                 : Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text(
-                        "Définissez le salaire journalier par défaut :",
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                      const SizedBox(height: 10),
                       TextField(
                         controller: salaryController,
                         keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText:
-                              "Salaire Journalier (${widget.projet.devise})",
-                          border: const OutlineInputBorder(),
-                          prefixIcon: const Icon(Icons.payments),
+                        decoration: const InputDecoration(
+                          labelText: "Salaire Journalier",
                         ),
                       ),
-                      const Divider(height: 30),
-                      const Text(
-                        "Sélectionnez l'ouvrier à ajouter :",
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
                       const SizedBox(height: 10),
-                      Expanded(
+                      Flexible(
                         child: ListView.builder(
                           shrinkWrap: true,
                           itemCount: availableToAdd.length,
-                          itemBuilder: (context, index) {
-                            final user = availableToAdd[index];
-                            return ListTile(
-                              leading: const CircleAvatar(
-                                child: Icon(Icons.person),
-                              ),
-                              title: Text(user.nom),
-                              subtitle: const Text(
-                                "Cliquer pour valider l'ajout",
-                              ),
-                              onTap: () async {
-                                // On récupère la valeur saisie
-                                double dailySalary =
+                          itemBuilder: (c, i) => ListTile(
+                            title: Text(availableToAdd[i].nom),
+                            onTap: () async {
+                              final worker = Ouvrier(
+                                id: availableToAdd[i].id,
+                                nom: availableToAdd[i].nom,
+                                specialite: "Ouvrier",
+                                telephone: "",
+                                salaireJournalier:
                                     double.tryParse(salaryController.text) ??
-                                    25000.0;
-
-                                final newWorker = Ouvrier(
-                                  id: user.id,
-                                  nom: user.nom,
-                                  specialite: "Ouvrier",
-                                  telephone: "",
-                                  salaireJournalier:
-                                      dailySalary, // 👈 UTILISATION DU SALAIRE SAISI
-                                  joursPointes: [],
-                                );
-
-                                setState(() {
-                                  _allOuvriers.add(newWorker);
-                                  _filterOuvriers(_searchController.text);
-                                });
-
-                                await DataStorage.saveTeam(
-                                  "annuaire_global",
-                                  _allOuvriers,
-                                );
-                                if (ctx.mounted) Navigator.pop(ctx);
-                              },
-                            );
-                          },
+                                    25000,
+                                joursPointes: [],
+                              );
+                              setState(() => _allOuvriers.add(worker));
+                              await DataStorage.saveTeam(
+                                "annuaire_global",
+                                _allOuvriers,
+                              );
+                              if (!ctx.mounted) return;
+                              Navigator.pop(ctx);
+                            },
+                          ),
                         ),
                       ),
                     ],
@@ -467,30 +416,14 @@ class _OuvriersScreenState extends State<OuvriersScreen>
   void _openScanner() {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,
-      builder: (context) => SizedBox(
-        height: MediaQuery.of(context).size.height * 0.7,
-        child: Scaffold(
-          appBar: AppBar(
-            title: const Text("Scanner le Badge"),
-            leading: IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ),
-          body: MobileScanner(
-            onDetect: (capture) {
-              final List<Barcode> barcodes = capture.barcodes;
-              for (final barcode in barcodes) {
-                if (barcode.rawValue != null) {
-                  _handleQRScan(barcode.rawValue!);
-                  Navigator.pop(context);
-                  break;
-                }
-              }
-            },
-          ),
-        ),
+      builder: (context) => MobileScanner(
+        onDetect: (capture) {
+          final barcode = capture.barcodes.first;
+          if (barcode.rawValue != null) {
+            _handleQRScan(barcode.rawValue!);
+            Navigator.pop(context);
+          }
+        },
       ),
     );
   }
@@ -498,20 +431,11 @@ class _OuvriersScreenState extends State<OuvriersScreen>
   void _handleQRScan(String workerId) {
     try {
       final worker = _allOuvriers.firstWhere((o) => o.id == workerId);
-      _togglePointage(worker, widget.projet.chantiers.first.id);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Pointage validé pour : ${worker.nom}"),
-          backgroundColor: Colors.green,
-        ),
-      );
+      _togglePointage(worker, _selectedChantierId!);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Ouvrier non reconnu"),
-          backgroundColor: Colors.red,
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Ouvrier inconnu")));
     }
   }
 }

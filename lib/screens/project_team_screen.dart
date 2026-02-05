@@ -15,30 +15,32 @@ class ProjectTeamScreen extends StatefulWidget {
 
 class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
   List<UserModel> _assignedUsers = [];
-  List<UserModel> _allUsers = []; // On garde une copie en mémoire
+  List<UserModel> _allUsers = [];
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _refreshData(); // Une seule méthode de chargement initiale
+    _refreshData();
   }
 
-  // CHARGEMENT INITIAL (Une seule fois au début)
   Future<void> _refreshData() async {
     setState(() => _isLoading = true);
-    // On charge tout d'un coup
     _allUsers = await DataStorage.loadAllUsers();
 
-    // On filtre en local (instantané)
-    _assignedUsers = _allUsers
-        .where((u) => u.chantierId == widget.projet.id)
-        .toList();
-
-    if (mounted) setState(() => _isLoading = false);
+    setState(() {
+      _assignedUsers = _allUsers
+          .where(
+            (u) =>
+                u.chantierId != null &&
+                (u.chantierId == widget.projet.id ||
+                    widget.projet.chantiers.any((c) => c.id == u.chantierId)),
+          )
+          .toList();
+      _isLoading = false;
+    });
   }
 
-  // LIAISON (Modification en mémoire puis sauvegarde en arrière-plan)
   Future<void> _assignUserToProject(UserModel user) async {
     final index = _allUsers.indexWhere((u) => u.id == user.id);
 
@@ -52,19 +54,11 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
         passwordHash: user.passwordHash,
       );
 
-      // 2. Rafraîchissement UI instantané (pas de freeze)
-      setState(() {
-        _assignedUsers = _allUsers
-            .where((u) => u.chantierId == widget.projet.id)
-            .toList();
-      });
-
-      // 3. Sauvegarde sur le disque en tâche de fond (async)
-      DataStorage.saveAllUsers(_allUsers);
+      await DataStorage.saveAllUsers(_allUsers);
+      _refreshData();
     }
   }
 
-  // SUPPRESSION (Même logique : RAM d'abord, Disque ensuite)
   Future<void> _removeUserFromProject(UserModel user) async {
     final index = _allUsers.indexWhere((u) => u.id == user.id);
 
@@ -78,20 +72,18 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
         passwordHash: user.passwordHash,
       );
 
-      setState(() {
-        _assignedUsers = _allUsers
-            .where((u) => u.chantierId == widget.projet.id)
-            .toList();
-      });
-
-      DataStorage.saveAllUsers(_allUsers);
+      await DataStorage.saveAllUsers(_allUsers);
+      _refreshData();
     }
   }
 
   void _showAddExistingUserDialog() {
-    // Plus de loadAllUsers() ici ! On utilise _allUsers qui est déjà là.
     final availableUsers = _allUsers
-        .where((u) => u.chantierId != widget.projet.id)
+        .where(
+          (u) =>
+              u.chantierId != widget.projet.id &&
+              !widget.projet.chantiers.any((c) => c.id == u.chantierId),
+        )
         .toList();
 
     showDialog(
@@ -105,20 +97,71 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
               : ListView.separated(
                   shrinkWrap: true,
                   itemCount: availableUsers.length,
-                  separatorBuilder: (_, _) => const Divider(),
+                  separatorBuilder: (context, index) => const Divider(),
                   itemBuilder: (context, index) {
                     final user = availableUsers[index];
                     return ListTile(
-                      leading: const Icon(Icons.person_add_alt_1),
+                      leading: CircleAvatar(
+                        backgroundColor: _getRoleColor(user.role),
+                        child: const Icon(Icons.person, color: Colors.white),
+                      ),
                       title: Text(user.nom),
                       subtitle: Text(user.role.name.toUpperCase()),
                       onTap: () {
-                        Navigator.pop(context);
                         _assignUserToProject(user);
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text("${user.nom} ajouté au projet"),
+                          ),
+                        );
                       },
                     );
                   },
                 ),
+        ),
+      ),
+    );
+  }
+
+  void _showAssignToSpecificChantierDialog(UserModel user) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Assigner ${user.nom}"),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.separated(
+            shrinkWrap: true,
+            itemCount: widget.projet.chantiers.length,
+            separatorBuilder: (context, index) => const Divider(),
+            itemBuilder: (context, index) {
+              final c = widget.projet.chantiers[index];
+              return ListTile(
+                leading: const Icon(Icons.location_on, color: Colors.orange),
+                title: Text(c.nom),
+                subtitle: Text(c.lieu),
+                onTap: () async {
+                  final indexUser = _allUsers.indexWhere(
+                    (u) => u.id == user.id,
+                  );
+                  if (indexUser != -1) {
+                    _allUsers[indexUser] = UserModel(
+                      id: user.id,
+                      nom: user.nom,
+                      email: user.email,
+                      role: user.role,
+                      chantierId: c.id,
+                      passwordHash: user.passwordHash,
+                    );
+                    await DataStorage.saveAllUsers(_allUsers);
+                    _refreshData();
+                    if (context.mounted) Navigator.pop(context);
+                  }
+                },
+              );
+            },
+          ),
         ),
       ),
     );
@@ -169,38 +212,64 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
             },
           ),
         ],
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            // maybePop est plus sûr pour éviter de fermer l'app si c'est la seule route
-            Navigator.of(context).maybePop();
-          },
-        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _assignedUsers.isEmpty
-          ? const Center(child: Text("Aucun utilisateur assigné à ce projet."))
+          ? const Center(child: Text("Aucun utilisateur assigné."))
           : ListView.builder(
-              padding: const EdgeInsets.only(
-                bottom: 80,
-              ), // Pour ne pas cacher le bouton
+              padding: const EdgeInsets.only(bottom: 80),
               itemCount: _assignedUsers.length,
               itemBuilder: (context, index) {
                 final user = _assignedUsers[index];
+
+                String nomChantier = "Non assigné";
+                if (user.chantierId == widget.projet.id) {
+                  nomChantier = "Projet Global";
+                } else if (user.chantierId != null) {
+                  final chantierMatch = widget.projet.chantiers.where(
+                    (c) => c.id == user.chantierId,
+                  );
+                  if (chantierMatch.isNotEmpty) {
+                    nomChantier = chantierMatch.first.nom;
+                  }
+                }
+
                 return Card(
                   margin: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 6,
                   ),
                   child: ListTile(
+                    onTap: () => _showAssignToSpecificChantierDialog(user),
                     leading: CircleAvatar(
                       backgroundColor: _getRoleColor(user.role),
                       child: const Icon(Icons.person, color: Colors.white),
                     ),
                     title: Text(user.nom),
-                    subtitle: Text(
-                      "${user.role.name.toUpperCase()} • ${user.email}",
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("${user.role.name.toUpperCase()} • ${user.email}"),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.location_on,
+                              size: 14,
+                              color: Colors.orange,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              "Affectation : $nomChantier",
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                     trailing: IconButton(
                       icon: const Icon(Icons.person_remove, color: Colors.red),

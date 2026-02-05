@@ -185,59 +185,53 @@ class _ChantierDetailScreenState extends State<ChantierDetailScreen>
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    return DefaultTabController(
-      length: 6,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(widget.chantier.nom),
-          backgroundColor: const Color(0xFF1A334D),
-          foregroundColor: Colors.white,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.picture_as_pdf),
-              tooltip: "Exporter le rapport PDF",
-              onPressed: () => _generatePdf(),
-            ),
-          ],
-          bottom: TabBar(
-            controller: _tabController,
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            labelColor: Color(0xFFFFD700),
-            unselectedLabelColor: Colors.white70,
-            indicatorColor: Color(0xFFFFD700),
-            tabs: [
-              Tab(icon: Icon(Icons.info), text: "Infos"),
-              Tab(icon: Icon(Icons.checklist), text: "Tâches"),
-              Tab(icon: Icon(Icons.group), text: "Équipe"),
-              Tab(icon: Icon(Icons.build), text: "Matériels"),
-              Tab(icon: Icon(Icons.history), text: "Journal"),
-              Tab(icon: Icon(Icons.photo_library), text: "Galerie"),
-              Tab(
-                icon: Icon(
-                  Icons.warning_amber_rounded,
-                  color: Colors.redAccent,
-                ),
-                text: "Incidents",
-              ),
-            ],
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.chantier.nom),
+        backgroundColor: const Color(0xFF1A334D),
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf),
+            tooltip: "Exporter le rapport PDF",
+            onPressed: () => _generatePdf(),
           ),
-        ),
-        body: TabBarView(
+        ],
+        bottom: TabBar(
           controller: _tabController,
-          children: [
-            _buildOverviewTab(context),
-            _buildTasksTab(),
-            _buildTeamTab(),
-            _buildMaterialsTab(),
-            JournalTab(
-              onEntryAdded: _onNewJournalEntry,
-              entries: _journalEntries,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          labelColor: const Color(0xFFFFD700),
+          unselectedLabelColor: Colors.white70,
+          indicatorColor: const Color(0xFFFFD700),
+          tabs: const [
+            Tab(icon: Icon(Icons.info), text: "Infos"),
+            Tab(icon: Icon(Icons.checklist), text: "Tâches"),
+            Tab(icon: Icon(Icons.group), text: "Équipe"),
+            Tab(icon: Icon(Icons.build), text: "Matériels"),
+            Tab(icon: Icon(Icons.history), text: "Journal"),
+            Tab(icon: Icon(Icons.photo_library), text: "Galerie"),
+            Tab(
+              icon: Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+              text: "Incidents",
             ),
-            GalleryTab(entries: _journalEntries, quickReports: _quickReports),
-            _buildIncidentsTab(),
           ],
         ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildOverviewTab(context),
+          _buildTasksTab(),
+          _buildTeamTab(),
+          _buildMaterialsTab(),
+          JournalTab(
+            onEntryAdded: _onNewJournalEntry,
+            entries: _journalEntries,
+          ),
+          GalleryTab(entries: _journalEntries, quickReports: _quickReports),
+          _buildIncidentsTab(),
+        ],
       ),
     );
   }

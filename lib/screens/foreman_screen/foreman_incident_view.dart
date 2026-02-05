@@ -87,7 +87,6 @@ class _ForemanIncidentViewState extends State<ForemanIncidentView> {
                       widget.chantier.id,
                     );
                     all.add(rep);
-                    all.add(rep);
                     await DataStorage.saveReports(widget.chantier.id, all);
                     if (!context.mounted) return;
                     Navigator.pop(context);

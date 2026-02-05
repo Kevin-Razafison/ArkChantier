@@ -39,19 +39,37 @@ class _ForemanAttendanceViewState extends State<ForemanAttendanceView> {
 
   // --- LOGIQUE DE POINTAGE (COMMUNE SCAN & CLIC) ---
   void _togglePresence(Ouvrier ouvrier, {bool? forceValue}) async {
-    setState(() {
-      ouvrier.estPresent = forceValue ?? !ouvrier.estPresent;
+    try {
       String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
-      if (ouvrier.estPresent) {
-        if (!ouvrier.joursPointes.contains(today)) {
-          ouvrier.joursPointes.add(today);
+      setState(() {
+        ouvrier.estPresent = forceValue ?? !ouvrier.estPresent;
+
+        if (ouvrier.estPresent) {
+          if (!ouvrier.joursPointes.contains(today)) {
+            ouvrier.joursPointes.add(today);
+          }
+        } else {
+          ouvrier.joursPointes.remove(today);
         }
-      } else {
-        ouvrier.joursPointes.remove(today);
-      }
-    });
-    await DataStorage.saveTeam(widget.chantier.id, _equipe);
+      });
+      await DataStorage.saveTeam(widget.chantier.id, _equipe);
+    } catch (e) {
+      // Fallback date format if locale initialization failed
+      String today = DateTime.now().toIso8601String().split('T')[0];
+      setState(() {
+        ouvrier.estPresent = forceValue ?? !ouvrier.estPresent;
+
+        if (ouvrier.estPresent) {
+          if (!ouvrier.joursPointes.contains(today)) {
+            ouvrier.joursPointes.add(today);
+          }
+        } else {
+          ouvrier.joursPointes.remove(today);
+        }
+      });
+      await DataStorage.saveTeam(widget.chantier.id, _equipe);
+    }
   }
 
   // --- OUVERTURE DU SCANNER QR ---
@@ -60,37 +78,34 @@ class _ForemanAttendanceViewState extends State<ForemanAttendanceView> {
       context: context,
       isScrollControlled: true,
       builder: (context) => SizedBox(
+        // On donne une hauteur fixe et finie au container du scanner
         height: MediaQuery.of(context).size.height * 0.7,
         child: Column(
+          // Utilisez une Column plutôt qu'un Scaffold complet ici si nécessaire
           children: [
-            const Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Text(
-                "SCANNEZ LE BADGE OUVRIER",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1A334D),
-                ),
+            AppBar(
+              title: const Text("Scanner le Badge"),
+              leading: IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(context),
               ),
             ),
+            // IMPORTANT: MobileScanner doit être dans un Expanded
+            // car son parent (SizedBox) a maintenant une hauteur finie.
             Expanded(
               child: MobileScanner(
                 onDetect: (capture) {
                   final List<Barcode> barcodes = capture.barcodes;
                   for (final barcode in barcodes) {
-                    final String? code = barcode.rawValue;
-                    if (code != null) {
-                      _processScannedWorker(code);
-                      Navigator.pop(
-                        context,
-                      ); // Ferme le scanner après détection
+                    if (barcode.rawValue != null) {
+                      _processScannedWorker(barcode.rawValue!);
+                      Navigator.pop(context);
                       break;
                     }
                   }
                 },
               ),
             ),
-            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -166,7 +181,6 @@ class _ForemanAttendanceViewState extends State<ForemanAttendanceView> {
     );
   }
 
-  // ... (Garde tes méthodes _buildStatsHeader et _buildOuvrierTile identiques)
   Widget _buildStatsHeader(int count) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -184,8 +198,9 @@ class _ForemanAttendanceViewState extends State<ForemanAttendanceView> {
                   color: Colors.blueGrey,
                 ),
               ),
+              // Simple date format without locale dependency
               Text(
-                DateFormat('EEEE d MMMM', 'fr_FR').format(DateTime.now()),
+                "${_getFrenchDay(DateTime.now().weekday)} ${DateTime.now().day} ${_getFrenchMonth(DateTime.now().month)}",
                 style: const TextStyle(fontSize: 12, color: Colors.grey),
               ),
             ],
@@ -207,6 +222,37 @@ class _ForemanAttendanceViewState extends State<ForemanAttendanceView> {
         ],
       ),
     );
+  }
+
+  String _getFrenchDay(int weekday) {
+    final days = [
+      'Lundi',
+      'Mardi',
+      'Mercredi',
+      'Jeudi',
+      'Vendredi',
+      'Samedi',
+      'Dimanche',
+    ];
+    return days[weekday - 1];
+  }
+
+  String _getFrenchMonth(int month) {
+    final months = [
+      'Janvier',
+      'Février',
+      'Mars',
+      'Avril',
+      'Mai',
+      'Juin',
+      'Juillet',
+      'Août',
+      'Septembre',
+      'Octobre',
+      'Novembre',
+      'Décembre',
+    ];
+    return months[month - 1];
   }
 
   Widget _buildOuvrierTile(Ouvrier o) {

@@ -3,40 +3,48 @@ import 'package:flutter/material.dart';
 class InfoCard extends StatelessWidget {
   final String title;
   final Widget child;
-  final Color? borderColor;
+  final Color? backgroundColor;
+  final EdgeInsetsGeometry? padding;
 
-  const InfoCard({super.key, required this.title, required this.child, this.borderColor});
+  const InfoCard({
+    super.key,
+    required this.title,
+    required this.child,
+    this.backgroundColor,
+    this.padding,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: padding ?? const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(5),
-        border: borderColor != null ? Border.all(color: borderColor!, width: 2) : null,
+        color: backgroundColor ?? Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(15),
         boxShadow: [
           BoxShadow(
-            color: isDark ? Colors.black45 : Colors.black.withValues(alpha: 0.05), 
-            blurRadius: 10
-          )
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
+      // ✅ FIX: Change mainAxisSize to min and remove Expanded widgets
       child: Column(
+        mainAxisSize: MainAxisSize.min, // ← CRITICAL FIX
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            title, 
-            style: TextStyle(
-              fontWeight: FontWeight.bold, 
-              color: isDark ? Colors.white70 : Colors.grey, 
-              fontSize: 12
-            )
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.blueGrey,
+            ),
           ),
-          const Divider(),
-          Expanded(child: child),
+          const SizedBox(height: 15),
+          // Don't wrap child in Expanded - let it size itself
+          child,
         ],
       ),
     );

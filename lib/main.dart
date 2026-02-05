@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
 import 'models/user_model.dart';
 import 'models/projet_model.dart';
 import 'widgets/sidebar_drawer.dart';
@@ -15,6 +17,14 @@ import 'services/encryption_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await initializeDateFormatting('fr_FR');
+    debugPrint("Locale data initialized successfully");
+  } catch (e) {
+    debugPrint("Error initializing locale data: $e");
+    // Initialize with default locale as fallback
+    await initializeDateFormatting();
+  }
   runApp(const ChantierApp());
 }
 
