@@ -29,9 +29,8 @@ class InfoCard extends StatelessWidget {
           ),
         ],
       ),
-      // ✅ FIX: Change mainAxisSize to min and remove Expanded widgets
       child: Column(
-        mainAxisSize: MainAxisSize.min, // ← CRITICAL FIX
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
@@ -43,7 +42,6 @@ class InfoCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 15),
-          // Don't wrap child in Expanded - let it size itself
           child,
         ],
       ),

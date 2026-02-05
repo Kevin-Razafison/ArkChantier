@@ -15,6 +15,7 @@ import '../models/materiel_model.dart';
 import '../widgets/weather_banner.dart';
 import '../widgets/incident_widget.dart';
 import '../widgets/add_chantier_form.dart';
+import 'full_screen_map_view.dart';
 
 class ChecklistTask {
   final String title;
@@ -287,9 +288,60 @@ class _DashboardViewState extends State<DashboardView>
                 delegate: SliverChildListDelegate([
                   InfoCard(
                     title: "LOCALISATION",
-                    child: ChantierMapPreview(
-                      chantiers: _chantiers,
-                      chantierActuel: actuel,
+                    padding: EdgeInsets
+                        .zero, // 1. On enlève le padding interne pour gagner de la place
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.vertical(
+                        bottom: Radius.circular(15),
+                      ),
+                      child: SizedBox(
+                        height: 200, // Ta hauteur fixe
+                        child: Stack(
+                          children: [
+                            // LA CARTE
+                            Positioned.fill(
+                              // 2. On force la carte à prendre TOUTE la place du Stack
+                              child: Hero(
+                                tag: 'map_preview_hero',
+                                child: ChantierMapPreview(
+                                  chantiers: _chantiers,
+                                  chantierActuel: actuel,
+                                ),
+                              ),
+                            ),
+
+                            // LE BOUTON
+                            Positioned(
+                              top: 12,
+                              right: 12,
+                              child: FloatingActionButton.small(
+                                heroTag: "btn_map_fullscreen",
+                                backgroundColor: Colors.white.withValues(
+                                  alpha: 0.9,
+                                ),
+                                elevation: 4,
+                                // 3. On réduit un peu la taille de l'icône si besoin
+                                child: const Icon(
+                                  Icons.fullscreen,
+                                  color: Colors.black,
+                                  size: 20,
+                                ),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => FullScreenMapView(
+                                        chantiers: _chantiers,
+                                        chantierActuel: actuel,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                   if (!isClient && actuel.id != "0")

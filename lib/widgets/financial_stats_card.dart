@@ -16,7 +16,6 @@ class FinancialStatsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Calcul du ratio Budget / Dépenses
     double ratio = chantier.budgetInitial > 0
         ? (chantier.depensesActuelles / chantier.budgetInitial)
         : 0.0;
@@ -25,135 +24,129 @@ class FinancialStatsCard extends StatelessWidget {
     double reste = chantier.budgetInitial - chantier.depensesActuelles;
     Color budgetColor = _getBudgetColor(ratio);
 
-    return SizedBox(
-      height: 300, // On définit une limite
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // En-tête avec Nom du Chantier et Status Badge
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  chantier.nom.toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.1,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              _buildStatusBadge(ratio),
-            ],
-          ),
-          const SizedBox(height: 15),
-
-          // Valeurs principales
-          _buildStatRow(
-            context,
-            "Budget Initial",
-            "${chantier.budgetInitial.toStringAsFixed(0)} ${projet.devise}",
-            isDark ? Colors.white : Colors.black87,
-          ),
-          const SizedBox(height: 8),
-          _buildStatRow(
-            context,
-            "Dépenses Réelles",
-            "${chantier.depensesActuelles.toStringAsFixed(0)} ${projet.devise}",
-            budgetColor,
-          ),
-          const SizedBox(height: 15),
-
-          // Consommation et Icône d'alerte
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                "Consommation du budget : $pourcentage%",
-                style: TextStyle(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // En-tête
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                chantier.nom.toUpperCase(),
+                style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: budgetColor,
+                  letterSpacing: 1.1,
                 ),
+                overflow: TextOverflow.ellipsis,
               ),
-              if (ratio >= 0.8)
-                Icon(
-                  ratio >= 1.0
-                      ? Icons.error_outline
-                      : Icons.warning_amber_rounded,
-                  color: budgetColor,
-                  size: 18,
-                ),
+            ),
+            _buildStatusBadge(ratio),
+          ],
+        ),
+        const SizedBox(height: 15),
+
+        // Valeurs principales
+        _buildStatRow(
+          context,
+          "Budget Initial",
+          "${chantier.budgetInitial.toStringAsFixed(0)} ${projet.devise}",
+          isDark ? Colors.white : Colors.black87,
+        ),
+        const SizedBox(height: 8),
+        _buildStatRow(
+          context,
+          "Dépenses Réelles",
+          "${chantier.depensesActuelles.toStringAsFixed(0)} ${projet.devise}",
+          budgetColor,
+        ),
+        const SizedBox(height: 15),
+
+        // Consommation
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              "Consommation du budget : $pourcentage%",
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: budgetColor,
+              ),
+            ),
+            if (ratio >= 0.8)
+              Icon(
+                ratio >= 1.0
+                    ? Icons.error_outline
+                    : Icons.warning_amber_rounded,
+                color: budgetColor,
+                size: 18,
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        // Barre de progression
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: LinearProgressIndicator(
+            value: ratio.clamp(0.0, 1.0),
+            minHeight: 12,
+            backgroundColor: isDark ? Colors.white10 : Colors.grey[200],
+            valueColor: AlwaysStoppedAnimation<Color>(budgetColor),
+          ),
+        ),
+
+        // FIX : On remplace Spacer() par un simple padding pour éviter de forcer une hauteur
+        const SizedBox(height: 20),
+
+        // Pied de carte
+        Container(
+          padding: const EdgeInsets.only(top: 10),
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(
+                color: isDark ? Colors.white10 : Colors.grey[200]!,
+              ),
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _miniStat(
+                context,
+                reste < 0 ? "Dépassement" : "Reste à investir",
+                "${reste.abs().toStringAsFixed(0)} ${projet.devise}",
+                reste < 0 ? Colors.red : Colors.green,
+              ),
+              _miniStat(
+                context,
+                "Santé Financière",
+                _getHealthLabel(ratio),
+                budgetColor,
+              ),
             ],
           ),
-          const SizedBox(height: 8),
-
-          // Barre de progression visuelle
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: LinearProgressIndicator(
-              value: ratio.clamp(
-                0.0,
-                1.0,
-              ), // On bloque à 1.0 pour l'affichage visuel
-              minHeight: 12,
-              backgroundColor: isDark ? Colors.white10 : Colors.grey[200],
-              valueColor: AlwaysStoppedAnimation<Color>(budgetColor),
-            ),
-          ),
-
-          const Spacer(),
-
-          // Pied de carte : Reste à investir / Santé
-          Container(
-            padding: const EdgeInsets.only(top: 10),
-            decoration: BoxDecoration(
-              border: Border(
-                top: BorderSide(
-                  color: isDark ? Colors.white10 : Colors.grey[200]!,
-                ),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _miniStat(
-                  context,
-                  reste < 0 ? "Dépassement" : "Reste à investir",
-                  "${reste.abs().toStringAsFixed(0)} ${projet.devise}",
-                  reste < 0 ? Colors.red : Colors.green,
-                ),
-                _miniStat(
-                  context,
-                  "Santé Financière",
-                  _getHealthLabel(ratio),
-                  budgetColor,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  // --- LOGIQUE DE COULEUR ---
+  // --- Garde tes méthodes privées (_getBudgetColor, _getHealthLabel, etc.) sans changement ---
   Color _getBudgetColor(double ratio) {
     if (ratio >= 1.0) return Colors.red;
     if (ratio >= 0.8) return Colors.orange;
     return Colors.green;
   }
 
-  // --- ÉTIQUETTE DE SANTÉ ---
   String _getHealthLabel(double ratio) {
     if (ratio >= 1.0) return "CRITIQUE";
     if (ratio >= 0.8) return "VIGILANCE";
     return "OPTIMALE";
   }
 
-  // --- BADGE DE STATUT ---
   Widget _buildStatusBadge(double ratio) {
     Color color = _getBudgetColor(ratio);
     return Container(

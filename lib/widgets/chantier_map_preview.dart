@@ -50,64 +50,67 @@ class _ChantierMapPreviewState extends State<ChantierMapPreview> {
         .where((c) => c.latitude != 0 && !c.latitude.isNaN)
         .toList();
 
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: isDark ? Colors.blueGrey[900] : Colors.blue[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
-      ),
-      child: Stack(
-        children: [
-          FlutterMap(
-            mapController: _mapController, // <-- LIEN AVEC LE CONTRÔLEUR
-            options: MapOptions(
-              initialCenter: LatLng(
-                widget.chantierActuel.latitude != 0
-                    ? widget.chantierActuel.latitude
-                    : 20.0,
-                widget.chantierActuel.longitude != 0
-                    ? widget.chantierActuel.longitude
-                    : 0.0,
+    return SizedBox(
+      height: 250,
+      width: double.infinity,
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: isDark ? Colors.blueGrey[900] : Colors.blue[50],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+        ),
+        child: Stack(
+          children: [
+            FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: LatLng(
+                  widget.chantierActuel.latitude != 0
+                      ? widget.chantierActuel.latitude
+                      : 20.0,
+                  widget.chantierActuel.longitude != 0
+                      ? widget.chantierActuel.longitude
+                      : 0.0,
+                ),
+                initialZoom: 13.0,
+                interactionOptions: const InteractionOptions(
+                  flags: InteractiveFlag.all,
+                ),
               ),
-              initialZoom: 13.0,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.all,
-              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.votreapp.chantier',
+                  tileBuilder: isDark ? _darkMapFilter : null,
+                ),
+                MarkerLayer(
+                  markers: validChantiers.map((chantier) {
+                    final bool isSelected =
+                        chantier.id == widget.chantierActuel.id;
+                    return Marker(
+                      point: LatLng(chantier.latitude, chantier.longitude),
+                      width: 100,
+                      height: 70,
+                      child: _buildMarkerWidget(
+                        context,
+                        chantier.nom,
+                        isSelected,
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
             ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.votreapp.chantier',
-                tileBuilder: isDark ? _darkMapFilter : null,
-              ),
-              MarkerLayer(
-                markers: validChantiers.map((chantier) {
-                  // Effet visuel : Le marqueur actuel est plus gros ou différent
-                  final bool isSelected =
-                      chantier.id == widget.chantierActuel.id;
-
-                  return Marker(
-                    point: LatLng(chantier.latitude, chantier.longitude),
-                    width: 100,
-                    height: 70,
-                    child: _buildMarkerWidget(
-                      context,
-                      chantier.nom,
-                      isSelected,
-                    ),
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
-          Positioned(left: 10, top: 10, child: _buildLiveBadge()),
-        ],
+            // On s'assure que le badge reste bien visible en haut
+            Positioned(left: 10, top: 10, child: _buildLiveBadge()),
+          ],
+        ),
       ),
     );
   }
 
-  // --- LES MÊMES MÉTHODES DE FILTRE ET BADGE QUE TU AVAIS ---
+  // --- LES MÊMES MÉTHODES DE FILTRE ET BADGE---
   // (Inclus ici _darkMapFilter, _buildMarkerWidget mis à jour, et _buildLiveBadge)
 
   Widget _buildMarkerWidget(
