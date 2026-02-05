@@ -213,12 +213,17 @@ class SidebarDrawer extends StatelessWidget {
   }
 
   Widget _buildRoleBadge() {
-    String roleLabel = "UTILISATEUR";
     Color roleColor = Colors.grey;
+    String roleLabel = "UTILISATEUR";
+
     switch (role) {
       case UserRole.chefProjet:
         roleLabel = "ADMIN / CP";
         roleColor = Colors.greenAccent;
+        break;
+      case UserRole.chefDeChantier: // 👈 Ajout du nouveau rôle
+        roleLabel = "CHEF DE CHANTIER";
+        roleColor = Colors.tealAccent; // Une couleur pro et distincte
         break;
       case UserRole.client:
         roleLabel = "ESPACE CLIENT";

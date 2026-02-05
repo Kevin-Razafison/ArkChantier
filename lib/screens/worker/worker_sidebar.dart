@@ -13,7 +13,7 @@ class WorkerSidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      backgroundColor: const Color(0xFF1A334D),
+      backgroundColor: const Color(0xFF0A1929),
       child: Column(
         children: [
           const SizedBox(height: 60),

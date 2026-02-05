@@ -331,6 +331,8 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     switch (role) {
       case UserRole.chefProjet:
         return Colors.purple;
+      case UserRole.chefDeChantier:
+        return Colors.teal;
       case UserRole.ouvrier:
         return Colors.orange;
       case UserRole.client:

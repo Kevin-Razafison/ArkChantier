@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../models/user_model.dart';
 import '../../models/ouvrier_model.dart';
@@ -7,7 +9,6 @@ import '../../services/pdf_service.dart';
 
 class WorkerProfileView extends StatefulWidget {
   final UserModel user;
-
   const WorkerProfileView({super.key, required this.user});
 
   @override
@@ -17,6 +18,7 @@ class WorkerProfileView extends StatefulWidget {
 class _WorkerProfileViewState extends State<WorkerProfileView> {
   Ouvrier? _realWorkerData;
   bool _isLoading = true;
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
@@ -24,84 +26,9 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
     _fetchOuvrierData();
   }
 
-  Future<void> _fetchOuvrierData() async {
-    try {
-      final allWorkers = await DataStorage.loadTeam("annuaire_global");
-
-      // On cherche l'ouvrier. Si on ne trouve pas, on ne lance pas d'exception fatale.
-      final worker = allWorkers.cast<Ouvrier?>().firstWhere(
-        (w) => w?.id == widget.user.id,
-        orElse: () => null,
-      );
-
-      if (mounted) {
-        setState(() {
-          _realWorkerData = worker;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint("Erreur : $e");
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: Color(0xFF1A334D)),
-      );
-    }
-
-    // Si on ne trouve pas l'ouvrier dans l'annuaire, on affiche une erreur propre
-    if (_realWorkerData == null) {
-      return _buildErrorState();
-    }
-
-    final now = DateTime.now();
-    final String monthPrefix =
-        "${now.year}-${now.month.toString().padLeft(2, '0')}-";
-
-    // LOGIQUE DE CALCUL INTERACTIVE
-    final int joursTravailles = _realWorkerData!.joursPointes
-        .where((date) => date.startsWith(monthPrefix))
-        .length;
-    final double totalPaie =
-        joursTravailles * _realWorkerData!.salaireJournalier;
-
-    return Container(
-      color: const Color(0xFFF5F7F9),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeaderCard(),
-            const SizedBox(height: 25),
-
-            _buildSectionLabel("MON POINTAGE (CE MOIS)"),
-            _buildInteractiveCalendar(monthPrefix),
-
-            const SizedBox(height: 25),
-
-            _buildSectionLabel("MA SITUATION FINANCIÈRE"),
-            _buildSalaryInteractiveCard(joursTravailles, totalPaie),
-
-            const SizedBox(height: 25),
-            _buildQRBadgeCard(),
-            const SizedBox(height: 30),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // --- WIDGETS DE COMPOSANTS ---
-
   Widget _buildSectionLabel(String label) {
     return Padding(
-      padding: const EdgeInsets.only(left: 8, bottom: 8),
+      padding: const EdgeInsets.only(left: 8, bottom: 8, top: 20),
       child: Text(
         label,
         style: const TextStyle(
@@ -113,59 +40,211 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
     );
   }
 
+  Future<void> _fetchOuvrierData() async {
+    try {
+      final allWorkers = await DataStorage.loadTeam("annuaire_global");
+      final worker = allWorkers.cast<Ouvrier?>().firstWhere(
+        (w) => w?.id == widget.user.id,
+        orElse: () => null,
+      );
+      if (mounted) {
+        setState(() {
+          _realWorkerData = worker;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _editProfile() async {
+    final nameController = TextEditingController(text: _realWorkerData!.nom);
+    String? tempImagePath = _realWorkerData!.photoPath;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setModalState) => AlertDialog(
+          title: const Text("Modifier mon profil"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: () async {
+                  final XFile? image = await _picker.pickImage(
+                    source: ImageSource.gallery,
+                  );
+                  if (image != null) {
+                    setModalState(() => tempImagePath = image.path);
+                  }
+                },
+                child: CircleAvatar(
+                  radius: 40,
+                  backgroundColor: Colors.grey[200],
+                  backgroundImage: tempImagePath != null
+                      ? FileImage(File(tempImagePath!))
+                      : null,
+                  child: tempImagePath == null
+                      ? const Icon(Icons.camera_alt, size: 30)
+                      : null,
+                ),
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: "Nom complet",
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text("Annuler"),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (nameController.text.isEmpty) return;
+
+                final allWorkers = await DataStorage.loadTeam(
+                  "annuaire_global",
+                );
+                final index = allWorkers.indexWhere(
+                  (w) => w.id == widget.user.id,
+                );
+
+                if (index != -1) {
+                  allWorkers[index].nom = nameController.text;
+                  allWorkers[index].photoPath = tempImagePath;
+                }
+                await DataStorage.saveTeam("annuaire_global", allWorkers);
+
+                if (!mounted) return;
+
+                setState(() {
+                  _realWorkerData!.nom = nameController.text;
+                  _realWorkerData!.photoPath = tempImagePath;
+                });
+                if (!context.mounted) return;
+                Navigator.pop(dialogContext);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Profil mis à jour !")),
+                );
+              },
+              child: const Text("Enregistrer"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_realWorkerData == null) return _buildErrorState();
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final now = DateTime.now();
+    final String monthPrefix =
+        "${now.year}-${now.month.toString().padLeft(2, '0')}-";
+
+    final int joursTravailles = _realWorkerData!.joursPointes
+        .where((date) => date.startsWith(monthPrefix))
+        .length;
+    final double totalPaie =
+        joursTravailles * _realWorkerData!.salaireJournalier;
+
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildHeaderCard(),
+            _buildSectionLabel("MON POINTAGE (CE MOIS)"),
+            _buildInteractiveCalendar(monthPrefix, isDark),
+            _buildSectionLabel("MA SITUATION FINANCIÈRE"),
+            _buildSalaryCard(joursTravailles, totalPaie, isDark),
+            const SizedBox(height: 25),
+            _buildQRBadgeCard(isDark),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeaderCard() {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: const Color(0xFF1A334D),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)],
       ),
-      child: Row(
+      child: Stack(
         children: [
-          CircleAvatar(
-            radius: 35,
-            backgroundColor: Colors.orange,
-            child: Text(
-              _realWorkerData!.nom[0].toUpperCase(),
-              style: const TextStyle(
-                fontSize: 30,
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 35,
+                backgroundColor: Colors.orange,
+                backgroundImage: _realWorkerData!.photoPath != null
+                    ? FileImage(File(_realWorkerData!.photoPath!))
+                    : null,
+                child: _realWorkerData!.photoPath == null
+                    ? Text(
+                        _realWorkerData!.nom[0].toUpperCase(),
+                        style: const TextStyle(
+                          fontSize: 30,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      )
+                    : null,
               ),
-            ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _realWorkerData!.nom.toUpperCase(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Text(
+                      "OUVRIER QUALIFIÉ",
+                      style: TextStyle(
+                        color: Colors.orange,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      "ID: #${_realWorkerData!.id.substring(0, 8)}",
+                      style: const TextStyle(
+                        color: Colors.white38,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _realWorkerData!.nom.toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  _realWorkerData!.specialite.toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.orange,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  "ID: #${_realWorkerData!.id.substring(0, 8)}",
-                  style: const TextStyle(
-                    color: Colors.white38,
-                    fontSize: 11,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-              ],
+          Positioned(
+            right: 0,
+            top: 0,
+            child: IconButton(
+              icon: const Icon(Icons.edit, color: Colors.white70, size: 20),
+              onPressed: _editProfile,
             ),
           ),
         ],
@@ -173,7 +252,7 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
     );
   }
 
-  Widget _buildInteractiveCalendar(String prefix) {
+  Widget _buildInteractiveCalendar(String prefix, bool isDark) {
     final int daysInMonth = DateTime(
       DateTime.now().year,
       DateTime.now().month + 1,
@@ -183,7 +262,7 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
         borderRadius: BorderRadius.circular(15),
       ),
       child: GridView.builder(
@@ -199,24 +278,21 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
           final day = index + 1;
           final dateKey = "$prefix${day.toString().padLeft(2, '0')}";
           bool isPointed = _realWorkerData!.joursPointes.contains(dateKey);
-
           return Container(
             decoration: BoxDecoration(
-              color: isPointed ? Colors.green : Colors.grey[50],
+              color: isPointed
+                  ? Colors.green
+                  : (isDark ? Colors.white10 : Colors.grey[50]),
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: isPointed
-                    ? Colors.green
-                    : Colors.grey.withValues(alpha: 0.1),
-              ),
             ),
             child: Center(
               child: Text(
                 "$day",
                 style: TextStyle(
-                  color: isPointed ? Colors.white : Colors.black38,
+                  color: isPointed
+                      ? Colors.white
+                      : (isDark ? Colors.white38 : Colors.black38),
                   fontSize: 12,
-                  fontWeight: isPointed ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
             ),
@@ -226,11 +302,11 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
     );
   }
 
-  Widget _buildSalaryInteractiveCard(int jours, double total) {
+  Widget _buildSalaryCard(int jours, double total, bool isDark) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
         borderRadius: BorderRadius.circular(15),
       ),
       child: Column(
@@ -275,15 +351,12 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF1A334D),
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 15),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              onPressed: () {
-                // APPEL AU SERVICE PDF RÉEL
-                PdfService.generateOuvrierReport(_realWorkerData!, "Ar");
-              },
+              onPressed: () =>
+                  PdfService.generateOuvrierReport(_realWorkerData!, "Ar"),
             ),
           ),
         ],
@@ -291,61 +364,39 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
     );
   }
 
-  Widget _buildQRBadgeCard() {
+  Widget _buildQRBadgeCard(bool isDark) {
     return Center(
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(15),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
-            ),
-            child: QrImageView(
-              data: _realWorkerData!.id,
-              version: QrVersions.auto,
-              size: 140,
-              eyeStyle: const QrEyeStyle(
-                eyeShape: QrEyeShape.square,
-                color: Color(0xFF1A334D),
-              ),
-            ),
+      child: Container(
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: Colors
+              .white, // On laisse le QR sur fond blanc pour qu'il soit scannable
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: QrImageView(
+          data: _realWorkerData!.id,
+          version: QrVersions.auto,
+          size: 140,
+          eyeStyle: const QrEyeStyle(
+            eyeShape: QrEyeShape.square,
+            color: Color(0xFF1A334D),
           ),
-          const SizedBox(height: 10),
-          const Text(
-            "PRÉSENTEZ CE CODE POUR POINTER",
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              color: Colors.blueGrey,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildErrorState() {
     return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.warning_amber_rounded, size: 60, color: Colors.orange),
-            SizedBox(height: 20),
-            Text(
-              "Données introuvables",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-            ),
-            Text(
-              "Votre compte n'est pas encore lié à un profil ouvrier actif. Contactez l'administrateur.",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey),
-            ),
-          ],
-        ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.warning_amber_rounded, size: 60, color: Colors.orange),
+          Text(
+            "Données introuvables",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          ),
+        ],
       ),
     );
   }

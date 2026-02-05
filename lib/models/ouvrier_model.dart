@@ -1,11 +1,12 @@
 class Ouvrier {
   final String id;
-  String nom;      
-  String specialite; 
-  String telephone; 
+  String nom;
+  String specialite;
+  String telephone;
   String photoUrl;
+  String? photoPath;
   bool estPresent;
-  double salaireJournalier; 
+  double salaireJournalier;
   List<String> joursPointes;
 
   Ouvrier({
@@ -14,6 +15,7 @@ class Ouvrier {
     required this.specialite,
     required this.telephone,
     this.photoUrl = 'https://via.placeholder.com/150',
+    this.photoPath,
     this.estPresent = true,
     this.salaireJournalier = 0.0,
     List<String>? joursPointes,
@@ -22,8 +24,9 @@ class Ouvrier {
     'id': id,
     'nom': nom,
     'specialite': specialite,
-    'telephone': telephone, // <--- Ajout au JSON
+    'telephone': telephone,
     'photoUrl': photoUrl,
+    'photoPath': photoPath,
     'estPresent': estPresent,
     'salaireJournalier': salaireJournalier,
     'joursPointes': joursPointes,
@@ -33,8 +36,9 @@ class Ouvrier {
     id: json['id'],
     nom: json['nom'],
     specialite: json['specialite'],
-    telephone: json['telephone'] ?? '', // <--- Lecture du JSON
+    telephone: json['telephone'] ?? '',
     photoUrl: json['photoUrl'],
+    photoPath: json['photoPath'],
     estPresent: json['estPresent'] ?? false,
     salaireJournalier: (json['salaireJournalier'] as num).toDouble(),
     joursPointes: List<String>.from(json['joursPointes'] ?? []),

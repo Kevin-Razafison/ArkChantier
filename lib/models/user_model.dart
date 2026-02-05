@@ -1,6 +1,6 @@
 import '../services/encryption_service.dart';
 
-enum UserRole { chefProjet, client, ouvrier }
+enum UserRole { chefProjet, chefDeChantier, client, ouvrier }
 
 class UserModel {
   final String id;

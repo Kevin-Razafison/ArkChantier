@@ -29,7 +29,6 @@ class ChantierApp extends StatefulWidget {
 }
 
 class ChantierAppState extends State<ChantierApp> {
-  ThemeMode _themeMode = ThemeMode.light;
   UserModel currentUser = UserModel(
     id: '0',
     nom: 'Admin',
@@ -37,6 +36,16 @@ class ChantierAppState extends State<ChantierApp> {
     role: UserRole.chefProjet,
     passwordHash: EncryptionService.hashPassword("1234"),
   );
+  ThemeMode _adminThemeMode = ThemeMode.light;
+  ThemeMode _workerThemeMode = ThemeMode.light;
+
+  ThemeMode get effectiveTheme {
+    if (currentUser.role == UserRole.chefProjet) {
+      return _adminThemeMode;
+    } else {
+      return _workerThemeMode;
+    }
+  }
 
   @override
   void initState() {
@@ -68,8 +77,11 @@ class ChantierAppState extends State<ChantierApp> {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      final isDark = prefs.getBool('isDarkMode') ?? false;
-      _themeMode = isDark ? ThemeMode.dark : ThemeMode.light;
+      final adminDark = prefs.getBool('isAdminDarkMode') ?? false;
+      final workerDark = prefs.getBool('isWorkerDarkMode') ?? false;
+
+      _adminThemeMode = adminDark ? ThemeMode.dark : ThemeMode.light;
+      _workerThemeMode = workerDark ? ThemeMode.dark : ThemeMode.light;
 
       final savedName = prefs.getString('userName');
       if (savedName != null) {
@@ -87,15 +99,22 @@ class ChantierAppState extends State<ChantierApp> {
 
   Future<void> toggleTheme(bool isDark) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isDarkMode', isDark);
-    setState(() => _themeMode = isDark ? ThemeMode.dark : ThemeMode.light);
+    setState(() {
+      if (currentUser.role == UserRole.chefProjet) {
+        _adminThemeMode = isDark ? ThemeMode.dark : ThemeMode.light;
+        prefs.setBool('isAdminDarkMode', isDark);
+      } else {
+        _workerThemeMode = isDark ? ThemeMode.dark : ThemeMode.light;
+        prefs.setBool('isWorkerDarkMode', isDark);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      themeMode: _themeMode,
+      themeMode: effectiveTheme,
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.light,
