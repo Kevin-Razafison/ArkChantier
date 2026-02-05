@@ -11,10 +11,13 @@ import 'foreman_report_view.dart';
 import 'foreman_incident_view.dart';
 import 'foreman_stock_view.dart';
 import 'foreman_expense_view.dart';
+import 'foreman_setting_screen.dart';
+import 'foreman_profile_view.dart';
 import '../../services/pdf_service.dart';
 import '../../services/data_storage.dart';
 import '../../widgets/chantier_map_preview.dart';
 import '../../models/depense_model.dart' as dm;
+import 'dart:io';
 
 class ForemanShell extends StatefulWidget {
   final UserModel user;
@@ -29,6 +32,7 @@ class ForemanShell extends StatefulWidget {
 class _ForemanShellState extends State<ForemanShell> {
   int _currentIndex = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  File? _profileImage;
 
   Future<void> _generateDailyReport(Chantier chantier) async {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -63,6 +67,12 @@ class _ForemanShellState extends State<ForemanShell> {
     }
   }
 
+  void _updateProfileImage(File newImage) {
+    setState(() {
+      _profileImage = newImage;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final monChantier = widget.projet.chantiers.firstWhere(
@@ -73,10 +83,16 @@ class _ForemanShellState extends State<ForemanShell> {
     final List<Widget> pages = [
       _buildDashboard(monChantier),
       ForemanAttendanceView(chantier: monChantier),
-      ForemanStockView(chantier: monChantier),
       ForemanReportView(chantier: monChantier),
+      ForemanStockView(chantier: monChantier),
       ForemanIncidentView(chantier: monChantier),
       ForemanExpenseView(chantier: monChantier, devise: widget.projet.devise),
+      ForemanSettingsView(user: widget.user),
+      ForemanProfileView(
+        user: widget.user,
+        currentImage: _profileImage,
+        onImageChanged: _updateProfileImage,
+      ),
     ];
 
     // On définit le seuil de bascule (ex: 1000 pixels de large)
@@ -89,6 +105,7 @@ class _ForemanShellState extends State<ForemanShell> {
           ? null
           : ForemanSidebar(
               user: widget.user,
+              profileImage: _profileImage,
               onDestinationSelected: (index) {
                 if (index == -1) {
                   Navigator.pushReplacementNamed(context, '/login');
@@ -131,6 +148,7 @@ class _ForemanShellState extends State<ForemanShell> {
               width: 280, // Largeur fixe identique au Drawer standard
               child: ForemanSidebar(
                 user: widget.user,
+                profileImage: _profileImage,
                 onDestinationSelected: (index) {
                   if (index == -1) {
                     Navigator.pushReplacementNamed(context, '/login');
@@ -143,7 +161,7 @@ class _ForemanShellState extends State<ForemanShell> {
             ),
           Expanded(
             child: Container(
-              color: const Color(0xFF0D1B2A), // Fond pour harmoniser
+              color: Theme.of(context).scaffoldBackgroundColor,
               child: pages[_currentIndex],
             ),
           ),
@@ -166,16 +184,22 @@ class _ForemanShellState extends State<ForemanShell> {
         return "JOURNAL D'INCIDENTS";
       case 5:
         return "DÉPENSES & REÇUS";
+      case 6:
+        return "PARAMÈTRES";
+      case 7:
+        return "MON PROFIL";
       default:
         return "CHANTIER";
     }
   }
 
   Widget _buildDashboard(Chantier chantier) {
+    // Détecter si on est en mode sombre pour ajuster certains textes
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // CORRECTION ICI : Ajout des arguments requis pour WeatherBanner
         WeatherBanner(
           city: chantier.lieu,
           lat: chantier.latitude,
@@ -193,34 +217,48 @@ class _ForemanShellState extends State<ForemanShell> {
         ),
         const SizedBox(height: 10),
         Container(
-          height: 200, // Hauteur fixe pour éviter l'erreur "Unbounded height"
+          height: 200,
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: Colors.white10),
+            // Bordure plus visible en mode clair
+            border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
           ),
           child: ChantierMapPreview(
-            chantiers: [chantier], // On n'envoie que son chantier
+            chantiers: [chantier],
             chantierActuel: chantier,
           ),
         ),
-
+        const SizedBox(height: 20), // Ajout d'un espace
+        // CARTE DE PROGRESSION
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A334D),
+            // Utilise la couleur de carte du thème (Blanche en clair, Bleue en sombre)
+            color: isDark ? const Color(0xFF1A334D) : Colors.white,
             borderRadius: BorderRadius.circular(15),
+            boxShadow: isDark
+                ? []
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 10,
+                    ),
+                  ],
           ),
           child: Column(
             children: [
-              const Text(
+              Text(
                 "PROGRESSION GLOBALE",
-                style: TextStyle(color: Colors.white70, fontSize: 12),
+                style: TextStyle(
+                  color: isDark ? Colors.white70 : Colors.black54,
+                  fontSize: 12,
+                ),
               ),
               const SizedBox(height: 10),
               LinearProgressIndicator(
                 value: chantier.progression,
-                backgroundColor: Colors.white10,
+                backgroundColor: isDark ? Colors.white10 : Colors.grey.shade200,
                 color: Colors.orange,
                 minHeight: 10,
                 borderRadius: BorderRadius.circular(5),
@@ -228,8 +266,8 @@ class _ForemanShellState extends State<ForemanShell> {
               const SizedBox(height: 10),
               Text(
                 "${(chantier.progression * 100).toInt()}% achevé",
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: isDark ? Colors.white : Colors.black87,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -243,6 +281,7 @@ class _ForemanShellState extends State<ForemanShell> {
 
         InfoCard(
           title: "DERNIERS INCIDENTS",
+          // L'InfoCard devrait déjà s'adapter si elle utilise le thème
           child: IncidentList(incidents: chantier.incidents),
         ),
         const SizedBox(height: 80),

@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
+import 'dart:io';
 
 class ForemanSidebar extends StatelessWidget {
   final UserModel user;
+  final File? profileImage;
   final Function(int) onDestinationSelected;
 
   const ForemanSidebar({
     super.key,
     required this.user,
+    this.profileImage,
     required this.onDestinationSelected,
   });
 
@@ -35,6 +38,9 @@ class ForemanSidebar extends StatelessWidget {
             5,
             color: Colors.orangeAccent,
           ),
+          _buildMenuItem(Icons.person_outline, "Mon Profil", 7),
+          _buildMenuItem(Icons.settings_outlined, "Paramètres", 6),
+
           const Spacer(),
           const Divider(color: Colors.white24),
           _buildMenuItem(
@@ -51,16 +57,18 @@ class ForemanSidebar extends StatelessWidget {
 
   Widget _buildHeader() {
     return DrawerHeader(
-      decoration: BoxDecoration(
-        color: Color(0xFF142638),
-        borderRadius: BorderRadius.circular(1),
-      ),
+      decoration: const BoxDecoration(color: Color(0xFF142638)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const CircleAvatar(
+          CircleAvatar(
             backgroundColor: Colors.orange,
-            child: Icon(Icons.engineering, color: Colors.white),
+            backgroundImage: profileImage != null
+                ? FileImage(profileImage!)
+                : null,
+            child: profileImage == null
+                ? const Icon(Icons.engineering, color: Colors.white)
+                : null,
           ),
           const SizedBox(height: 15),
           Text(

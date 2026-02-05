@@ -31,7 +31,6 @@ class _ForemanStockViewState extends State<ForemanStockView> {
 
   void _updateQuantity(Materiel item, double change) async {
     setState(() {
-      // CORRECTION: Ajout de .toInt() car item.quantite attend un entier
       item.quantite = (item.quantite + change).clamp(0, 999999).toInt();
     });
     await DataStorage.saveStocks(widget.chantier.id, _stocks);
@@ -39,24 +38,30 @@ class _ForemanStockViewState extends State<ForemanStockView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.orange),
+      );
+    }
     return Scaffold(
-      backgroundColor: const Color(0xFF0D1B2A), // Fond sombre pour cohérence
+      // Suppression du backgroundColor fixe
       body: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: _stocks.length,
         itemBuilder: (context, index) {
           final item = _stocks[index];
           return Card(
-            color: const Color(0xFF1A334D),
-            // CORRECTION: Utilisation de .only(bottom: 10)
+            // La carte devient blanche en mode clair et bleue nuit en mode sombre
+            color: isDark ? const Color(0xFF1A334D) : Colors.white,
+            elevation: isDark ? 0 : 2,
             margin: const EdgeInsets.only(bottom: 10),
             child: ListTile(
               title: Text(
                 item.nom,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: isDark ? Colors.white : Colors.black87,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -92,13 +97,13 @@ class _ForemanStockViewState extends State<ForemanStockView> {
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.orange,
-        onPressed: _showAddMaterialDialog,
+        onPressed: () => _showAddMaterialDialog(isDark),
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
 
-  void _showAddMaterialDialog() {
+  void _showAddMaterialDialog(bool isDark) {
     final nomController = TextEditingController();
     final uniteController = TextEditingController();
     final quantiteController = TextEditingController();
@@ -106,17 +111,20 @@ class _ForemanStockViewState extends State<ForemanStockView> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A334D),
-        title: const Text(
+        // Adaptation du fond de l'alerte
+        backgroundColor: isDark ? const Color(0xFF1A334D) : Colors.white,
+        title: Text(
           "Ajouter un matériau",
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(
+            color: isDark ? Colors.white : const Color(0xFF1A334D),
+          ),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nomController,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: isDark ? Colors.white : Colors.black),
               decoration: const InputDecoration(
                 labelText: "Nom (ex: Acier 12)",
                 labelStyle: TextStyle(color: Colors.orange),
@@ -125,7 +133,7 @@ class _ForemanStockViewState extends State<ForemanStockView> {
             TextField(
               controller: quantiteController,
               keyboardType: TextInputType.number,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: isDark ? Colors.white : Colors.black),
               decoration: const InputDecoration(
                 labelText: "Quantité initiale",
                 labelStyle: TextStyle(color: Colors.orange),
@@ -133,7 +141,7 @@ class _ForemanStockViewState extends State<ForemanStockView> {
             ),
             TextField(
               controller: uniteController,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: isDark ? Colors.white : Colors.black),
               decoration: const InputDecoration(
                 labelText: "Unité (ex: kg, sacs, m3)",
                 labelStyle: TextStyle(color: Colors.orange),
@@ -147,6 +155,7 @@ class _ForemanStockViewState extends State<ForemanStockView> {
             child: const Text("Annuler"),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
             onPressed: () async {
               if (nomController.text.isNotEmpty) {
                 final nouveau = Materiel(
@@ -154,7 +163,7 @@ class _ForemanStockViewState extends State<ForemanStockView> {
                   nom: nomController.text,
                   quantite: int.tryParse(quantiteController.text) ?? 0,
                   unite: uniteController.text,
-                  prixUnitaire: 0, // À ajuster plus tard via les factures
+                  prixUnitaire: 0,
                   categorie: CategorieMateriel.consommable,
                 );
                 setState(() => _stocks.add(nouveau));
@@ -163,7 +172,7 @@ class _ForemanStockViewState extends State<ForemanStockView> {
                 Navigator.pop(context);
               }
             },
-            child: const Text("Ajouter"),
+            child: const Text("Ajouter", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),

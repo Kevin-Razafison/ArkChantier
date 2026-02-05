@@ -143,6 +143,9 @@ class _ForemanAttendanceViewState extends State<ForemanAttendanceView> {
 
   @override
   Widget build(BuildContext context) {
+    // On récupère le thème actuel
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     if (_isLoading) {
       return const Center(
         child: CircularProgressIndicator(color: Colors.orange),
@@ -151,10 +154,10 @@ class _ForemanAttendanceViewState extends State<ForemanAttendanceView> {
     final presentCount = _equipe.where((o) => o.estPresent).length;
 
     return Scaffold(
-      // On l'enveloppe dans un Scaffold interne pour avoir le FloatingActionButton
+      // On laisse le Scaffold gérer sa propre couleur de fond via le thème
       body: Column(
         children: [
-          _buildStatsHeader(presentCount),
+          _buildStatsHeader(presentCount, isDark), // On passe isDark ici
           Expanded(
             child: _equipe.isEmpty
                 ? const Center(child: Text("Aucun ouvrier assigné"))
@@ -164,14 +167,16 @@ class _ForemanAttendanceViewState extends State<ForemanAttendanceView> {
                     separatorBuilder: (context, index) =>
                         const Divider(height: 1),
                     itemBuilder: (context, index) =>
-                        _buildOuvrierTile(_equipe[index]),
+                        _buildOuvrierTile(_equipe[index], isDark),
                   ),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openQRScanner,
-        backgroundColor: const Color(0xFF1A334D),
+        backgroundColor: const Color(
+          0xFF1A334D,
+        ), // On peut garder le bleu pour le bouton (identité visuelle)
         icon: const Icon(Icons.qr_code_scanner, color: Colors.orange),
         label: const Text(
           "SCANNER BADGE",
@@ -181,27 +186,32 @@ class _ForemanAttendanceViewState extends State<ForemanAttendanceView> {
     );
   }
 
-  Widget _buildStatsHeader(int count) {
+  Widget _buildStatsHeader(int count, bool isDark) {
     return Container(
       padding: const EdgeInsets.all(20),
-      color: const Color(0xFF1A334D).withValues(alpha: 0.05),
+      // Adaptation de la couleur de l'entête
+      color: isDark
+          ? Colors.white.withValues(alpha: 0.05)
+          : const Color(0xFF1A334D).withValues(alpha: 0.05),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 "PRÉSENCE DU JOUR",
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: Colors.blueGrey,
+                  color: isDark ? Colors.orangeAccent : Colors.blueGrey,
                 ),
               ),
-              // Simple date format without locale dependency
               Text(
                 "${_getFrenchDay(DateTime.now().weekday)} ${DateTime.now().day} ${_getFrenchMonth(DateTime.now().month)}",
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? Colors.white70 : Colors.grey,
+                ),
               ),
             ],
           ),
@@ -255,20 +265,38 @@ class _ForemanAttendanceViewState extends State<ForemanAttendanceView> {
     return months[month - 1];
   }
 
-  Widget _buildOuvrierTile(Ouvrier o) {
+  Widget _buildOuvrierTile(Ouvrier o, bool isDark) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(vertical: 8),
       leading: CircleAvatar(
         backgroundColor: o.estPresent
-            ? Colors.green.shade100
-            : Colors.grey.shade200,
+            ? (isDark
+                  ? Colors.green.withValues(alpha: 0.2)
+                  : Colors.green.shade100)
+            : (isDark ? Colors.white10 : Colors.grey.shade200),
         child: Text(
           o.nom[0],
-          style: TextStyle(color: o.estPresent ? Colors.green : Colors.grey),
+          style: TextStyle(
+            color: o.estPresent
+                ? Colors.green
+                : (isDark ? Colors.white38 : Colors.grey),
+          ),
         ),
       ),
-      title: Text(o.nom, style: const TextStyle(fontWeight: FontWeight.bold)),
-      subtitle: Text(o.specialite, style: const TextStyle(fontSize: 12)),
+      title: Text(
+        o.nom,
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: isDark ? Colors.white : Colors.black87,
+        ),
+      ),
+      subtitle: Text(
+        o.specialite,
+        style: TextStyle(
+          fontSize: 12,
+          color: isDark ? Colors.white54 : Colors.black54,
+        ),
+      ),
       trailing: Switch(
         value: o.estPresent,
         activeTrackColor: Colors.green.shade400,

@@ -44,43 +44,52 @@ class _ForemanExpenseViewState extends State<ForemanExpenseView> {
 
   @override
   Widget build(BuildContext context) {
+    // Détection du mode sombre
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     double total = _depenses.fold(0, (sum, item) => sum + item.montant);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0D1B2A),
+      // Suppression de backgroundColor fixe pour utiliser le thème par défaut
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: Colors.orange))
           : Column(
               children: [
-                _buildHeader(total),
+                _buildHeader(total, isDark),
                 Expanded(
                   child: ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: _depenses.length,
                     itemBuilder: (context, index) =>
-                        _buildExpenseCard(_depenses[index]),
+                        _buildExpenseCard(_depenses[index], isDark),
                   ),
                 ),
               ],
             ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.orange,
-        onPressed: () => _showAddExpenseDialog(),
+        onPressed: () => _showAddExpenseDialog(isDark), // On passe isDark
         child: const Icon(Icons.add_shopping_cart, color: Colors.white),
       ),
     );
   }
 
-  Widget _buildHeader(double total) {
+  Widget _buildHeader(double total, bool isDark) {
     return Container(
       padding: const EdgeInsets.all(20),
-      color: const Color(0xFF1A334D),
+      // Couleur d'entête adaptative
+      color: isDark
+          ? Colors.white.withValues(alpha: 0.05)
+          : const Color(0xFF1A334D).withValues(alpha: 0.05),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Text(
+          Text(
             "TOTAL DÉPENSÉ",
-            style: TextStyle(color: Colors.white70, fontSize: 12),
+            style: TextStyle(
+              color: isDark ? Colors.white70 : Colors.blueGrey,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           Text(
             "${total.toStringAsFixed(0)} ${widget.devise}",
@@ -95,28 +104,27 @@ class _ForemanExpenseViewState extends State<ForemanExpenseView> {
     );
   }
 
-  Widget _buildExpenseCard(Depense d) {
+  Widget _buildExpenseCard(Depense d, bool isDark) {
     return Card(
-      color: const Color(0xFF1A334D),
+      // Utilisation de la couleur de surface du thème ou blanc
+      color: isDark ? const Color(0xFF1A334D) : Colors.white,
+      elevation: isDark ? 0 : 2,
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
-        leading: Icon(
-          _getIcon(d.type),
-          color: Colors.orangeAccent,
-        ), // Changé: d.type au lieu de d.categorie
+        leading: Icon(_getIcon(d.type), color: Colors.orangeAccent),
         title: Text(
-          d.titre, // Changé: d.titre au lieu de d.libelle
-          style: const TextStyle(
-            color: Colors.white,
+          d.titre,
+          style: TextStyle(
+            color: isDark ? Colors.white : Colors.black87,
             fontWeight: FontWeight.bold,
           ),
         ),
         subtitle: Text(
-          "${d.date.day}/${d.date.month} - ${d.type.name}", // Changé: d.type.name au lieu de d.categorie.name
-          style: const TextStyle(color: Colors.white54),
+          "${d.date.day}/${d.date.month} - ${d.type.name}",
+          style: TextStyle(color: isDark ? Colors.white54 : Colors.black54),
         ),
         trailing: Text(
-          "${d.montant.toInt()} F",
+          "${d.montant.toInt()} ${widget.devise}",
           style: const TextStyle(
             color: Colors.redAccent,
             fontWeight: FontWeight.bold,
@@ -142,17 +150,17 @@ class _ForemanExpenseViewState extends State<ForemanExpenseView> {
     }
   }
 
-  void _showAddExpenseDialog() {
+  void _showAddExpenseDialog(bool isDark) {
     final libelleCtrl = TextEditingController();
     final montantCtrl = TextEditingController();
     String? pathTicket;
-    TypeDepense selectedType =
-        TypeDepense.divers; // Changé: TypeDepense au lieu de CategorieDepense
+    TypeDepense selectedType = TypeDepense.divers;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1A334D),
+      // La couleur de fond du modal s'adapte aussi
+      backgroundColor: isDark ? const Color(0xFF1A334D) : Colors.white,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) => Padding(
           padding: EdgeInsets.only(
@@ -165,52 +173,52 @@ class _ForemanExpenseViewState extends State<ForemanExpenseView> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
+                Text(
                   "NOUVELLE DÉPENSE",
                   style: TextStyle(
-                    color: Colors.white,
+                    color: isDark ? Colors.white : const Color(0xFF1A334D),
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 TextField(
                   controller: libelleCtrl,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black),
                   decoration: const InputDecoration(
-                    labelText: "Titre", // Changé: Titre au lieu de Libellé
+                    labelText: "Titre",
                     labelStyle: TextStyle(color: Colors.orange),
                   ),
                 ),
                 TextField(
                   controller: montantCtrl,
                   keyboardType: TextInputType.number,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black),
                   decoration: const InputDecoration(
                     labelText: "Montant",
                     labelStyle: TextStyle(color: Colors.orange),
                   ),
                 ),
                 const SizedBox(height: 20),
-
-                // Menu déroulant pour TypeDepense
                 DropdownButton<TypeDepense>(
                   value: selectedType,
+                  dropdownColor: isDark
+                      ? const Color(0xFF1A334D)
+                      : Colors.white,
                   items: TypeDepense.values.map((type) {
                     return DropdownMenuItem<TypeDepense>(
                       value: type,
                       child: Text(
                         type.name.toUpperCase(),
-                        style: const TextStyle(color: Colors.white),
+                        style: TextStyle(
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
                       ),
                     );
                   }).toList(),
                   onChanged: (TypeDepense? newValue) {
                     if (newValue != null) {
-                      setModalState(() {
-                        selectedType = newValue;
-                      });
+                      setModalState(() => selectedType = newValue);
                     }
                   },
-                  dropdownColor: const Color(0xFF1A334D),
                 ),
 
                 const SizedBox(height: 20),

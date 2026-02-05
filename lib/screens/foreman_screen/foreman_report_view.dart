@@ -9,29 +9,56 @@ class ForemanReportView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Détection du mode sombre
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
+      // Suppression de la couleur de fond fixe pour laisser le thème décider
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               "NOUVEAU RAPPORT PHOTO",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                // Couleur adaptée
+                color: isDark ? Colors.orangeAccent : const Color(0xFF1A334D),
+              ),
             ),
-            const Text(
+            Text(
               "Prenez une photo de l'avancement pour le client.",
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.white54 : Colors.grey,
+              ),
             ),
             const SizedBox(height: 20),
             Expanded(
-              child: PhotoReporter(
-                onImageSaved: (path) {
-                  // Ici la logique de sauvegarde quand une photo est prise
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Photo enregistrée : $path")),
-                  );
-                },
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(15),
+                  // Ajout d'une légère bordure pour structurer l'espace photo en mode clair
+                  border: Border.all(
+                    color: isDark ? Colors.white10 : Colors.black12,
+                  ),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(15),
+                  child: PhotoReporter(
+                    onImageSaved: (path) {
+                      // Logique de sauvegarde
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text("Photo enregistrée : $path"),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    },
+                  ),
+                ),
               ),
             ),
           ],
