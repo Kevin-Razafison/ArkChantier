@@ -136,7 +136,6 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
-
   late final List<Widget> _pages;
 
   @override
@@ -149,6 +148,7 @@ class _MainShellState extends State<MainShell> {
     final project = widget.currentProject;
     final user = widget.user;
 
+    // --- LOGIQUE DE NAVIGATION POUR ADMIN / CLIENT ---
     return [
       DashboardView(
         key: ValueKey('dash_${project.id}'),
@@ -162,49 +162,55 @@ class _MainShellState extends State<MainShell> {
               projet: project,
               user: user,
             )
-          : SettingsScreen(key: ValueKey('settings')),
+          : const SettingsScreen(key: ValueKey('settings_client')),
       user.role != UserRole.client
           ? MaterielScreen(key: ValueKey('mat_${project.id}'), projet: project)
-          : SettingsScreen(key: ValueKey('settings')),
+          : const SettingsScreen(key: ValueKey('settings_client_2')),
       user.role == UserRole.chefProjet
           ? StatsScreen(key: ValueKey('stat_${project.id}'), projet: project)
-          : SettingsScreen(key: ValueKey('settings')),
-      SettingsScreen(key: ValueKey('settings')),
+          : const SettingsScreen(key: ValueKey('settings_client_3')),
+      const SettingsScreen(key: ValueKey('settings_final')),
     ];
   }
 
   @override
   Widget build(BuildContext context) {
     bool isMobile = MediaQuery.of(context).size.width < 800;
+    bool isOuvrier = widget.user.role == UserRole.ouvrier;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: Text(widget.currentProject.nom),
-        backgroundColor: const Color(0xFF1A334D),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        leading: (!isMobile && widget.user.role != UserRole.client)
-            ? IconButton(
-                icon: const Icon(Icons.apps_rounded),
-                onPressed: () => Navigator.pushReplacementNamed(
-                  context,
-                  '/project_launcher',
-                ),
-              )
-            : null,
+      // On n'affiche l'AppBar que si ce n'est pas un mobile ouvrier (pour utiliser le SliverAppBar de WorkerHomeView)
+      appBar: (isMobile && isOuvrier && _selectedIndex == 0)
+          ? null
+          : AppBar(
+              title: Text(
+                isOuvrier && _selectedIndex == 0
+                    ? "Mon Espace"
+                    : widget.currentProject.nom,
+              ),
+              backgroundColor: const Color(0xFF1A334D),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              leading: (!isMobile && widget.user.role == UserRole.chefProjet)
+                  ? IconButton(
+                      icon: const Icon(Icons.apps_rounded),
+                      onPressed: () => Navigator.pushReplacementNamed(
+                        context,
+                        '/project_launcher',
+                      ),
+                    )
+                  : null,
+            ),
+      drawer: SidebarDrawer(
+        role: widget.user.role,
+        currentIndex: _selectedIndex,
+        currentProject: widget.currentProject,
+        onDestinationSelected: (i) {
+          setState(() => _selectedIndex = i);
+          if (isMobile) Navigator.pop(context);
+        },
       ),
-      drawer: isMobile
-          ? SidebarDrawer(
-              role: widget.user.role,
-              currentIndex: _selectedIndex,
-              currentProject: widget.currentProject,
-              onDestinationSelected: (i) {
-                setState(() => _selectedIndex = i);
-                if (isMobile) Navigator.pop(context);
-              },
-            )
-          : null,
       body: Row(
         children: [
           if (!isMobile)
@@ -215,10 +221,7 @@ class _MainShellState extends State<MainShell> {
               onDestinationSelected: (i) => setState(() => _selectedIndex = i),
             ),
           Expanded(
-            child: IndexedStack(
-              index: _selectedIndex,
-              children: _pages, // ✅ Utiliser la liste pré-construite
-            ),
+            child: IndexedStack(index: _selectedIndex, children: _pages),
           ),
         ],
       ),

@@ -353,54 +353,76 @@ class _OuvriersScreenState extends State<OuvriersScreen>
   }
 
   void _showAddWorkerDialog() {
-    final nomController = TextEditingController();
-    final specController = TextEditingController();
+    // On récupère les utilisateurs qui sont dans ce projet ET qui sont des ouvriers
+    _loadProjectTeamAndShowDialog();
+  }
+
+  Future<void> _loadProjectTeamAndShowDialog() async {
+    // 1. Charger tous les utilisateurs du projet
+    final allUsers = await DataStorage.loadAllUsers();
+    final projectWorkers = allUsers
+        .where(
+          (u) => u.chantierId == widget.projet.id && u.role == UserRole.ouvrier,
+        )
+        .toList();
+
+    // 2. Filtrer ceux qui ont déjà une fiche dans _allOuvriers
+    final availableToAdd = projectWorkers
+        .where((u) => !_allOuvriers.any((o) => o.id == u.id))
+        .toList();
+
+    if (!mounted) return;
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Nouvel Ouvrier"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nomController,
-              decoration: const InputDecoration(labelText: "Nom Complet"),
-              textCapitalization: TextCapitalization.words,
-            ),
-            TextField(
-              controller: specController,
-              decoration: const InputDecoration(
-                labelText: "Métier / Spécialité",
-              ),
-            ),
-          ],
+        title: const Text("Lier un membre de l'équipe"),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: availableToAdd.isEmpty
+              ? const Text(
+                  "Tous les ouvriers de l'équipe ont déjà une fiche de pointage.",
+                )
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: availableToAdd.length,
+                  itemBuilder: (context, index) {
+                    final user = availableToAdd[index];
+                    return ListTile(
+                      leading: const CircleAvatar(child: Icon(Icons.person)),
+                      title: Text(user.nom),
+                      subtitle: const Text("Cliquer pour créer sa fiche"),
+                      onTap: () async {
+                        // CRÉATION DE LA FICHE AVEC LE MÊME ID QUE LE USER
+                        final newWorker = Ouvrier(
+                          id: user.id, // <--- TRÈS IMPORTANT : ID IDENTIQUE
+                          nom: user.nom,
+                          specialite:
+                              "Ouvrier", // À modifier plus tard dans les détails
+                          telephone: "",
+                          salaireJournalier: 25000.0,
+                          joursPointes: [],
+                        );
+
+                        setState(() {
+                          _allOuvriers.add(newWorker);
+                          _filterOuvriers(_searchController.text);
+                        });
+
+                        await DataStorage.saveTeam(
+                          "annuaire_global",
+                          _allOuvriers,
+                        );
+                        if (ctx.mounted) Navigator.pop(ctx);
+                      },
+                    );
+                  },
+                ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text("ANNULER"),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (nomController.text.trim().isNotEmpty) {
-                final newWorker = Ouvrier(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
-                  nom: nomController.text.trim(),
-                  specialite: specController.text.trim(),
-                  telephone: "",
-                  salaireJournalier: 50.0,
-                  joursPointes: [],
-                );
-                setState(() {
-                  _allOuvriers.add(newWorker);
-                  _filterOuvriers(_searchController.text);
-                });
-                await DataStorage.saveTeam("annuaire_global", _allOuvriers);
-                if (ctx.mounted) Navigator.pop(ctx);
-              }
-            },
-            child: const Text("AJOUTER"),
+            child: const Text("FERMER"),
           ),
         ],
       ),

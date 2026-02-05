@@ -47,7 +47,7 @@ class UserModel {
       nom: 'Administrateur ARK',
       email: 'admin@ark.com',
       role: UserRole.chefProjet,
-      // On génère un hash pour le mot de passe par défaut "admin123"
+      //"admin123"
       passwordHash: EncryptionService.hashPassword("admin123"),
     );
   }

@@ -69,9 +69,9 @@ class _PayrollScreenState extends State<PayrollScreen> {
                             final worker = _allOuvriers[index];
                             final stats = _calculateMonthlyPay(worker);
 
-                            if (stats['days'] == 0)
+                            if (stats['days'] == 0) {
                               return const SizedBox.shrink();
-
+                            }
                             return Card(
                               margin: const EdgeInsets.symmetric(
                                 horizontal: 16,
