@@ -40,6 +40,7 @@ class _ClientShellState extends State<ClientShell> {
         title: Text(_getTitle(_currentIndex)),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
+        automaticallyImplyLeading: false, // Fix Hero duplicate
       ),
       drawer: ClientSidebar(
         user: widget.user,

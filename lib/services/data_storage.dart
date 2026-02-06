@@ -274,7 +274,7 @@ class DataStorage {
     final String? savedData = prefs.getString(_keyUsers);
 
     if (savedData == null || savedData.isEmpty) {
-      return [];
+      return [UserModel.mockAdmin()];
     }
 
     try {

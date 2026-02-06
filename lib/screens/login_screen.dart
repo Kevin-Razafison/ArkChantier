@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Import indispensable
+import 'package:cloud_firestore/cloud_firestore.dart'; // Pour récupérer le profil
 import '../models/user_model.dart';
 import '../models/projet_model.dart';
 import '../main.dart';
 import '../services/data_storage.dart';
-import '../services/encryption_service.dart';
 import 'worker/worker_shell.dart';
 import 'foreman_screen/foreman_shell.dart';
 import '../screens/Client/client_shell.dart';
@@ -20,8 +21,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
 
-  void _handleLogin() async {
-    final email = _emailController.text.trim().toLowerCase();
+  // --- NOUVELLE LOGIQUE FIREBASE ---
+  Future<void> _handleLogin() async {
+    final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
@@ -32,98 +34,100 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final results = await Future.wait([
-        DataStorage.loadAllUsers(),
-        DataStorage.loadAllProjects(),
-      ]);
+      // 1. Authentification via Firebase Auth
+      UserCredential userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: password);
 
-      final List<UserModel> allUsers = results[0] as List<UserModel>;
-      final List<Projet> allProjects = results[1] as List<Projet>;
+      if (userCredential.user != null) {
+        // 2. Récupération des données du profil dans Firestore
+        DocumentSnapshot userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userCredential.user!.uid)
+            .get();
 
-      UserModel? user = allUsers.cast<UserModel?>().firstWhere(
-        (u) => u?.email.toLowerCase() == email,
-        orElse: () => null,
-      );
+        if (!userDoc.exists) {
+          throw "Profil utilisateur introuvable dans la base de données.";
+        }
 
-      if (user == null ||
-          !EncryptionService.verifyPassword(password, user.passwordHash)) {
+        // Création de l'objet UserModel à partir de Firestore
+        UserModel user = UserModel.fromJson(
+          userDoc.data() as Map<String, dynamic>,
+        );
+
+        // 3. Charger les projets (toujours depuis DataStorage ou Firestore selon ton avancement)
+        List<Projet> allProjects = await DataStorage.loadAllProjects();
+
         if (!mounted) return;
-        _showError("Identifiants incorrects");
-        setState(() => _isLoading = false);
-        return;
+
+        // Mettre à jour l'utilisateur dans l'état global de l'app
+        ChantierApp.of(context).updateUser(user);
+
+        // --- LOGIQUE DE REDIRECTION (IDENTIQUE À L'ORIGINALE) ---
+        _redirectUser(user, allProjects);
       }
-
-      if (!mounted) return;
-      ChantierApp.of(context).updateUser(user);
-
-      // --- LOGIQUE DE REDIRECTION ---
-      if (user.role == UserRole.chefProjet) {
-        Navigator.pushReplacementNamed(context, '/project_launcher');
-      } else {
-        Projet? projetRattache;
-
-        // 1. Si c'est un CLIENT, son assignedId est l'ID du PROJET directement
-        if (user.role == UserRole.client) {
-          projetRattache = allProjects.cast<Projet?>().firstWhere(
-            (p) =>
-                p?.id == user.assignedId, // Recherche directe par ID de projet
-            orElse: () => null,
-          );
-        }
-        // 2. Si c'est un OUVRIER ou CDC, son assignedId est l'ID d'un CHANTIER
-        else if (user.assignedId != null) {
-          projetRattache = allProjects.cast<Projet?>().firstWhere(
-            (p) => p?.chantiers.any((c) => c.id == user.assignedId) ?? false,
-            orElse: () => null,
-          );
-        }
-
-        // Sécurité : si aucun projet trouvé
-        if (projetRattache == null) {
-          _showError(
-            user.role == UserRole.client
-                ? "Aucun projet assigné à ce client."
-                : "Aucun chantier assigné à ce compte.",
-          );
-          setState(() => _isLoading = false);
-          return;
-        }
-
-        // Redirections selon le rôle
-        if (user.role == UserRole.ouvrier) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  WorkerShell(user: user, projet: projetRattache!),
-            ),
-          );
-        } else if (user.role == UserRole.chefDeChantier) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  ForemanShell(user: user, projet: projetRattache!),
-            ),
-          );
-        } else if (user.role == UserRole.client) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  ClientShell(user: user, projet: projetRattache!),
-            ),
-          );
-        }
+    } on FirebaseAuthException catch (e) {
+      String message = "Erreur d'authentification";
+      if (e.code == 'user-not-found') {
+        message = "Aucun utilisateur trouvé pour cet email.";
+      } else if (e.code == 'wrong-password') {
+        message = "Mot de passe incorrect.";
       }
+      _showError(message);
     } catch (e) {
       debugPrint("Erreur login: $e");
-      _showError("Problème de connexion au serveur");
+      _showError("Problème de connexion : $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  void _redirectUser(UserModel user, List<Projet> allProjects) {
+    if (user.role == UserRole.chefProjet) {
+      Navigator.pushReplacementNamed(context, '/project_launcher');
+    } else {
+      Projet? projetRattache;
+
+      if (user.role == UserRole.client) {
+        projetRattache = allProjects.cast<Projet?>().firstWhere(
+          (p) => p?.id == user.assignedId,
+          orElse: () => null,
+        );
+      } else if (user.assignedId != null) {
+        projetRattache = allProjects.cast<Projet?>().firstWhere(
+          (p) => p?.chantiers.any((c) => c.id == user.assignedId) ?? false,
+          orElse: () => null,
+        );
+      }
+
+      if (projetRattache == null) {
+        _showError("Aucun projet ou chantier rattaché à ce compte.");
+        return;
+      }
+
+      Widget destination;
+      switch (user.role) {
+        case UserRole.ouvrier:
+          destination = WorkerShell(user: user, projet: projetRattache);
+          break;
+        case UserRole.chefDeChantier:
+          destination = ForemanShell(user: user, projet: projetRattache);
+          break;
+        case UserRole.client:
+          destination = ClientShell(user: user, projet: projetRattache);
+          break;
+        default:
+          _showError("Rôle non reconnu");
+          return;
+      }
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => destination),
+      );
+    }
+  }
+
+  // --- LE RESTE DU CODE (UI) RESTE LE MÊME ---
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
@@ -133,13 +137,12 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1A334D), // Ton bleu ardoise ARK
+      backgroundColor: const Color(0xFF1A334D),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(30),
           child: Column(
             children: [
-              // ✅ REMPLACEMENT DE L'ICÔNE PAR LE LOGO
               Hero(
                 tag: 'logo_ark',
                 child: Container(
@@ -150,15 +153,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   child: Image.asset(
                     'assets/images/logo.png',
-                    height: 120, // Taille augmentée pour plus d'impact
-                    errorBuilder: (context, error, stackTrace) {
-                      // Fallback si le fichier est manquant pendant tes tests sur CachyOS
-                      return const Icon(
-                        Icons.architecture,
-                        size: 80,
-                        color: Colors.orange,
-                      );
-                    },
+                    height: 120,
+                    errorBuilder: (context, error, stackTrace) => const Icon(
+                      Icons.architecture,
+                      size: 80,
+                      color: Colors.orange,
+                    ),
                   ),
                 ),
               ),

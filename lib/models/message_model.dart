@@ -22,17 +22,24 @@ class Message {
   // Convertit un document Firestore en objet Message
   factory Message.fromFirestore(DocumentSnapshot doc) {
     Map data = doc.data() as Map<String, dynamic>;
+
+    final dynamic timestamp = data['timestamp'];
+    DateTime dateValue = DateTime.now();
+
+    if (timestamp != null && timestamp is Timestamp) {
+      dateValue = timestamp.toDate();
+    }
+
     return Message(
       id: doc.id,
       senderId: data['senderId'] ?? '',
       senderName: data['senderName'] ?? 'Anonyme',
       text: data['text'] ?? '',
-      timestamp: (data['timestamp'] as Timestamp).toDate(),
+      timestamp: dateValue,
       chantierId: data['chantierId'] ?? '',
       imageUrl: data['imageUrl'],
     );
   }
-
   // Convertit l'objet Message en Map pour Firestore
   Map<String, dynamic> toMap() {
     return {

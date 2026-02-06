@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'models/user_model.dart';
-
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/admin/project_launcher_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/encryption_service.dart';
@@ -12,27 +13,71 @@ import 'firebase_options.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. INITIALISATION FIREBASE
+  // 1. INITIALISATION FIREBASE - VERSION LINUX
+  bool firebaseInitialized = false;
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    firebaseInitialized = true;
     debugPrint("🔥 Firebase ArkChantier connecté !");
-  } catch (e) {
+    debugPrint(
+      "📱 Project ID: ${DefaultFirebaseOptions.currentPlatform.projectId}",
+    );
+
+    /*await createFirstAdmin();*/
+  } catch (e, stackTrace) {
     debugPrint("❌ Erreur d'initialisation Firebase : $e");
+    debugPrint("📍 Stack trace: $stackTrace");
+    debugPrint("⚠️ L'app va continuer SANS Firebase");
+    debugPrint("💡 Les fonctionnalités de chat seront désactivées");
+    // Sur Linux, on peut continuer sans Firebase pour tester l'UI
+    firebaseInitialized = false;
   }
 
+  // 2. INITIALISATION DES DATES
   try {
     await initializeDateFormatting('fr_FR');
   } catch (e) {
     await initializeDateFormatting();
   }
 
-  runApp(const ChantierApp());
+  runApp(ChantierApp(firebaseEnabled: firebaseInitialized));
+}
+
+Future<void> createFirstAdmin() async {
+  try {
+    // 1. Créer le compte dans Firebase Authentication
+    UserCredential cert = await FirebaseAuth.instance
+        .createUserWithEmailAndPassword(
+          email: "admin@ark.com",
+          password: "password123",
+        );
+
+    // 2. Créer le profil dans Firestore avec l'ID correspondant
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(cert.user!.uid)
+        .set({
+          'id': cert.user!.uid,
+          'nom': 'Admin ARK',
+          'email': 'admin@ark.com',
+          'role': 'chefProjet',
+          'assignedId': null,
+        });
+
+    debugPrint(
+      "✅ Compte Admin créé sur Firebase !",
+    ); // Utilise debugPrint au lieu de print
+  } catch (e) {
+    debugPrint("❌ Erreur ou compte déjà existant : $e");
+  }
 }
 
 class ChantierApp extends StatefulWidget {
-  const ChantierApp({super.key});
+  final bool firebaseEnabled;
+
+  const ChantierApp({super.key, this.firebaseEnabled = true});
 
   static ChantierAppState of(BuildContext context) =>
       context.findAncestorStateOfType<ChantierAppState>()!;
@@ -60,15 +105,37 @@ class ChantierAppState extends State<ChantierApp> {
         : _workerThemeMode;
   }
 
+  bool get isFirebaseEnabled => widget.firebaseEnabled;
+
   @override
   void initState() {
     super.initState();
     _loadSettings();
+
+    // Afficher un avertissement si Firebase n'est pas initialisé
+    if (!widget.firebaseEnabled) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                '⚠️ Firebase désactivé - Le chat ne fonctionnera pas',
+                style: TextStyle(color: Colors.white),
+              ),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+      });
+    }
   }
 
   void updateUser(UserModel user) {
     setState(() => currentUser = user);
   }
+
+  // Fonction à appeler UNE SEULE FOIS pour créer ton compte admin sur le Cloud
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
@@ -86,7 +153,7 @@ class ChantierAppState extends State<ChantierApp> {
           nom: savedName,
           email: currentUser.email,
           role: currentUser.role,
-          assignedId: currentUser.assignedId, // ✅ Corrigé ici
+          assignedId: currentUser.assignedId,
           passwordHash: currentUser.passwordHash,
         );
       }
@@ -102,7 +169,7 @@ class ChantierAppState extends State<ChantierApp> {
         nom: newName,
         email: currentUser.email,
         role: currentUser.role,
-        assignedId: currentUser.assignedId, // ✅ Corrigé ici
+        assignedId: currentUser.assignedId,
         passwordHash: currentUser.passwordHash,
       );
     });

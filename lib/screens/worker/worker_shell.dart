@@ -59,6 +59,7 @@ class _WorkerShellState extends State<WorkerShell> {
         ),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
+        automaticallyImplyLeading: false, // Fix Hero duplicate
       ),
       // On utilise ici ta classe WorkerSidebar
       drawer: WorkerSidebar(

@@ -31,11 +31,26 @@ class UserModel {
   };
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
+    // On récupère la valeur brute du rôle
+    final roleData = json['role'];
+    UserRole resolvedRole;
+
+    if (roleData is int) {
+      // Si c'est un chiffre (ancien système Linux)
+      resolvedRole = UserRole.values[roleData];
+    } else {
+      // Si c'est du texte (système Firebase actuel)
+      resolvedRole = UserRole.values.firstWhere(
+        (e) => e.name == roleData,
+        orElse: () => UserRole.ouvrier, // Rôle par défaut en cas d'erreur
+      );
+    }
+
     return UserModel(
-      id: json['id'],
-      nom: json['nom'],
-      email: json['email'],
-      role: UserRole.values[json['role']],
+      id: json['id'] ?? '',
+      nom: json['nom'] ?? '',
+      email: json['email'] ?? '',
+      role: resolvedRole,
       assignedId: json['assignedId'] ?? json['chantierId'],
       passwordHash: json['passwordHash'] ?? '',
     );
