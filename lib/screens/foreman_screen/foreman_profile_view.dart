@@ -65,7 +65,7 @@ class _ForemanProfileViewState extends State<ForemanProfileView> {
             _buildInfoCard(
               Icons.construction,
               "Chantier Actuel",
-              widget.user.chantierId ?? "Non assigné",
+              widget.user.assignedId ?? "Non assigné",
               isDark,
             ),
 

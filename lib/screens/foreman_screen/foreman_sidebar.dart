@@ -40,6 +40,7 @@ class ForemanSidebar extends StatelessWidget {
           ),
           _buildMenuItem(Icons.person_outline, "Mon Profil", 7),
           _buildMenuItem(Icons.settings_outlined, "Paramètres", 6),
+          _buildMenuItem(Icons.chat_outlined, "Discussion", 8),
 
           const Spacer(),
           const Divider(color: Colors.white24),

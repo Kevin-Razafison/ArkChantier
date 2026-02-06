@@ -32,9 +32,9 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
       _assignedUsers = _allUsers
           .where(
             (u) =>
-                u.chantierId != null &&
-                (u.chantierId == widget.projet.id ||
-                    widget.projet.chantiers.any((c) => c.id == u.chantierId)),
+                u.assignedId != null &&
+                (u.assignedId == widget.projet.id ||
+                    widget.projet.chantiers.any((c) => c.id == u.assignedId)),
           )
           .toList();
       _isLoading = false;
@@ -50,7 +50,7 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
         nom: user.nom,
         email: user.email,
         role: user.role,
-        chantierId: widget.projet.id,
+        assignedId: widget.projet.id,
         passwordHash: user.passwordHash,
       );
 
@@ -68,7 +68,7 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
         nom: user.nom,
         email: user.email,
         role: user.role,
-        chantierId: null,
+        assignedId: null,
         passwordHash: user.passwordHash,
       );
 
@@ -81,8 +81,8 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
     final availableUsers = _allUsers
         .where(
           (u) =>
-              u.chantierId != widget.projet.id &&
-              !widget.projet.chantiers.any((c) => c.id == u.chantierId),
+              u.assignedId != widget.projet.id &&
+              !widget.projet.chantiers.any((c) => c.id == u.assignedId),
         )
         .toList();
 
@@ -151,7 +151,7 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
                       nom: user.nom,
                       email: user.email,
                       role: user.role,
-                      chantierId: c.id,
+                      assignedId: c.id,
                       passwordHash: user.passwordHash,
                     );
                     await DataStorage.saveAllUsers(_allUsers);
@@ -224,11 +224,11 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
                 final user = _assignedUsers[index];
 
                 String nomChantier = "Non assigné";
-                if (user.chantierId == widget.projet.id) {
+                if (user.assignedId == widget.projet.id) {
                   nomChantier = "Projet Global";
-                } else if (user.chantierId != null) {
+                } else if (user.assignedId != null) {
                   final chantierMatch = widget.projet.chantiers.where(
-                    (c) => c.id == user.chantierId,
+                    (c) => c.id == user.assignedId,
                   );
                   if (chantierMatch.isNotEmpty) {
                     nomChantier = chantierMatch.first.nom;

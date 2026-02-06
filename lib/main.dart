@@ -2,29 +2,32 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'models/user_model.dart';
-import 'models/projet_model.dart';
-import 'widgets/sidebar_drawer.dart';
-import 'screens/admin/dashboard_view.dart';
-import 'screens/admin/chantiers_screen.dart';
-import 'screens/admin/ouvriers_screen.dart';
-import 'screens/admin/stats_screen.dart';
-import 'screens/admin/materiel_screen.dart';
-import 'screens/admin/settings_screen.dart';
+
 import 'screens/admin/project_launcher_screen.dart';
-import 'screens/admin/login_screen.dart';
+import 'screens/login_screen.dart';
 import 'services/encryption_service.dart';
-import 'screens/admin/admin_profile_view.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 1. INITIALISATION FIREBASE
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    debugPrint("🔥 Firebase ArkChantier connecté !");
+  } catch (e) {
+    debugPrint("❌ Erreur d'initialisation Firebase : $e");
+  }
+
   try {
     await initializeDateFormatting('fr_FR');
-    debugPrint("Locale data initialized successfully");
   } catch (e) {
-    debugPrint("Error initializing locale data: $e");
-    // Initialize with default locale as fallback
     await initializeDateFormatting();
   }
+
   runApp(const ChantierApp());
 }
 
@@ -52,7 +55,6 @@ class ChantierAppState extends State<ChantierApp> {
   ThemeMode _workerThemeMode = ThemeMode.light;
 
   ThemeMode get effectiveTheme {
-    // Admin = Thème clair/sombre classique. Terrain = Thème spécifique.
     return (currentUser.role == UserRole.chefProjet)
         ? _adminThemeMode
         : _workerThemeMode;
@@ -84,7 +86,7 @@ class ChantierAppState extends State<ChantierApp> {
           nom: savedName,
           email: currentUser.email,
           role: currentUser.role,
-          chantierId: currentUser.chantierId,
+          assignedId: currentUser.assignedId, // ✅ Corrigé ici
           passwordHash: currentUser.passwordHash,
         );
       }
@@ -100,7 +102,7 @@ class ChantierAppState extends State<ChantierApp> {
         nom: newName,
         email: currentUser.email,
         role: currentUser.role,
-        chantierId: currentUser.chantierId,
+        assignedId: currentUser.assignedId, // ✅ Corrigé ici
         passwordHash: currentUser.passwordHash,
       );
     });
@@ -141,90 +143,6 @@ class ChantierAppState extends State<ChantierApp> {
         '/project_launcher': (context) =>
             ProjectLauncherScreen(user: currentUser),
       },
-    );
-  }
-}
-
-// --- LE MAINSHELL (DÉDIÉ ADMIN / CLIENT) ---
-class MainShell extends StatefulWidget {
-  final UserModel user;
-  final Projet currentProject;
-
-  const MainShell({
-    super.key,
-    required this.user,
-    required this.currentProject,
-  });
-
-  @override
-  State<MainShell> createState() => _MainShellState();
-}
-
-class _MainShellState extends State<MainShell> {
-  int _selectedIndex = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    final isLargeScreen = MediaQuery.of(context).size.width > 900;
-
-    // On définit les pages ici pour qu'elles se rafraîchissent si le projet change
-    final List<Widget> pages = [
-      DashboardView(user: widget.user, projet: widget.currentProject),
-      ChantiersScreen(projet: widget.currentProject),
-      widget.user.role != UserRole.client
-          ? OuvriersScreen(projet: widget.currentProject, user: widget.user)
-          : const SettingsScreen(),
-      widget.user.role != UserRole.client
-          ? MaterielScreen(projet: widget.currentProject)
-          : const SettingsScreen(),
-      widget.user.role == UserRole.chefProjet
-          ? StatsScreen(projet: widget.currentProject)
-          : const SettingsScreen(),
-      AdminProfileScreen(user: widget.user, projet: widget.currentProject),
-      const SettingsScreen(),
-    ];
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.currentProject.nom),
-        backgroundColor: const Color(0xFF1A334D),
-        foregroundColor: Colors.white,
-        leading: widget.user.role == UserRole.chefProjet
-            ? IconButton(
-                icon: const Icon(Icons.grid_view_rounded),
-                tooltip: "Changer de projet",
-                onPressed: () => Navigator.pushReplacementNamed(
-                  context,
-                  '/project_launcher',
-                ),
-              )
-            : null,
-      ),
-      drawer: !isLargeScreen
-          ? SidebarDrawer(
-              role: widget.user.role,
-              currentIndex: _selectedIndex,
-              currentProject: widget.currentProject,
-              onDestinationSelected: (i) {
-                setState(() => _selectedIndex = i);
-                Navigator.pop(context);
-              },
-            )
-          : null,
-      body: Row(
-        children: [
-          if (isLargeScreen)
-            SidebarDrawer(
-              role: widget.user.role,
-              currentIndex: _selectedIndex,
-              currentProject: widget.currentProject,
-              onDestinationSelected: (i) => setState(() => _selectedIndex = i),
-            ),
-          Expanded(
-            child: IndexedStack(index: _selectedIndex, children: pages),
-          ),
-        ],
-      ),
     );
   }
 }

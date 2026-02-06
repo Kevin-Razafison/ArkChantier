@@ -221,7 +221,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                     nom: nomController.text,
                     email: emailController.text,
                     role: selectedRole,
-                    chantierId: selectedProjectId,
+                    assignedId: selectedProjectId,
                     passwordHash: EncryptionService.hashPassword(
                       passwordController.text,
                     ),

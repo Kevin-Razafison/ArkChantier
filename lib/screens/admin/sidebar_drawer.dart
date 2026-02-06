@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import '../models/user_model.dart';
-import '../models/projet_model.dart';
-import '../screens/admin/project_team_screen.dart';
+import '../../models/user_model.dart';
+import '../../models/projet_model.dart';
+import 'project_team_screen.dart';
 
 class SidebarDrawer extends StatelessWidget {
   final UserRole role;
@@ -52,23 +52,22 @@ class SidebarDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool isMobile = MediaQuery.of(context).size.width < 800;
 
-    final List<_MenuItemData> tabs = [];
-    tabs.add(_MenuItemData(Icons.dashboard, "Dashboard"));
-    tabs.add(_MenuItemData(Icons.business, "Chantiers"));
+    // On prépare la liste des menus (Plus besoin de "if role != client")
+    final List<_MenuItemData> tabs = [
+      _MenuItemData(Icons.dashboard, "Dashboard"),
+      _MenuItemData(Icons.business, "Chantiers"),
+      _MenuItemData(Icons.people, "Ouvriers"),
+      _MenuItemData(Icons.inventory_2, "Matériel"),
+    ];
 
-    // Seuls les non-clients voient les ouvriers et le matériel
-    if (role != UserRole.client) {
-      tabs.add(_MenuItemData(Icons.people, "Ouvriers"));
-      tabs.add(_MenuItemData(Icons.inventory_2, "Matériel"));
-    }
-
-    // Seul le Chef de projet voit les stats
+    // On ajoute les stats seulement pour le Chef de Projet
     if (role == UserRole.chefProjet) {
       tabs.add(_MenuItemData(Icons.bar_chart, "Statistiques"));
     }
-    tabs.add(_MenuItemData(Icons.person, "Mon Profil"));
 
+    tabs.add(_MenuItemData(Icons.person, "Mon Profil"));
     tabs.add(_MenuItemData(Icons.settings, "Paramètres"));
+    tabs.add(_MenuItemData(Icons.forum_outlined, "Discussion"));
 
     return SizedBox(
       width: 260,

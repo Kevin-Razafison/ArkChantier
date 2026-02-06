@@ -21,6 +21,7 @@ class WorkerSidebar extends StatelessWidget {
           const SizedBox(height: 20),
           _buildItem(0, Icons.person, "MON PROFIL"),
           _buildItem(1, Icons.construction, "MON CHANTIER"),
+          _buildItem(3, Icons.chat_outlined, "DISCUSSION"),
           _buildItem(2, Icons.settings, "PARAMÈTRES"),
           const Spacer(),
           ListTile(

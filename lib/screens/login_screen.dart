@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import '../../models/user_model.dart';
-import '../../models/projet_model.dart';
-import '../../main.dart';
-import '../../services/data_storage.dart';
-import '../../services/encryption_service.dart';
-import '../worker/worker_shell.dart';
-import '../foreman_screen/foreman_shell.dart';
+import '../models/user_model.dart';
+import '../models/projet_model.dart';
+import '../main.dart';
+import '../services/data_storage.dart';
+import '../services/encryption_service.dart';
+import 'worker/worker_shell.dart';
+import 'foreman_screen/foreman_shell.dart';
+import '../screens/Client/client_shell.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -55,29 +56,40 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       ChantierApp.of(context).updateUser(user);
 
-      // --- LOGIQUE DE REDIRECTION CORRIGÉE ---
-
+      // --- LOGIQUE DE REDIRECTION ---
       if (user.role == UserRole.chefProjet) {
-        // 1. ADMIN / CHEF DE PROJET -> Accès total, choix du projet
         Navigator.pushReplacementNamed(context, '/project_launcher');
       } else {
-        // 2. RECHERCHE DU PROJET RATTACHÉ (Pour CDC, Ouvrier et Client)
         Projet? projetRattache;
 
-        if (user.chantierId != null) {
+        // 1. Si c'est un CLIENT, son assignedId est l'ID du PROJET directement
+        if (user.role == UserRole.client) {
           projetRattache = allProjects.cast<Projet?>().firstWhere(
-            (p) => p?.chantiers.any((c) => c.id == user.chantierId) ?? false,
+            (p) =>
+                p?.id == user.assignedId, // Recherche directe par ID de projet
+            orElse: () => null,
+          );
+        }
+        // 2. Si c'est un OUVRIER ou CDC, son assignedId est l'ID d'un CHANTIER
+        else if (user.assignedId != null) {
+          projetRattache = allProjects.cast<Projet?>().firstWhere(
+            (p) => p?.chantiers.any((c) => c.id == user.assignedId) ?? false,
             orElse: () => null,
           );
         }
 
-        // Sécurité : si aucun projet trouvé ou pas de chantierId, on évite le crash
+        // Sécurité : si aucun projet trouvé
         if (projetRattache == null) {
-          _showError("Aucun chantier assigné à ce compte.");
+          _showError(
+            user.role == UserRole.client
+                ? "Aucun projet assigné à ce client."
+                : "Aucun chantier assigné à ce compte.",
+          );
           setState(() => _isLoading = false);
           return;
         }
 
+        // Redirections selon le rôle
         if (user.role == UserRole.ouvrier) {
           Navigator.pushReplacement(
             context,
@@ -86,9 +98,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   WorkerShell(user: user, projet: projetRattache!),
             ),
           );
-        }
-        // --- NOUVELLE LOGIQUE POUR LE CHEF DE CHANTIER ---
-        else if (user.role == UserRole.chefDeChantier) {
+        } else if (user.role == UserRole.chefDeChantier) {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
@@ -96,14 +106,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   ForemanShell(user: user, projet: projetRattache!),
             ),
           );
-        }
-        // --- RESTE DES RÔLES (CLIENT) ---
-        else if (user.role == UserRole.client) {
+        } else if (user.role == UserRole.client) {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
               builder: (context) =>
-                  MainShell(user: user, currentProject: projetRattache!),
+                  ClientShell(user: user, projet: projetRattache!),
             ),
           );
         }

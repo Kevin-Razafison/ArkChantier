@@ -16,6 +16,7 @@ import '../../widgets/weather_banner.dart';
 import '../../widgets/incident_widget.dart';
 import '../../widgets/add_chantier_form.dart';
 import 'full_screen_map_view.dart';
+import '../chat_screen.dart';
 
 class ChecklistTask {
   final String title;
@@ -179,9 +180,9 @@ class _DashboardViewState extends State<DashboardView>
 
   Chantier _getChantierActuel() {
     if (_chantiers.isEmpty) return _dummyChantier();
-    if (widget.user.chantierId != null) {
+    if (widget.user.assignedId != null) {
       return _chantiers.firstWhere(
-        (c) => c.id == widget.user.chantierId,
+        (c) => c.id == widget.user.assignedId,
         orElse: () => _chantiers.first,
       );
     }
@@ -216,6 +217,25 @@ class _DashboardViewState extends State<DashboardView>
                           lon:
                               actuel.longitude, // On passe la longitude stockée
                         ),
+                      ),
+                      const SizedBox(width: 8),
+                      // BOUTON CHAT (NOUVEAU)
+                      _buildHeaderButton(
+                        icon: Icons.chat_bubble_outline,
+                        label: "CHAT",
+                        color: Colors
+                            .orange, // Orange pour attirer l'oeil sur les nouveaux messages
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ChatScreen(
+                                chantierId: actuel.id,
+                                currentUser: widget.user,
+                              ),
+                            ),
+                          );
+                        },
                       ),
                       const SizedBox(width: 8),
                       // Bouton Pointage

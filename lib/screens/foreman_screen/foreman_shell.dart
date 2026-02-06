@@ -18,6 +18,7 @@ import '../../services/data_storage.dart';
 import '../../widgets/chantier_map_preview.dart';
 import '../../models/depense_model.dart' as dm;
 import 'dart:io';
+import '../chat_screen.dart';
 
 class ForemanShell extends StatefulWidget {
   final UserModel user;
@@ -76,7 +77,7 @@ class _ForemanShellState extends State<ForemanShell> {
   @override
   Widget build(BuildContext context) {
     final monChantier = widget.projet.chantiers.firstWhere(
-      (c) => c.id == widget.user.chantierId,
+      (c) => c.id == widget.user.assignedId,
       orElse: () => widget.projet.chantiers.first,
     );
 
@@ -93,6 +94,7 @@ class _ForemanShellState extends State<ForemanShell> {
         currentImage: _profileImage,
         onImageChanged: _updateProfileImage,
       ),
+      ChatScreen(chantierId: monChantier.id, currentUser: widget.user),
     ];
 
     // On définit le seuil de bascule (ex: 1000 pixels de large)
@@ -188,6 +190,8 @@ class _ForemanShellState extends State<ForemanShell> {
         return "PARAMÈTRES";
       case 7:
         return "MON PROFIL";
+      case 8:
+        return "DISCUSSION CHANTIER";
       default:
         return "CHANTIER";
     }
@@ -311,6 +315,12 @@ class _ForemanShellState extends State<ForemanShell> {
           () {
             setState(() => _currentIndex = 4);
           },
+        ),
+        _quickActionBtn(
+          "CHAT",
+          Icons.chat_bubble,
+          Colors.green,
+          () => setState(() => _currentIndex = 8),
         ),
       ],
     );

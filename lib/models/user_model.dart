@@ -7,26 +7,27 @@ class UserModel {
   final String nom;
   final String email;
   final UserRole role;
-  final String? chantierId;
-  final String passwordHash; // 👈 AJOUTE CETTE LIGNE
+
+  final String? assignedId;
+
+  final String passwordHash;
 
   UserModel({
     required this.id,
     required this.nom,
     required this.email,
     required this.role,
-    this.chantierId,
-    required this.passwordHash, // 👈 AJOUTE CE PARAMÈTRE
+    this.assignedId, // On utilise un nom plus générique
+    required this.passwordHash,
   });
 
-  // N'oublie pas de mettre à jour tes méthodes de sérialisation JSON si tu en as
   Map<String, dynamic> toJson() => {
     'id': id,
     'nom': nom,
     'email': email,
     'role': role.index,
-    'chantierId': chantierId,
-    'passwordHash': passwordHash, // 👈 ICI AUSSI
+    'assignedId': assignedId, // Changé ici
+    'passwordHash': passwordHash,
   };
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -35,11 +36,14 @@ class UserModel {
       nom: json['nom'],
       email: json['email'],
       role: UserRole.values[json['role']],
-      chantierId: json['chantierId'],
-      passwordHash:
-          json['passwordHash'] ?? '', // Sécurité pour les anciens comptes
+      assignedId: json['assignedId'] ?? json['chantierId'],
+      passwordHash: json['passwordHash'] ?? '',
     );
   }
+
+  // Petit helper bien pratique pour la suite de ton dev
+  bool get isClient => role == UserRole.client;
+  bool get isAdmin => role == UserRole.chefProjet;
 
   static UserModel mockAdmin() {
     return UserModel(
@@ -47,7 +51,6 @@ class UserModel {
       nom: 'Administrateur ARK',
       email: 'admin@ark.com',
       role: UserRole.chefProjet,
-      //"admin123"
       passwordHash: EncryptionService.hashPassword("admin123"),
     );
   }

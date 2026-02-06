@@ -3,7 +3,8 @@ import 'package:uuid/uuid.dart';
 import '../../models/projet_model.dart';
 import '../../services/data_storage.dart';
 import '../../models/user_model.dart';
-import '../../main.dart';
+import './admin_shell.dart';
+import '../Client/client_shell.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
@@ -205,7 +206,7 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
       );
       if (isClient) {
         return matchesSearch &&
-            p.chantiers.any((c) => c.id == widget.user.chantierId);
+            p.chantiers.any((c) => c.id == widget.user.assignedId);
       }
       return matchesSearch;
     }).toList();
@@ -344,13 +345,21 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
     final bool isClient = widget.user.role == UserRole.client;
 
     return ListTile(
-      onTap: () => Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(
-          builder: (ctx) => MainShell(user: widget.user, currentProject: p),
-        ),
-        (route) => false,
-      ),
+      onTap: () {
+        Widget destination;
+
+        if (isClient) {
+          destination = ClientShell(user: widget.user, projet: p);
+        } else {
+          destination = AdminShell(user: widget.user, currentProject: p);
+        }
+
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (ctx) => destination),
+          (route) => false,
+        );
+      },
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(

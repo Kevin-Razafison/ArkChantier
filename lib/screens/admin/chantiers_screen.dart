@@ -380,7 +380,7 @@ class _ChantiersScreenState extends State<ChantiersScreen>
                   itemBuilder: (context, index) {
                     final chef = chefs[index];
                     // On vérifie si ce chef est déjà assigné à CE chantier
-                    bool isAlreadyAssigned = chef.chantierId == chantier.id;
+                    bool isAlreadyAssigned = chef.assignedId == chantier.id;
 
                     return ListTile(
                       leading: CircleAvatar(
@@ -409,7 +409,7 @@ class _ChantiersScreenState extends State<ChantiersScreen>
                               email: u.email,
                               role: u.role,
                               passwordHash: u.passwordHash,
-                              chantierId: chantier.id, // On lie au chantier !
+                              assignedId: chantier.id, // On lie au chantier !
                             );
                           }
                           return u;

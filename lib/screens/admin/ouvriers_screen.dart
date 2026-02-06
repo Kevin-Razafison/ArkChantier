@@ -349,7 +349,7 @@ class _OuvriersScreenState extends State<OuvriersScreen>
     final allUsers = await DataStorage.loadAllUsers();
     final projectWorkers = allUsers
         .where(
-          (u) => u.chantierId == widget.projet.id && u.role == UserRole.ouvrier,
+          (u) => u.assignedId == widget.projet.id && u.role == UserRole.ouvrier,
         )
         .toList();
     final availableToAdd = projectWorkers
