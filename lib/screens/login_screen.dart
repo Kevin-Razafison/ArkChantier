@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Import indispensable
-import 'package:cloud_firestore/cloud_firestore.dart'; // Pour récupérer le profil
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
 import '../models/projet_model.dart';
 import '../main.dart';
 import '../services/data_storage.dart';
+import '../services/encryption_service.dart';
 import 'worker/worker_shell.dart';
 import 'foreman_screen/foreman_shell.dart';
 import '../screens/Client/client_shell.dart';
@@ -20,8 +21,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _useLocalAuth = true; // Option pour utiliser l'authentification locale
 
-  // --- NOUVELLE LOGIQUE FIREBASE ---
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
@@ -34,51 +35,97 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // 1. Authentification via Firebase Auth
+      // Essayer d'abord Firebase Auth si disponible
+      if (ChantierApp.of(context).isFirebaseEnabled && !_useLocalAuth) {
+        await _handleFirebaseLogin(email, password);
+      } else {
+        // Fallback vers l'authentification locale
+        await _handleLocalLogin(email, password);
+      }
+    } catch (e) {
+      debugPrint("Erreur login: $e");
+      _showError("Échec de connexion : $e");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleFirebaseLogin(String email, String password) async {
+    try {
       UserCredential userCredential = await FirebaseAuth.instance
           .signInWithEmailAndPassword(email: email, password: password);
 
       if (userCredential.user != null) {
-        // 2. Récupération des données du profil dans Firestore
+        // Récupérer le profil depuis Firestore
         DocumentSnapshot userDoc = await FirebaseFirestore.instance
             .collection('users')
             .doc(userCredential.user!.uid)
             .get();
 
         if (!userDoc.exists) {
-          throw "Profil utilisateur introuvable dans la base de données.";
+          throw "Profil utilisateur introuvable dans Firebase.";
         }
 
-        // Création de l'objet UserModel à partir de Firestore
         UserModel user = UserModel.fromJson(
           userDoc.data() as Map<String, dynamic>,
         );
 
-        // 3. Charger les projets (toujours depuis DataStorage ou Firestore selon ton avancement)
-        List<Projet> allProjects = await DataStorage.loadAllProjects();
-
-        if (!mounted) return;
-
-        // Mettre à jour l'utilisateur dans l'état global de l'app
-        ChantierApp.of(context).updateUser(user);
-
-        // --- LOGIQUE DE REDIRECTION (IDENTIQUE À L'ORIGINALE) ---
-        _redirectUser(user, allProjects);
+        await _processUserLogin(user);
       }
     } on FirebaseAuthException catch (e) {
-      String message = "Erreur d'authentification";
+      String message = "Erreur Firebase Auth";
       if (e.code == 'user-not-found') {
         message = "Aucun utilisateur trouvé pour cet email.";
       } else if (e.code == 'wrong-password') {
         message = "Mot de passe incorrect.";
+      } else if (e.code == 'invalid-credential') {
+        // Si les identifiants Firebase échouent, essayer en local
+        await _handleLocalLogin(email, password);
+        return;
       }
       _showError(message);
-    } catch (e) {
-      debugPrint("Erreur login: $e");
-      _showError("Problème de connexion : $e");
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _handleLocalLogin(String email, String password) async {
+    // Charger tous les utilisateurs locaux
+    List<UserModel> allUsers = await DataStorage.loadAllUsers();
+
+    // Chercher l'utilisateur par email
+    UserModel? user = allUsers.firstWhere(
+      (u) => u.email.toLowerCase() == email.toLowerCase(),
+      orElse: () => UserModel(
+        id: '',
+        nom: '',
+        email: '',
+        role: UserRole.ouvrier,
+        passwordHash: '',
+      ),
+    );
+
+    // Vérifier le mot de passe
+    if (user.id.isEmpty) {
+      _showError("Utilisateur non trouvé");
+      return;
+    }
+
+    if (EncryptionService.verifyPassword(password, user.passwordHash)) {
+      await _processUserLogin(user);
+    } else {
+      _showError("Mot de passe incorrect");
+    }
+  }
+
+  Future<void> _processUserLogin(UserModel user) async {
+    if (!mounted) return;
+
+    // Mettre à jour l'utilisateur dans l'état global
+    ChantierApp.of(context).updateUser(user);
+
+    // Charger les projets pour la redirection
+    List<Projet> allProjects = await DataStorage.loadAllProjects();
+
+    _redirectUser(user, allProjects);
   }
 
   void _redirectUser(UserModel user, List<Projet> allProjects) {
@@ -127,15 +174,20 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // --- LE RESTE DU CODE (UI) RESTE LE MÊME ---
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+        duration: const Duration(seconds: 3),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final bool firebaseEnabled = ChantierApp.of(context).isFirebaseEnabled;
+
     return Scaffold(
       backgroundColor: const Color(0xFF1A334D),
       body: Center(
@@ -178,6 +230,10 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 40),
               _buildLoginForm(),
+              if (firebaseEnabled) ...[
+                const SizedBox(height: 20),
+                _buildAuthToggle(),
+              ],
             ],
           ),
         ),
@@ -232,6 +288,42 @@ class _LoginScreenState extends State<LoginScreen> {
                     )
                   : const Text("SE CONNECTER"),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAuthToggle() {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.info, color: Colors.orange, size: 16),
+          const SizedBox(width: 8),
+          Text(
+            _useLocalAuth ? "Mode hors ligne actif" : "Mode Firebase actif",
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          const SizedBox(width: 8),
+          Switch(
+            value: _useLocalAuth,
+            onChanged: ChantierApp.of(context).isFirebaseEnabled
+                ? (value) {
+                    setState(() => _useLocalAuth = value);
+                    _showError(
+                      value
+                          ? "Utilisation de la base locale"
+                          : "Utilisation de Firebase",
+                    );
+                  }
+                : null,
+            activeThumbColor: Colors.orange,
           ),
         ],
       ),

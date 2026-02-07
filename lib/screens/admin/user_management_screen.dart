@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Ajouté
+import 'package:cloud_firestore/cloud_firestore.dart'; // Ajouté
 import '../../models/user_model.dart';
 import '../../services/data_storage.dart';
 import '../../services/encryption_service.dart';
 import '../../models/projet_model.dart';
 import '../../models/ouvrier_model.dart';
+import '../../main.dart'; // Ajouté pour accéder à ChantierApp
 
 class UserManagementScreen extends StatefulWidget {
   const UserManagementScreen({super.key});
@@ -15,7 +18,7 @@ class UserManagementScreen extends StatefulWidget {
 class _UserManagementScreenState extends State<UserManagementScreen> {
   List<UserModel> _allUsers = [];
   List<UserModel> _filteredUsers = [];
-  List<Projet> _availableProjects = []; // ➕ AJOUTER CECI
+  List<Projet> _availableProjects = [];
   String _searchQuery = "";
   UserRole? _selectedFilter;
 
@@ -33,7 +36,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     ]);
     setState(() {
       _allUsers = results[0] as List<UserModel>;
-      _availableProjects = results[1] as List<Projet>; // ➕ STOCKER LES PROJETS
+      _availableProjects = results[1] as List<Projet>;
       _applyFilters();
     });
   }
@@ -114,12 +117,13 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
       floatingActionButton: FloatingActionButton(
         backgroundColor: const Color(0xFF1A334D),
         child: const Icon(Icons.person_add, color: Colors.white),
-        onPressed: () => _showAddUserDialog(),
+        onPressed: () => _showAddUserDialog(context), // Passer le context
       ),
     );
   }
 
-  void _showAddUserDialog() {
+  void _showAddUserDialog(BuildContext pageContext) {
+    // Prendre le context de la page
     final nomController = TextEditingController();
     final emailController = TextEditingController();
     final passwordController = TextEditingController();
@@ -128,8 +132,8 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     String? selectedProjectId;
 
     showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
+      context: pageContext, // Utiliser le context de la page
+      builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text("Nouvel Utilisateur"),
           content: SingleChildScrollView(
@@ -201,21 +205,19 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text("Annuler"),
             ),
             ElevatedButton(
-              // ... à l'intérieur de ton ElevatedButton onPressed ...
               onPressed: () async {
                 if (nomController.text.isNotEmpty &&
                     emailController.text.isNotEmpty &&
                     passwordController.text.isNotEmpty) {
-                  // On génère l'ID une seule fois pour les deux objets
                   final String generatedId = DateTime.now()
                       .millisecondsSinceEpoch
                       .toString();
 
-                  // 1. L'Utilisateur pour le login
+                  // 1. Créer l'utilisateur local
                   final newUser = UserModel(
                     id: generatedId,
                     nom: nomController.text,
@@ -227,17 +229,15 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                     ),
                   );
 
-                  // 2. Si c'est un ouvrier, on crée sa fiche technique
+                  // 2. Si c'est un ouvrier, créer sa fiche technique
                   if (selectedRole == UserRole.ouvrier) {
                     final double salary =
                         double.tryParse(salaryController.text) ?? 25000.0;
 
-                    // On charge l'annuaire actuel
                     List<Ouvrier> currentTeam = await DataStorage.loadTeam(
                       "annuaire_global",
                     );
 
-                    // On ajoute la nouvelle fiche avec le MÊME ID
                     currentTeam.add(
                       Ouvrier(
                         id: generatedId,
@@ -249,11 +249,10 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                       ),
                     );
 
-                    // Sauvegarde de l'annuaire
                     await DataStorage.saveTeam("annuaire_global", currentTeam);
                   }
 
-                  // Mise à jour de l'UI et sauvegarde des utilisateurs
+                  // 3. Mettre à jour l'UI localement
                   setState(() {
                     _allUsers.add(newUser);
                     _applyFilters();
@@ -261,7 +260,59 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
 
                   await DataStorage.saveAllUsers(_allUsers);
 
-                  if (context.mounted) Navigator.pop(context);
+                  // 4. Si Firebase est activé, créer le compte Firebase
+                  if (!context.mounted) return;
+                  if (ChantierApp.of(pageContext).isFirebaseEnabled) {
+                    try {
+                      UserCredential userCredential = await FirebaseAuth
+                          .instance
+                          .createUserWithEmailAndPassword(
+                            email: emailController.text,
+                            password: passwordController.text,
+                          );
+
+                      final uid = userCredential.user!.uid;
+
+                      if (!context.mounted) return;
+                      // Récupérer l'admin ID actuel
+                      final adminId = ChantierApp.of(
+                        pageContext,
+                      ).currentUser.id;
+
+                      // Sauvegarder dans Firestore avec la bonne structure
+                      await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(uid)
+                          .set({
+                            'id': uid,
+                            'nom': nomController.text,
+                            'email': emailController.text,
+                            'role': selectedRole.name,
+                            'assignedId': selectedProjectId,
+                            'adminId': adminId,
+                          });
+
+                      debugPrint(
+                        '✅ Compte Firebase créé pour ${nomController.text}',
+                      );
+                    } catch (e) {
+                      debugPrint('⚠️ Erreur création Firebase Auth: $e');
+                      // On continue avec le stockage local seulement
+                    }
+                  }
+
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+
+                  // Afficher un message de succès
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(pageContext).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        "${nomController.text} a été créé avec succès",
+                      ),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
                 }
               },
               child: const Text("Créer l'accès"),
@@ -302,6 +353,10 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                 _filterChip(UserRole.chefProjet, "Chefs de Projet"),
                 _filterChip(UserRole.ouvrier, "Ouvriers"),
                 _filterChip(UserRole.client, "Clients"),
+                _filterChip(
+                  UserRole.chefDeChantier,
+                  "Chefs de Chantier",
+                ), // Ajouté
               ],
             ),
           ),

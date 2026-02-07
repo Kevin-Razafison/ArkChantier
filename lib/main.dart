@@ -53,6 +53,17 @@ void main() async {
     await initializeDateFormatting();
   }
 
+  if (firebaseInitialized) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(seconds: 10), () async {
+        try {
+          await DataStorage.migrateLocalUsersToFirebase();
+        } catch (e) {
+          debugPrint('Migration échouée: $e');
+        }
+      });
+    });
+  }
   runApp(ChantierApp(firebaseEnabled: firebaseInitialized));
 }
 

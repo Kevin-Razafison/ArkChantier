@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Ajouté
+import 'package:cloud_firestore/cloud_firestore.dart'; // Ajouté
 import '../models/projet_model.dart';
 import '../models/chantier_model.dart';
 import '../models/journal_model.dart';
@@ -286,5 +288,45 @@ class DataStorage {
   /// Initialise le service de synchronisation
   static Future<void> initialize() async {
     await _syncService.initialize();
+  }
+
+  /// Migre les utilisateurs locaux vers Firebase
+  static Future<void> migrateLocalUsersToFirebase() async {
+    try {
+      final localUsers = await loadAllUsers();
+
+      for (var user in localUsers) {
+        // Éviter le mock admin
+        if (user.email == 'admin@ark.com') continue;
+
+        try {
+          // Créer le compte Firebase Auth
+          UserCredential cred = await FirebaseAuth.instance
+              .createUserWithEmailAndPassword(
+                email: user.email,
+                password: 'password123', // Mot de passe par défaut
+              );
+
+          // Sauvegarder dans Firestore
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(cred.user!.uid)
+              .set({
+                'id': cred.user!.uid,
+                'nom': user.nom,
+                'email': user.email,
+                'role': user.role.name,
+                'assignedId': user.assignedId,
+                'adminId': 'offline_admin', // Valeur par défaut
+              });
+
+          debugPrint('✅ Utilisateur migré: ${user.email}');
+        } catch (e) {
+          debugPrint('⚠️ Erreur migration ${user.email}: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur migration: $e');
+    }
   }
 }
