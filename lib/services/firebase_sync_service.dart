@@ -66,17 +66,13 @@ class FirebaseSyncService {
 
   /// Sauvegarde un projet (offline-first)
   Future<void> saveProjet(Projet projet) async {
-    if (!isAuthenticated) {
-      throw Exception('Utilisateur non authentifié');
-    }
-
-    final adminId = currentUserId!;
-
-    // 1. Sauvegarder localement immédiatement
+    // ✅ FIX: Toujours sauvegarder localement, même si non authentifié
     await _saveLocalProjet(projet);
 
-    // 2. Si en ligne, synchroniser avec Firestore
-    if (_isOnline) {
+    // Si authentifié ET en ligne, synchroniser avec Firestore
+    if (isAuthenticated && _isOnline) {
+      final adminId = currentUserId!;
+
       try {
         await _firestore
             .collection('admins')
@@ -91,25 +87,22 @@ class FirebaseSyncService {
         debugPrint('⚠️ Erreur sync projet: $e');
         await _markPendingSync('projet_${projet.id}', projet.toJson());
       }
-    } else {
+    } else if (isAuthenticated && !_isOnline) {
       // Marquer comme en attente de synchronisation
       await _markPendingSync('projet_${projet.id}', projet.toJson());
     }
+    // Si non authentifié, on garde juste en local
   }
 
   /// Charge tous les projets (offline-first)
   Future<List<Projet>> loadProjets() async {
-    if (!isAuthenticated) {
-      return await _loadLocalProjets();
-    }
-
-    final adminId = currentUserId!;
-
-    // 1. Charger depuis le cache local
+    // 1. Charger depuis le cache local (TOUJOURS)
     List<Projet> localProjets = await _loadLocalProjets();
 
-    // 2. Si en ligne, synchroniser avec Firestore
-    if (_isOnline) {
+    // 2. Si authentifié ET en ligne, synchroniser avec Firestore
+    if (isAuthenticated && _isOnline) {
+      final adminId = currentUserId!;
+
       try {
         final snapshot = await _firestore
             .collection('admins')
@@ -136,15 +129,13 @@ class FirebaseSyncService {
 
   /// Supprime un projet
   Future<void> deleteProjet(String projetId) async {
-    if (!isAuthenticated) return;
-
-    final adminId = currentUserId!;
-
-    // 1. Supprimer localement
+    // 1. Supprimer localement (TOUJOURS)
     await _deleteLocalProjet(projetId);
 
-    // 2. Si en ligne, supprimer sur Firestore
-    if (_isOnline) {
+    // 2. Si authentifié ET en ligne, supprimer sur Firestore
+    if (isAuthenticated && _isOnline) {
+      final adminId = currentUserId!;
+
       try {
         await _firestore
             .collection('admins')
@@ -158,7 +149,7 @@ class FirebaseSyncService {
         debugPrint('⚠️ Erreur suppression cloud: $e');
         await _markPendingDelete('projet_$projetId');
       }
-    } else {
+    } else if (isAuthenticated && !_isOnline) {
       await _markPendingDelete('projet_$projetId');
     }
   }
@@ -167,14 +158,12 @@ class FirebaseSyncService {
 
   /// Sauvegarde un utilisateur
   Future<void> saveUser(UserModel user) async {
-    if (!isAuthenticated) return;
-
-    final adminId = currentUserId!;
-
-    // Sauvegarder localement
+    // Sauvegarder localement (TOUJOURS)
     await _saveLocalUser(user);
 
-    if (_isOnline) {
+    if (isAuthenticated && _isOnline) {
+      final adminId = currentUserId!;
+
       try {
         await _firestore
             .collection('admins')
@@ -187,21 +176,19 @@ class FirebaseSyncService {
       } catch (e) {
         await _markPendingSync('user_${user.id}', user.toJson());
       }
-    } else {
+    } else if (isAuthenticated && !_isOnline) {
       await _markPendingSync('user_${user.id}', user.toJson());
     }
   }
 
   /// Charge tous les utilisateurs
   Future<List<UserModel>> loadUsers() async {
-    if (!isAuthenticated) {
-      return await _loadLocalUsers();
-    }
-
-    final adminId = currentUserId!;
+    // Charger depuis le cache local (TOUJOURS)
     List<UserModel> localUsers = await _loadLocalUsers();
 
-    if (_isOnline) {
+    if (isAuthenticated && _isOnline) {
+      final adminId = currentUserId!;
+
       try {
         final snapshot = await _firestore
             .collection('admins')
@@ -225,18 +212,61 @@ class FirebaseSyncService {
     return localUsers;
   }
 
+  /// ✅ NOUVEAU: Supprime un utilisateur (marque comme désactivé)
+  Future<void> deleteUser(UserModel user) async {
+    // 1. Supprimer localement
+    final users = await _loadLocalUsers();
+    users.removeWhere((u) => u.id == user.id);
+    await _saveAllLocalUsers(users);
+
+    // 2. Si Firebase activé, marquer comme désactivé dans Firestore
+    if (isAuthenticated && _isOnline && user.firebaseUid != null) {
+      try {
+        final adminId = currentUserId!;
+
+        // Marquer comme désactivé au lieu de supprimer
+        await _firestore
+            .collection('admins')
+            .doc(adminId)
+            .collection('users')
+            .doc(user.id)
+            .set({
+              'disabled': true,
+              'deletedAt': DateTime.now().toIso8601String(),
+            }, SetOptions(merge: true));
+
+        // Aussi marquer dans la collection users principale si elle existe
+        final userDoc = await _firestore
+            .collection('users')
+            .doc(user.firebaseUid)
+            .get();
+        if (userDoc.exists) {
+          await _firestore.collection('users').doc(user.firebaseUid).set({
+            'disabled': true,
+            'deletedAt': DateTime.now().toIso8601String(),
+          }, SetOptions(merge: true));
+        }
+
+        debugPrint('✅ Utilisateur ${user.email} marqué comme désactivé');
+      } catch (e) {
+        debugPrint('⚠️ Erreur désactivation Firestore: $e');
+        await _markPendingDelete('user_${user.id}');
+      }
+    } else if (isAuthenticated && !_isOnline) {
+      await _markPendingDelete('user_${user.id}');
+    }
+  }
+
   // ==================== OUVRIERS ====================
 
   /// Sauvegarde l'équipe d'un chantier
   Future<void> saveTeam(String chantierId, List<Ouvrier> equipe) async {
-    if (!isAuthenticated) return;
-
-    final adminId = currentUserId!;
-
-    // Sauvegarder localement
+    // Sauvegarder localement (TOUJOURS)
     await _saveLocalTeam(chantierId, equipe);
 
-    if (_isOnline) {
+    if (isAuthenticated && _isOnline) {
+      final adminId = currentUserId!;
+
       try {
         // Sauvegarder chaque ouvrier
         final batch = _firestore.batch();
@@ -261,7 +291,7 @@ class FirebaseSyncService {
           equipe.map((o) => o.toJson()).toList(),
         );
       }
-    } else {
+    } else if (isAuthenticated && !_isOnline) {
       await _markPendingSync(
         'team_$chantierId',
         equipe.map((o) => o.toJson()).toList(),
@@ -271,14 +301,11 @@ class FirebaseSyncService {
 
   /// Charge l'équipe d'un chantier
   Future<List<Ouvrier>> loadTeam(String chantierId) async {
-    if (!isAuthenticated) {
-      return await _loadLocalTeam(chantierId);
-    }
-
-    final adminId = currentUserId!;
     List<Ouvrier> localTeam = await _loadLocalTeam(chantierId);
 
-    if (_isOnline) {
+    if (isAuthenticated && _isOnline) {
+      final adminId = currentUserId!;
+
       try {
         final snapshot = await _firestore
             .collection('admins')
@@ -306,18 +333,15 @@ class FirebaseSyncService {
 
   // ==================== MATÉRIELS ====================
 
-  /// Sauvegarde les matériels d'un chantier
   Future<void> saveMateriels(
     String chantierId,
     List<Materiel> materiels,
   ) async {
-    if (!isAuthenticated) return;
-
-    final adminId = currentUserId!;
-
     await _saveLocalMateriels(chantierId, materiels);
 
-    if (_isOnline) {
+    if (isAuthenticated && _isOnline) {
+      final adminId = currentUserId!;
+
       try {
         final batch = _firestore.batch();
 
@@ -341,7 +365,7 @@ class FirebaseSyncService {
           materiels.map((m) => m.toJson()).toList(),
         );
       }
-    } else {
+    } else if (isAuthenticated && !_isOnline) {
       await _markPendingSync(
         'materiels_$chantierId',
         materiels.map((m) => m.toJson()).toList(),
@@ -349,16 +373,12 @@ class FirebaseSyncService {
     }
   }
 
-  /// Charge les matériels d'un chantier
   Future<List<Materiel>> loadMateriels(String chantierId) async {
-    if (!isAuthenticated) {
-      return await _loadLocalMateriels(chantierId);
-    }
+    List<Materiel> localMateriels = await _loadLocalMateriels(chantierId);
 
-    final adminId = currentUserId!;
-    List<Materiel> localMats = await _loadLocalMateriels(chantierId);
+    if (isAuthenticated && _isOnline) {
+      final adminId = currentUserId!;
 
-    if (_isOnline) {
       try {
         final snapshot = await _firestore
             .collection('admins')
@@ -369,32 +389,29 @@ class FirebaseSyncService {
             .get();
 
         if (snapshot.docs.isNotEmpty) {
-          final cloudMats = snapshot.docs
+          final cloudMateriels = snapshot.docs
               .map((doc) => Materiel.fromJson(doc.data()))
               .toList();
 
-          await _saveLocalMateriels(chantierId, cloudMats);
-          return cloudMats;
+          await _saveLocalMateriels(chantierId, cloudMateriels);
+          return cloudMateriels;
         }
       } catch (e) {
         debugPrint('⚠️ Erreur chargement matériels: $e');
       }
     }
 
-    return localMats;
+    return localMateriels;
   }
 
   // ==================== RAPPORTS ====================
 
-  /// Sauvegarde les rapports d'un chantier
   Future<void> saveReports(String chantierId, List<Report> reports) async {
-    if (!isAuthenticated) return;
-
-    final adminId = currentUserId!;
-
     await _saveLocalReports(chantierId, reports);
 
-    if (_isOnline) {
+    if (isAuthenticated && _isOnline) {
+      final adminId = currentUserId!;
+
       try {
         final batch = _firestore.batch();
 
@@ -418,7 +435,7 @@ class FirebaseSyncService {
           reports.map((r) => r.toJson()).toList(),
         );
       }
-    } else {
+    } else if (isAuthenticated && !_isOnline) {
       await _markPendingSync(
         'reports_$chantierId',
         reports.map((r) => r.toJson()).toList(),
@@ -426,16 +443,12 @@ class FirebaseSyncService {
     }
   }
 
-  /// Charge les rapports d'un chantier
   Future<List<Report>> loadReports(String chantierId) async {
-    if (!isAuthenticated) {
-      return await _loadLocalReports(chantierId);
-    }
-
-    final adminId = currentUserId!;
     List<Report> localReports = await _loadLocalReports(chantierId);
 
-    if (_isOnline) {
+    if (isAuthenticated && _isOnline) {
+      final adminId = currentUserId!;
+
       try {
         final snapshot = await _firestore
             .collection('admins')
@@ -463,18 +476,15 @@ class FirebaseSyncService {
 
   // ==================== JOURNAL ====================
 
-  /// Sauvegarde le journal d'un chantier
   Future<void> saveJournal(
     String chantierId,
     List<JournalEntry> entries,
   ) async {
-    if (!isAuthenticated) return;
-
-    final adminId = currentUserId!;
-
     await _saveLocalJournal(chantierId, entries);
 
-    if (_isOnline) {
+    if (isAuthenticated && _isOnline) {
+      final adminId = currentUserId!;
+
       try {
         final batch = _firestore.batch();
 
@@ -498,7 +508,7 @@ class FirebaseSyncService {
           entries.map((e) => e.toJson()).toList(),
         );
       }
-    } else {
+    } else if (isAuthenticated && !_isOnline) {
       await _markPendingSync(
         'journal_$chantierId',
         entries.map((e) => e.toJson()).toList(),
@@ -506,16 +516,12 @@ class FirebaseSyncService {
     }
   }
 
-  /// Charge le journal d'un chantier
   Future<List<JournalEntry>> loadJournal(String chantierId) async {
-    if (!isAuthenticated) {
-      return await _loadLocalJournal(chantierId);
-    }
-
-    final adminId = currentUserId!;
     List<JournalEntry> localJournal = await _loadLocalJournal(chantierId);
 
-    if (_isOnline) {
+    if (isAuthenticated && _isOnline) {
+      final adminId = currentUserId!;
+
       try {
         final snapshot = await _firestore
             .collection('admins')
@@ -543,15 +549,12 @@ class FirebaseSyncService {
 
   // ==================== DÉPENSES ====================
 
-  /// Sauvegarde les dépenses d'un chantier
   Future<void> saveDepenses(String chantierId, List<Depense> depenses) async {
-    if (!isAuthenticated) return;
-
-    final adminId = currentUserId!;
-
     await _saveLocalDepenses(chantierId, depenses);
 
-    if (_isOnline) {
+    if (isAuthenticated && _isOnline) {
+      final adminId = currentUserId!;
+
       try {
         final batch = _firestore.batch();
 
@@ -575,7 +578,7 @@ class FirebaseSyncService {
           depenses.map((d) => d.toJson()).toList(),
         );
       }
-    } else {
+    } else if (isAuthenticated && !_isOnline) {
       await _markPendingSync(
         'depenses_$chantierId',
         depenses.map((d) => d.toJson()).toList(),
@@ -583,16 +586,12 @@ class FirebaseSyncService {
     }
   }
 
-  /// Charge les dépenses d'un chantier
   Future<List<Depense>> loadDepenses(String chantierId) async {
-    if (!isAuthenticated) {
-      return await _loadLocalDepenses(chantierId);
-    }
-
-    final adminId = currentUserId!;
     List<Depense> localDepenses = await _loadLocalDepenses(chantierId);
 
-    if (_isOnline) {
+    if (isAuthenticated && _isOnline) {
+      final adminId = currentUserId!;
+
       try {
         final snapshot = await _firestore
             .collection('admins')
@@ -622,35 +621,43 @@ class FirebaseSyncService {
 
   /// Synchronise toutes les modifications en attente
   Future<void> syncPendingChanges() async {
-    if (_isSyncing || !_isOnline || !isAuthenticated) return;
+    if (_isSyncing || !_isOnline || !isAuthenticated) {
+      debugPrint(
+        '⏭️ Sync ignorée: isSyncing=$_isSyncing, isOnline=$_isOnline, isAuth=$isAuthenticated',
+      );
+      return;
+    }
 
     _isSyncing = true;
-    debugPrint('🔄 Début synchronisation...');
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final keys = prefs.getKeys().where((k) => k.startsWith(_pendingPrefix));
+      final pendingKeys = prefs
+          .getKeys()
+          .where((k) => k.startsWith(_pendingPrefix))
+          .toList();
 
-      int synced = 0;
-      int failed = 0;
+      debugPrint(
+        '🔄 Synchronisation de ${pendingKeys.length} modifications...',
+      );
 
-      for (var key in keys) {
-        try {
-          final data = prefs.getString(key);
-          if (data == null) continue;
-
-          final actualKey = key.replaceFirst(_pendingPrefix, '');
-          await _syncPendingItem(actualKey, jsonDecode(data));
-
-          await prefs.remove(key);
-          synced++;
-        } catch (e) {
-          debugPrint('❌ Erreur sync $key: $e');
-          failed++;
+      for (var key in pendingKeys) {
+        final value = prefs.getString(key);
+        if (value != null) {
+          try {
+            if (key.contains('delete_')) {
+              await _processPendingDelete(key);
+            } else {
+              await _processPendingSync(key, value);
+            }
+            await prefs.remove(key);
+          } catch (e) {
+            debugPrint('⚠️ Erreur sync $key: $e');
+          }
         }
       }
 
-      debugPrint('✅ Sync terminée: $synced OK, $failed échecs');
+      debugPrint('✅ Synchronisation terminée');
     } catch (e) {
       debugPrint('❌ Erreur synchronisation: $e');
     } finally {
@@ -658,28 +665,58 @@ class FirebaseSyncService {
     }
   }
 
-  /// Synchronise un élément en attente
-  Future<void> _syncPendingItem(String key, dynamic data) async {
-    final adminId = currentUserId!;
+  Future<void> _processPendingDelete(String key) async {
+    if (!isAuthenticated) return;
 
-    if (key.startsWith('projet_')) {
-      final projetId = key.replaceFirst('projet_', '');
+    final adminId = currentUserId!;
+    final cleanKey = key
+        .replaceFirst(_pendingPrefix, '')
+        .replaceFirst('delete_', '');
+
+    if (cleanKey.startsWith('projet_')) {
+      final projetId = cleanKey.replaceFirst('projet_', '');
+      await _firestore
+          .collection('admins')
+          .doc(adminId)
+          .collection('projets')
+          .doc(projetId)
+          .delete();
+    } else if (cleanKey.startsWith('user_')) {
+      final userId = cleanKey.replaceFirst('user_', '');
+      await _firestore
+          .collection('admins')
+          .doc(adminId)
+          .collection('users')
+          .doc(userId)
+          .set({'disabled': true}, SetOptions(merge: true));
+    }
+  }
+
+  Future<void> _processPendingSync(String key, String value) async {
+    if (!isAuthenticated) return;
+
+    final adminId = currentUserId!;
+    final cleanKey = key.replaceFirst(_pendingPrefix, '');
+    final data = jsonDecode(value);
+
+    if (cleanKey.startsWith('projet_')) {
+      final projetId = cleanKey.replaceFirst('projet_', '');
       await _firestore
           .collection('admins')
           .doc(adminId)
           .collection('projets')
           .doc(projetId)
           .set(data, SetOptions(merge: true));
-    } else if (key.startsWith('user_')) {
-      final userId = key.replaceFirst('user_', '');
+    } else if (cleanKey.startsWith('user_')) {
+      final userId = cleanKey.replaceFirst('user_', '');
       await _firestore
           .collection('admins')
           .doc(adminId)
           .collection('users')
           .doc(userId)
           .set(data, SetOptions(merge: true));
-    } else if (key.startsWith('team_')) {
-      final chantierId = key.replaceFirst('team_', '');
+    } else if (cleanKey.startsWith('team_')) {
+      final chantierId = cleanKey.replaceFirst('team_', '');
       final batch = _firestore.batch();
 
       for (var ouvrierData in data as List) {
@@ -696,7 +733,6 @@ class FirebaseSyncService {
 
       await batch.commit();
     }
-    // Ajouter d'autres types selon les besoins
   }
 
   // ==================== STOCKAGE LOCAL (PRIVATE) ====================

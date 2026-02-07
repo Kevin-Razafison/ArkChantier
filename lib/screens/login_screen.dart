@@ -9,6 +9,7 @@ import '../services/encryption_service.dart';
 import 'worker/worker_shell.dart';
 import 'foreman_screen/foreman_shell.dart';
 import '../screens/Client/client_shell.dart';
+import 'admin/project_launcher_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -21,7 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
-  bool _useLocalAuth = true; // Option pour utiliser l'authentification locale
+  bool _useLocalAuth = true;
 
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim();
@@ -35,11 +36,9 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Essayer d'abord Firebase Auth si disponible
       if (ChantierApp.of(context).isFirebaseEnabled && !_useLocalAuth) {
         await _handleFirebaseLogin(email, password);
       } else {
-        // Fallback vers l'authentification locale
         await _handleLocalLogin(email, password);
       }
     } catch (e) {
@@ -56,20 +55,24 @@ class _LoginScreenState extends State<LoginScreen> {
           .signInWithEmailAndPassword(email: email, password: password);
 
       if (userCredential.user != null) {
-        // Récupérer le profil depuis Firestore
         DocumentSnapshot userDoc = await FirebaseFirestore.instance
             .collection('users')
             .doc(userCredential.user!.uid)
             .get();
 
         if (!userDoc.exists) {
-          throw "Profil utilisateur introuvable dans Firebase.";
+          throw "Votre compte a été supprimé ou désactivé.";
         }
 
-        UserModel user = UserModel.fromJson(
-          userDoc.data() as Map<String, dynamic>,
-        );
+        final userData = userDoc.data() as Map<String, dynamic>;
 
+        // ✅ NOUVEAU: Vérifier si le compte est désactivé
+        if (userData['disabled'] == true) {
+          await FirebaseAuth.instance.signOut();
+          throw "Votre compte a été désactivé. Contactez l'administrateur.";
+        }
+
+        UserModel user = UserModel.fromJson(userData);
         await _processUserLogin(user);
       }
     } on FirebaseAuthException catch (e) {
@@ -79,7 +82,6 @@ class _LoginScreenState extends State<LoginScreen> {
       } else if (e.code == 'wrong-password') {
         message = "Mot de passe incorrect.";
       } else if (e.code == 'invalid-credential') {
-        // Si les identifiants Firebase échouent, essayer en local
         await _handleLocalLogin(email, password);
         return;
       }
@@ -88,10 +90,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLocalLogin(String email, String password) async {
-    // Charger tous les utilisateurs locaux
     List<UserModel> allUsers = await DataStorage.loadAllUsers();
 
-    // Chercher l'utilisateur par email
     UserModel? user = allUsers.firstWhere(
       (u) => u.email.toLowerCase() == email.toLowerCase(),
       orElse: () => UserModel(
@@ -103,7 +103,6 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
 
-    // Vérifier le mot de passe
     if (user.id.isEmpty) {
       _showError("Utilisateur non trouvé");
       return;
@@ -119,12 +118,19 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _processUserLogin(UserModel user) async {
     if (!mounted) return;
 
-    // Mettre à jour l'utilisateur dans l'état global
     ChantierApp.of(context).updateUser(user);
 
-    // Charger les projets pour la redirection
-    List<Projet> allProjects = await DataStorage.loadAllProjects();
+    if (user.role == UserRole.chefProjet) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ProjectLauncherScreen(user: user),
+        ),
+      );
+      return;
+    }
 
+    List<Projet> allProjects = await DataStorage.loadAllProjects();
     _redirectUser(user, allProjects);
   }
 

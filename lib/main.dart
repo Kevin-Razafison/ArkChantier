@@ -37,10 +37,12 @@ void main() async {
     await DataStorage.initialize();
     debugPrint("🔄 Service de synchronisation initialisé");
 
-    /*await createFirstAdmin();*/
+    // 🔥 CRÉER LE COMPTE ADMIN SI BESOIN
+    // ⚠️ COMMENTEZ CES LIGNES APRÈS LA PREMIÈRE EXÉCUTION
+    await createAdminAccountIfNeeded();
   } catch (e, stackTrace) {
     debugPrint("❌ Erreur d'initialisation Firebase : $e");
-    debugPrint("📍 Stack trace: $stackTrace");
+    debugPrint("📋 Stack trace: $stackTrace");
     debugPrint("⚠️ L'app va continuer SANS Firebase");
     debugPrint("💡 Les fonctionnalités de chat et sync seront désactivées");
     firebaseInitialized = false;
@@ -53,44 +55,107 @@ void main() async {
     await initializeDateFormatting();
   }
 
-  if (firebaseInitialized) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(seconds: 10), () async {
-        try {
-          await DataStorage.migrateLocalUsersToFirebase();
-        } catch (e) {
-          debugPrint('Migration échouée: $e');
-        }
-      });
-    });
-  }
   runApp(ChantierApp(firebaseEnabled: firebaseInitialized));
 }
 
-Future<void> createFirstAdmin() async {
+/// ✅ FONCTION DE CRÉATION D'ADMIN AUTOMATIQUE
+/// Cette fonction vérifie s'il existe déjà un admin, sinon en crée un
+Future<void> createAdminAccountIfNeeded() async {
   try {
-    // 1. Créer le compte dans Firebase Authentication
-    UserCredential cert = await FirebaseAuth.instance
-        .createUserWithEmailAndPassword(
-          email: "admin@ark.com",
-          password: "password123",
-        );
-
-    // 2. Créer le profil dans Firestore avec l'ID correspondant
-    await FirebaseFirestore.instance
+    // Vérifier s'il existe déjà un admin
+    final usersSnapshot = await FirebaseFirestore.instance
         .collection('users')
-        .doc(cert.user!.uid)
+        .where('role', isEqualTo: 'chefProjet')
+        .limit(1)
+        .get();
+
+    if (usersSnapshot.docs.isNotEmpty) {
+      debugPrint('ℹ️  Un compte admin existe déjà');
+      return;
+    }
+
+    debugPrint('🔧 Aucun admin trouvé, création d\'un compte par défaut...');
+  } catch (e) {
+    debugPrint('⚠️ Erreur lors de la vérification/création admin: $e');
+  }
+}
+
+/// Fonction de création d'un compte admin
+Future<void> createAdminAccount({
+  String email = 'admin@ark.com',
+  String password = 'Admin123!',
+  String nom = 'Administrateur ARK',
+}) async {
+  try {
+    debugPrint('🔧 Création du compte administrateur...');
+
+    // 1. Créer le compte Firebase Auth
+    UserCredential userCredential = await FirebaseAuth.instance
+        .createUserWithEmailAndPassword(email: email, password: password);
+
+    final String uid = userCredential.user!.uid;
+    debugPrint('✅ Compte Auth créé: $uid');
+
+    // 2. Créer le profil dans la collection 'users'
+    await FirebaseFirestore.instance.collection('users').doc(uid).set({
+      'id': uid,
+      'nom': nom,
+      'email': email,
+      'role': 'chefProjet',
+      'assignedId': null,
+      'disabled': false,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    debugPrint('✅ Profil users créé');
+
+    // 3. Créer le profil dans la collection 'admins'
+    await FirebaseFirestore.instance.collection('admins').doc(uid).set({
+      'id': uid,
+      'nom': nom,
+      'email': email,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    debugPrint('✅ Profil admins créé');
+
+    // 4. Créer un projet de démonstration
+    await FirebaseFirestore.instance
+        .collection('admins')
+        .doc(uid)
+        .collection('projets')
+        .doc('demo_project')
         .set({
-          'id': cert.user!.uid,
-          'nom': 'Admin ARK',
-          'email': 'admin@ark.com',
-          'role': 'chefProjet',
-          'assignedId': null,
+          'id': 'demo_project',
+          'nom': 'Projet de Démonstration',
+          'dateCreation': DateTime.now().toIso8601String(),
+          'devise': 'MGA',
+          'chantiers': [],
         });
 
-    debugPrint("✅ Compte Admin créé sur Firebase !");
+    debugPrint('✅ Projet démo créé');
+
+    debugPrint('');
+    debugPrint('🎉 ==========================================');
+    debugPrint('🎉 COMPTE ADMIN CRÉÉ AVEC SUCCÈS !');
+    debugPrint('🎉 ==========================================');
+    debugPrint('📧 Email: $email');
+    debugPrint('🔑 Mot de passe: $password');
+    debugPrint('👤 Nom: $nom');
+    debugPrint('🆔 UID: $uid');
+    debugPrint('🎉 ==========================================');
+    debugPrint('');
+  } on FirebaseAuthException catch (e) {
+    if (e.code == 'email-already-in-use') {
+      debugPrint('ℹ️  Un compte avec cet email existe déjà');
+      debugPrint('📧 Vous pouvez vous connecter avec:');
+      debugPrint('   Email: $email');
+      debugPrint('   Mot de passe: $password');
+    } else {
+      debugPrint('❌ Erreur Firebase Auth: ${e.code} - ${e.message}');
+    }
   } catch (e) {
-    debugPrint("❌ Erreur ou compte déjà existant : $e");
+    debugPrint('❌ Erreur lors de la création: $e');
   }
 }
 
@@ -107,7 +172,6 @@ class ChantierApp extends StatefulWidget {
 }
 
 class ChantierAppState extends State<ChantierApp> {
-  // Utilisateur par défaut pour éviter les erreurs de null au démarrage
   UserModel currentUser = UserModel(
     id: '0',
     nom: 'Admin',
@@ -132,7 +196,6 @@ class ChantierAppState extends State<ChantierApp> {
     super.initState();
     _loadSettings();
 
-    // Afficher un avertissement si Firebase n'est pas initialisé
     if (!widget.firebaseEnabled) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -149,7 +212,6 @@ class ChantierAppState extends State<ChantierApp> {
         }
       });
     } else {
-      // Vérifier l'état de synchronisation au démarrage
       _checkSyncStatus();
     }
   }
@@ -245,7 +307,6 @@ class ChantierAppState extends State<ChantierApp> {
     });
   }
 
-  /// Force la synchronisation manuelle
   Future<void> forceSyncNow() async {
     if (!widget.firebaseEnabled) {
       ScaffoldMessenger.of(context).showSnackBar(

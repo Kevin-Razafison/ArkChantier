@@ -11,14 +11,16 @@ class UserModel {
   final String? assignedId;
 
   final String passwordHash;
+  final String? firebaseUid;
 
   UserModel({
     required this.id,
     required this.nom,
     required this.email,
     required this.role,
-    this.assignedId, // On utilise un nom plus générique
+    this.assignedId,
     required this.passwordHash,
+    this.firebaseUid,
   });
 
   Map<String, dynamic> toJson() => {
@@ -26,8 +28,9 @@ class UserModel {
     'nom': nom,
     'email': email,
     'role': role.index,
-    'assignedId': assignedId, // Changé ici
+    'assignedId': assignedId,
     'passwordHash': passwordHash,
+    'firebaseUid': firebaseUid,
   };
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -53,6 +56,7 @@ class UserModel {
       role: resolvedRole,
       assignedId: json['assignedId'] ?? json['chantierId'],
       passwordHash: json['passwordHash'] ?? '',
+      firebaseUid: json['firebaseUid'],
     );
   }
 

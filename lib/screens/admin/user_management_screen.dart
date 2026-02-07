@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Ajouté
-import 'package:cloud_firestore/cloud_firestore.dart'; // Ajouté
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/user_model.dart';
 import '../../services/data_storage.dart';
 import '../../services/encryption_service.dart';
 import '../../models/projet_model.dart';
 import '../../models/ouvrier_model.dart';
-import '../../main.dart'; // Ajouté pour accéder à ChantierApp
+import '../../main.dart';
+import '../../services/firebase_sync_service.dart';
 
 class UserManagementScreen extends StatefulWidget {
   const UserManagementScreen({super.key});
@@ -28,7 +29,6 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     _loadInitialData();
   }
 
-  // Charger les utilisateurs ET les projets (pour l'assignation client)
   Future<void> _loadInitialData() async {
     final results = await Future.wait([
       DataStorage.loadAllUsers(),
@@ -54,13 +54,54 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     });
   }
 
-  // --- LOGIQUE DE SUPPRESSION ---
+  /// ✅ IMPROVED: Utilise la nouvelle méthode deleteUser du service
   void _deleteUser(UserModel user) async {
-    setState(() {
-      _allUsers.removeWhere((u) => u.id == user.id);
-      _applyFilters();
-    });
-    await DataStorage.saveAllUsers(_allUsers);
+    final bool firebaseEnabled = ChantierApp.of(context).isFirebaseEnabled;
+
+    try {
+      // 1. Utiliser le service de sync pour gérer la suppression
+      final syncService = FirebaseSyncService();
+      await syncService.deleteUser(user);
+
+      // 2. Mettre à jour l'UI localement
+      setState(() {
+        _allUsers.removeWhere((u) => u.id == user.id);
+        _applyFilters();
+      });
+
+      // 3. Sauvegarder la liste mise à jour
+      await DataStorage.saveAllUsers(_allUsers);
+
+      // 4. Si c'est un ouvrier, supprimer aussi de l'annuaire global
+      if (user.role == UserRole.ouvrier) {
+        final List<Ouvrier> globalOuvriers =
+            await DataStorage.loadGlobalOuvriers();
+        globalOuvriers.removeWhere((o) => o.id == user.id);
+        await DataStorage.saveGlobalOuvriers(globalOuvriers);
+      }
+
+      // 5. Message de confirmation
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            firebaseEnabled
+                ? '${user.nom} a été désactivé (compte Firebase marqué comme supprimé)'
+                : '${user.nom} a été supprimé',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      debugPrint('❌ Erreur suppression utilisateur: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur lors de la suppression: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -73,9 +114,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
       ),
       body: Column(
         children: [
-          // BARRE DE RECHERCHE ET FILTRES
           _buildSearchAndFilters(),
-
           Expanded(
             child: _filteredUsers.isEmpty
                 ? const Center(child: Text("Aucun utilisateur trouvé"))
@@ -117,13 +156,12 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
       floatingActionButton: FloatingActionButton(
         backgroundColor: const Color(0xFF1A334D),
         child: const Icon(Icons.person_add, color: Colors.white),
-        onPressed: () => _showAddUserDialog(context), // Passer le context
+        onPressed: () => _showAddUserDialog(context),
       ),
     );
   }
 
   void _showAddUserDialog(BuildContext pageContext) {
-    // Prendre le context de la page
     final nomController = TextEditingController();
     final emailController = TextEditingController();
     final passwordController = TextEditingController();
@@ -132,7 +170,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     String? selectedProjectId;
 
     showDialog(
-      context: pageContext, // Utiliser le context de la page
+      context: pageContext,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text("Nouvel Utilisateur"),
@@ -188,16 +226,15 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                   const SizedBox(height: 15),
                   DropdownButtonFormField<String>(
                     decoration: const InputDecoration(
-                      labelText: "Assigner au projet",
+                      labelText: "Projet à attribuer",
+                      prefixIcon: Icon(Icons.architecture),
                     ),
-                    items: _availableProjects
-                        .map(
-                          (p) =>
-                              DropdownMenuItem(value: p.id, child: Text(p.nom)),
-                        )
-                        .toList(),
-                    onChanged: (val) =>
-                        setDialogState(() => selectedProjectId = val),
+                    items: _availableProjects.map((p) {
+                      return DropdownMenuItem(value: p.id, child: Text(p.nom));
+                    }).toList(),
+                    onChanged: (val) {
+                      setDialogState(() => selectedProjectId = val);
+                    },
                   ),
                 ],
               ],
@@ -217,8 +254,51 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                       .millisecondsSinceEpoch
                       .toString();
 
-                  // 1. Créer l'utilisateur local
-                  final newUser = UserModel(
+                  UserModel newUser;
+                  String? firebaseUid;
+
+                  // 1. Si Firebase est activé, créer le compte Firebase d'abord
+                  if (ChantierApp.of(pageContext).isFirebaseEnabled) {
+                    try {
+                      UserCredential userCredential = await FirebaseAuth
+                          .instance
+                          .createUserWithEmailAndPassword(
+                            email: emailController.text,
+                            password: passwordController.text,
+                          );
+
+                      firebaseUid = userCredential.user!.uid;
+
+                      // Récupérer l'admin ID actuel
+                      if (!context.mounted) return;
+                      final adminId = ChantierApp.of(
+                        pageContext,
+                      ).currentUser.id;
+
+                      await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(firebaseUid)
+                          .set({
+                            'id': firebaseUid,
+                            'nom': nomController.text,
+                            'email': emailController.text,
+                            'role': selectedRole.name,
+                            'assignedId': selectedProjectId,
+                            'adminId': adminId,
+                            'disabled': false, // ✅ Ajouté pour tracking
+                          });
+
+                      debugPrint(
+                        '✅ Compte Firebase créé pour ${nomController.text}',
+                      );
+                    } catch (e) {
+                      debugPrint('⚠️ Erreur création Firebase Auth: $e');
+                      // On continue avec le stockage local seulement
+                    }
+                  }
+
+                  // 2. Créer l'utilisateur local
+                  newUser = UserModel(
                     id: generatedId,
                     nom: nomController.text,
                     email: emailController.text,
@@ -227,9 +307,10 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                     passwordHash: EncryptionService.hashPassword(
                       passwordController.text,
                     ),
+                    firebaseUid: firebaseUid,
                   );
 
-                  // 2. Si c'est un ouvrier, créer sa fiche technique
+                  // 3. Si c'est un ouvrier, créer sa fiche technique
                   if (selectedRole == UserRole.ouvrier) {
                     final double salary =
                         double.tryParse(salaryController.text) ?? 25000.0;
@@ -252,7 +333,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                     await DataStorage.saveTeam("annuaire_global", currentTeam);
                   }
 
-                  // 3. Mettre à jour l'UI localement
+                  // 4. Mettre à jour l'UI
                   setState(() {
                     _allUsers.add(newUser);
                     _applyFilters();
@@ -260,50 +341,8 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
 
                   await DataStorage.saveAllUsers(_allUsers);
 
-                  // 4. Si Firebase est activé, créer le compte Firebase
-                  if (!context.mounted) return;
-                  if (ChantierApp.of(pageContext).isFirebaseEnabled) {
-                    try {
-                      UserCredential userCredential = await FirebaseAuth
-                          .instance
-                          .createUserWithEmailAndPassword(
-                            email: emailController.text,
-                            password: passwordController.text,
-                          );
-
-                      final uid = userCredential.user!.uid;
-
-                      if (!context.mounted) return;
-                      // Récupérer l'admin ID actuel
-                      final adminId = ChantierApp.of(
-                        pageContext,
-                      ).currentUser.id;
-
-                      // Sauvegarder dans Firestore avec la bonne structure
-                      await FirebaseFirestore.instance
-                          .collection('users')
-                          .doc(uid)
-                          .set({
-                            'id': uid,
-                            'nom': nomController.text,
-                            'email': emailController.text,
-                            'role': selectedRole.name,
-                            'assignedId': selectedProjectId,
-                            'adminId': adminId,
-                          });
-
-                      debugPrint(
-                        '✅ Compte Firebase créé pour ${nomController.text}',
-                      );
-                    } catch (e) {
-                      debugPrint('⚠️ Erreur création Firebase Auth: $e');
-                      // On continue avec le stockage local seulement
-                    }
-                  }
-
                   if (dialogContext.mounted) Navigator.pop(dialogContext);
 
-                  // Afficher un message de succès
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(pageContext).showSnackBar(
                     SnackBar(
@@ -353,10 +392,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                 _filterChip(UserRole.chefProjet, "Chefs de Projet"),
                 _filterChip(UserRole.ouvrier, "Ouvriers"),
                 _filterChip(UserRole.client, "Clients"),
-                _filterChip(
-                  UserRole.chefDeChantier,
-                  "Chefs de Chantier",
-                ), // Ajouté
+                _filterChip(UserRole.chefDeChantier, "Chefs de Chantier"),
               ],
             ),
           ),
@@ -396,11 +432,40 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
   }
 
   void _showDeleteConfirm(UserModel user) {
+    final bool firebaseEnabled = ChantierApp.of(context).isFirebaseEnabled;
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("Supprimer l'accès ?"),
-        content: Text("Voulez-vous retirer les droits de ${user.nom} ?"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Voulez-vous retirer les droits de ${user.nom} ?"),
+            const SizedBox(height: 10),
+            if (firebaseEnabled && user.firebaseUid != null)
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.orange, size: 16),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        "Le compte Firebase sera désactivé (pas supprimé définitivement)",
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),

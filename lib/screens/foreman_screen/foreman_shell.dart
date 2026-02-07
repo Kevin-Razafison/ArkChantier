@@ -126,7 +126,7 @@ class _ForemanShellState extends State<ForemanShell> {
           ),
         ),
         elevation: 0,
-        automaticallyImplyLeading: false, // Fix Hero duplicate
+        automaticallyImplyLeading: true,
         leading: isLargeScreen
             ? null
             : IconButton(

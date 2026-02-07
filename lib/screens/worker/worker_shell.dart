@@ -56,7 +56,7 @@ class _WorkerShellState extends State<WorkerShell> {
         ),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
-        automaticallyImplyLeading: false,
+        automaticallyImplyLeading: true,
       ),
       drawer: WorkerSidebar(
         currentIndex: _selectedIndex,
