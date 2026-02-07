@@ -7,35 +7,46 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/admin/project_launcher_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/encryption_service.dart';
+import 'services/data_storage.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. INITIALISATION FIREBASE - VERSION LINUX
+  // 1. INITIALISATION FIREBASE
   bool firebaseInitialized = false;
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+
+    // Configuration de la persistance offline
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
+
     firebaseInitialized = true;
     debugPrint("🔥 Firebase ArkChantier connecté !");
     debugPrint(
       "📱 Project ID: ${DefaultFirebaseOptions.currentPlatform.projectId}",
     );
 
+    // 2. INITIALISER LE SERVICE DE SYNCHRONISATION
+    await DataStorage.initialize();
+    debugPrint("🔄 Service de synchronisation initialisé");
+
     /*await createFirstAdmin();*/
   } catch (e, stackTrace) {
     debugPrint("❌ Erreur d'initialisation Firebase : $e");
     debugPrint("📍 Stack trace: $stackTrace");
     debugPrint("⚠️ L'app va continuer SANS Firebase");
-    debugPrint("💡 Les fonctionnalités de chat seront désactivées");
-    // Sur Linux, on peut continuer sans Firebase pour tester l'UI
+    debugPrint("💡 Les fonctionnalités de chat et sync seront désactivées");
     firebaseInitialized = false;
   }
 
-  // 2. INITIALISATION DES DATES
+  // 3. INITIALISATION DES DATES
   try {
     await initializeDateFormatting('fr_FR');
   } catch (e) {
@@ -66,9 +77,7 @@ Future<void> createFirstAdmin() async {
           'assignedId': null,
         });
 
-    debugPrint(
-      "✅ Compte Admin créé sur Firebase !",
-    ); // Utilise debugPrint au lieu de print
+    debugPrint("✅ Compte Admin créé sur Firebase !");
   } catch (e) {
     debugPrint("❌ Erreur ou compte déjà existant : $e");
   }
@@ -119,7 +128,7 @@ class ChantierAppState extends State<ChantierApp> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                '⚠️ Firebase désactivé - Le chat ne fonctionnera pas',
+                '⚠️ Firebase désactivé - Mode hors ligne uniquement',
                 style: TextStyle(color: Colors.white),
               ),
               backgroundColor: Colors.orange,
@@ -128,14 +137,51 @@ class ChantierAppState extends State<ChantierApp> {
           );
         }
       });
+    } else {
+      // Vérifier l'état de synchronisation au démarrage
+      _checkSyncStatus();
     }
+  }
+
+  Future<void> _checkSyncStatus() async {
+    final status = await DataStorage.getSyncStatus();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      if (status['pendingCount'] > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '🔄 ${status['pendingCount']} modification(s) en attente de synchronisation',
+              style: const TextStyle(color: Colors.white),
+            ),
+            backgroundColor: Colors.blue,
+            duration: const Duration(seconds: 3),
+            action: SnackBarAction(
+              label: 'SYNC',
+              textColor: Colors.white,
+              onPressed: () async {
+                await DataStorage.syncPendingChanges();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('✅ Synchronisation terminée'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              },
+            ),
+          ),
+        );
+      }
+    });
   }
 
   void updateUser(UserModel user) {
     setState(() => currentUser = user);
   }
-
-  // Fonction à appeler UNE SEULE FOIS pour créer ton compte admin sur le Cloud
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
@@ -186,6 +232,37 @@ class ChantierAppState extends State<ChantierApp> {
         prefs.setBool('isWorkerDarkMode', isDark);
       }
     });
+  }
+
+  /// Force la synchronisation manuelle
+  Future<void> forceSyncNow() async {
+    if (!widget.firebaseEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Firebase non disponible'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🔄 Synchronisation en cours...'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    await DataStorage.syncPendingChanges();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Synchronisation terminée'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
 
   @override

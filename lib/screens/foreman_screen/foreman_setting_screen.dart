@@ -1,21 +1,41 @@
 import 'package:flutter/material.dart';
 import '../../main.dart';
 import '../../models/user_model.dart';
+import '../../widgets/sync_status.dart';
 
-class ForemanSettingsView extends StatelessWidget {
+class ForemanSettingsView extends StatefulWidget {
   final UserModel user;
 
   const ForemanSettingsView({super.key, required this.user});
 
+  @override
+  State<ForemanSettingsView> createState() => _ForemanSettingsViewState();
+}
+
+class _ForemanSettingsViewState extends State<ForemanSettingsView> {
   @override
   Widget build(BuildContext context) {
     // Détection du mode sombre
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      // On retire la couleur fixe pour utiliser celle du thème
+      appBar: AppBar(
+        title: const Text('Paramètres'),
+        actions: [
+          // Indicateur compact
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: CompactSyncIndicator(),
+          ),
+        ],
+      ),
       body: ListView(
         children: [
+          // Section Synchronisation
+          _buildSectionTitle("Synchronisation", isDark),
+          const SyncStatusWidget(),
+
+          Divider(color: isDark ? Colors.white10 : Colors.black12),
           _buildSectionTitle("Mon Profil", isDark),
           ListTile(
             leading: const CircleAvatar(
@@ -23,7 +43,7 @@ class ForemanSettingsView extends StatelessWidget {
               child: Icon(Icons.person, color: Colors.white),
             ),
             title: Text(
-              user.nom,
+              widget.user.nom,
               style: TextStyle(color: isDark ? Colors.white : Colors.black87),
             ),
             subtitle: Text(
@@ -69,7 +89,7 @@ class ForemanSettingsView extends StatelessWidget {
               style: TextStyle(color: isDark ? Colors.white : Colors.black87),
             ),
             subtitle: Text(
-              "1.0.2 (Build 2026)",
+              "2.0.0 - Offline First (Build 2026)",
               style: TextStyle(color: isDark ? Colors.white54 : Colors.black54),
             ),
           ),
@@ -78,7 +98,6 @@ class ForemanSettingsView extends StatelessWidget {
     );
   }
 
-  // Ajout du paramètre isDark pour le titre de section
   Widget _buildSectionTitle(String title, bool isDark) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
@@ -87,7 +106,6 @@ class ForemanSettingsView extends StatelessWidget {
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.bold,
-          // Orange sur fond sombre, mais peut-être un peu plus foncé sur fond clair pour le contraste
           color: isDark ? Colors.orangeAccent : Colors.orange.shade800,
           letterSpacing: 1.1,
         ),

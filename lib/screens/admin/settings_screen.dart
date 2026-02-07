@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../main.dart';
 import '../../models/user_model.dart';
 import 'user_management_screen.dart';
+import '../../widgets/sync_status.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -16,8 +17,6 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool get wantKeepAlive => true;
 
   final String _selectedLanguage = 'Français';
-
-  // ✅ Les champs inutilisés ont été supprimés ici
 
   void _showEditAdminDialog(String currentName) {
     TextEditingController controller = TextEditingController(text: currentName);
@@ -61,9 +60,21 @@ class _SettingsScreenState extends State<SettingsScreen>
         title: const Text("Paramètres"),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
+        actions: [
+          // Indicateur compact dans l'AppBar
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: CompactSyncIndicator(),
+          ),
+        ],
       ),
       body: ListView(
         children: [
+          // Section État de synchronisation
+          _buildSectionTitle("Synchronisation"),
+          const SyncStatusWidget(),
+
+          const Divider(),
           _buildSectionTitle("Profil"),
           ListTile(
             leading: const Icon(Icons.person),
@@ -116,7 +127,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           const ListTile(
             leading: Icon(Icons.info_outline),
             title: Text("Version de l'application"),
-            subtitle: Text("1.0.2-stable (Build 2026)"),
+            subtitle: Text("2.0.0 - Offline First (Build 2026)"),
           ),
         ],
       ),

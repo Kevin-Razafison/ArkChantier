@@ -3,16 +3,16 @@ import '../../main.dart';
 import '../../models/user_model.dart';
 import '../../widgets/sync_status.dart';
 
-class ClientSettingsView extends StatefulWidget {
+class WorkerSettingsView extends StatefulWidget {
   final UserModel user;
 
-  const ClientSettingsView({super.key, required this.user});
+  const WorkerSettingsView({super.key, required this.user});
 
   @override
-  State<ClientSettingsView> createState() => _ClientSettingsViewState();
+  State<WorkerSettingsView> createState() => _WorkerSettingsViewState();
 }
 
-class _ClientSettingsViewState extends State<ClientSettingsView> {
+class _WorkerSettingsViewState extends State<WorkerSettingsView> {
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -37,15 +37,15 @@ class _ClientSettingsViewState extends State<ClientSettingsView> {
           _buildSectionTitle("Mon Profil", isDark),
           ListTile(
             leading: const CircleAvatar(
-              backgroundColor: Colors.blue,
-              child: Icon(Icons.person, color: Colors.white),
+              backgroundColor: Colors.green,
+              child: Icon(Icons.engineering, color: Colors.white),
             ),
             title: Text(
               widget.user.nom,
               style: TextStyle(color: isDark ? Colors.white : Colors.black87),
             ),
             subtitle: Text(
-              "Client",
+              "Ouvrier",
               style: TextStyle(color: isDark ? Colors.white54 : Colors.black54),
             ),
           ),
@@ -55,7 +55,7 @@ class _ClientSettingsViewState extends State<ClientSettingsView> {
           SwitchListTile(
             secondary: Icon(
               Icons.dark_mode,
-              color: isDark ? Colors.blueAccent : Colors.blueGrey,
+              color: isDark ? Colors.greenAccent : Colors.blueGrey,
             ),
             title: Text(
               "Mode Sombre",
@@ -76,7 +76,7 @@ class _ClientSettingsViewState extends State<ClientSettingsView> {
               style: TextStyle(color: isDark ? Colors.white : Colors.black87),
             ),
             subtitle: Text(
-              "Contacter le chef de projet",
+              "Contacter le chef de chantier",
               style: TextStyle(color: isDark ? Colors.white54 : Colors.black54),
             ),
           ),
@@ -104,7 +104,7 @@ class _ClientSettingsViewState extends State<ClientSettingsView> {
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.bold,
-          color: isDark ? Colors.blueAccent : Colors.blue.shade800,
+          color: isDark ? Colors.greenAccent : Colors.green.shade800,
           letterSpacing: 1.1,
         ),
       ),

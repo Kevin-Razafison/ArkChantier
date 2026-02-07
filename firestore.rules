@@ -1,0 +1,152 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Fonction helper pour vérifier si l'utilisateur est authentifié
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    // Fonction helper pour vérifier si l'utilisateur est admin
+    function isAdmin(adminId) {
+      return isSignedIn() && request.auth.uid == adminId;
+    }
+    
+    // Fonction helper pour vérifier si l'utilisateur appartient à cet admin
+    function belongsToAdmin(adminId) {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/admins/$(adminId)/users/$(request.auth.uid));
+    }
+    
+    // Collection des utilisateurs globaux (authentification)
+    match /users/{userId} {
+      // Lecture: l'utilisateur peut lire son propre profil
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      
+      // Création: lors de l'inscription
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      
+      // Mise à jour: l'utilisateur peut modifier son propre profil
+      allow update: if isSignedIn() && request.auth.uid == userId;
+      
+      // Suppression: impossible pour l'instant
+      allow delete: if false;
+    }
+    
+    // Collection des admins (chefs de projet)
+    match /admins/{adminId} {
+      // L'admin peut lire et modifier ses propres données
+      allow read, write: if isAdmin(adminId);
+      
+      // Sous-collection des projets
+      match /projets/{projetId} {
+        // L'admin peut tout faire avec ses projets
+        allow read, write: if isAdmin(adminId);
+        
+        // Les utilisateurs assignés peuvent lire
+        allow read: if belongsToAdmin(adminId);
+      }
+      
+      // Sous-collection des utilisateurs de cet admin
+      match /users/{userId} {
+        // L'admin peut tout faire
+        allow read, write: if isAdmin(adminId);
+        
+        // L'utilisateur peut lire son propre profil
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        
+        // L'utilisateur peut mettre à jour certains champs de son profil
+        allow update: if isSignedIn() && 
+                        request.auth.uid == userId &&
+                        // Vérifier que seuls certains champs sont modifiés
+                        !request.resource.data.diff(resource.data).affectedKeys()
+                          .hasAny(['role', 'adminId', 'assignedId']);
+      }
+      
+      // Sous-collection des chantiers
+      match /chantiers/{chantierId} {
+        // L'admin peut tout faire
+        allow read, write: if isAdmin(adminId);
+        
+        // Les utilisateurs assignés à ce chantier peuvent lire
+        allow read: if isSignedIn() && 
+                      exists(/databases/$(database)/documents/admins/$(adminId)/users/$(request.auth.uid)) &&
+                      get(/databases/$(database)/documents/admins/$(adminId)/users/$(request.auth.uid)).data.assignedId == chantierId;
+        
+        // Les chefs de chantier peuvent modifier leur chantier
+        allow write: if isSignedIn() && 
+                       exists(/databases/$(database)/documents/admins/$(adminId)/users/$(request.auth.uid)) &&
+                       get(/databases/$(database)/documents/admins/$(adminId)/users/$(request.auth.uid)).data.assignedId == chantierId &&
+                       get(/databases/$(database)/documents/admins/$(adminId)/users/$(request.auth.uid)).data.role == 1; // chefDeChantier
+        
+        // Sous-collections du chantier
+        match /ouvriers/{ouvrierId} {
+          // L'admin et les chefs de chantier peuvent gérer les ouvriers
+          allow read: if isAdmin(adminId) || 
+                        (isSignedIn() && 
+                         exists(/databases/$(database)/documents/admins/$(adminId)/users/$(request.auth.uid)) &&
+                         get(/databases/$(database)/documents/admins/$(adminId)/users/$(request.auth.uid)).data.assignedId == chantierId);
+          
+          allow write: if isAdmin(adminId) || 
+                         (isSignedIn() && 
+                          exists(/databases/$(database)/documents/admins/$(adminId)/users/$(request.auth.uid)) &&
+                          get(/databases/$(database)/documents/admins/$(adminId)/users/$(request.auth.uid)).data.assignedId == chantierId &&
+                          get(/databases/$(database)/documents/admins/$(adminId)/users/$(request.auth.uid)).data.role == 1);
+        }
+        
+        match /materiels/{materielId} {
+          allow read: if isAdmin(adminId) || belongsToAdmin(adminId);
+          allow write: if isAdmin(adminId) || 
+                         (isSignedIn() && 
+                          exists(/databases/$(database)/documents/admins/$(adminId)/users/$(request.auth.uid)) &&
+                          get(/databases/$(database)/documents/admins/$(adminId)/users/$(request.auth.uid)).data.assignedId == chantierId &&
+                          get(/databases/$(database)/documents/admins/$(adminId)/users/$(request.auth.uid)).data.role == 1);
+        }
+        
+        match /reports/{reportId} {
+          allow read: if isAdmin(adminId) || belongsToAdmin(adminId);
+          allow create: if isAdmin(adminId) || belongsToAdmin(adminId);
+          allow update, delete: if isAdmin(adminId) || 
+                                  (isSignedIn() && 
+                                   resource.data.senderId == request.auth.uid);
+        }
+        
+        match /journal/{entryId} {
+          allow read: if isAdmin(adminId) || belongsToAdmin(adminId);
+          allow create: if isAdmin(adminId) || belongsToAdmin(adminId);
+          allow update, delete: if isAdmin(adminId) || 
+                                  (isSignedIn() && 
+                                   resource.data.auteur == request.auth.uid);
+        }
+        
+        match /depenses/{depenseId} {
+          allow read: if isAdmin(adminId) || belongsToAdmin(adminId);
+          allow write: if isAdmin(adminId) || 
+                         (isSignedIn() && 
+                          exists(/databases/$(database)/documents/admins/$(adminId)/users/$(request.auth.uid)) &&
+                          get(/databases/$(database)/documents/admins/$(adminId)/users/$(request.auth.uid)).data.assignedId == chantierId &&
+                          get(/databases/$(database)/documents/admins/$(adminId)/users/$(request.auth.uid)).data.role == 1);
+        }
+      }
+    }
+    
+    // Collection des messages de chat
+    match /messages/{chantierId}/chantier_messages/{messageId} {
+      // Tout utilisateur authentifié peut lire les messages de son chantier
+      allow read: if isSignedIn();
+      
+      // Tout utilisateur authentifié peut créer un message
+      allow create: if isSignedIn() && 
+                      request.resource.data.senderId == request.auth.uid;
+      
+      // Seul l'auteur peut modifier/supprimer son message
+      allow update, delete: if isSignedIn() && 
+                              resource.data.senderId == request.auth.uid;
+    }
+    
+    // Règle par défaut: tout refuser
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
