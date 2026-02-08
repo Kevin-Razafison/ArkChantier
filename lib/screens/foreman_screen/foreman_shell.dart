@@ -97,7 +97,7 @@ class _ForemanShellState extends State<ForemanShell> {
       ChatScreen(chantierId: monChantier.id, currentUser: widget.user),
     ];
 
-    // On définit le seuil de bascule (ex: 1000 pixels de large)
+    // On définit le seuil de bascule
     bool isLargeScreen = MediaQuery.of(context).size.width > 1000;
 
     return Scaffold(

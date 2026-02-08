@@ -1,35 +1,50 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // PERMISSIONS POUR LE DÉVELOPPEMENT - À MODIFIER POUR LA PRODUCTION
-    
-    // Collection "users" - accessible pour la création initiale d'admin
-    match /users/{userId} {
-      // Permettre la création d'utilisateur SANS authentification
-      allow create: if true;
-      
-      // Permettre la lecture et écriture pour tous pendant le développement
-      allow read, update, delete: if true;
+    // Fonction helper
+    function isAuthenticated() {
+      return request.auth != null;
     }
     
-    // Collection "admins" - accessible pour la création initiale d'admin
+    // Fonction pour vérifier si l'utilisateur est admin
+    function isAdmin() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    
+    // Collection des admins
     match /admins/{adminId} {
-      // Permettre la création d'admin SANS authentification
+      // Lecture: seulement par l'admin lui-même
+      allow read: if isAuthenticated() && request.auth.uid == adminId;
+      
+      // Création: permise pour l'inscription initiale
       allow create: if true;
       
-      // Permettre tout pendant le développement
-      allow read, update, delete: if true;
+      // Mise à jour: seulement par l'admin lui-même
+      allow update: if isAuthenticated() && request.auth.uid == adminId;
       
-      // Sous-collections de l'admin
-      match /{document=**} {
-        allow read, write: if true;
+      // Suppression: interdite (soft delete seulement)
+      allow delete: if false;
+      
+      // Sous-collection des projets
+      match /projets/{projetId} {
+        // Lecture: par l'admin
+        allow read: if isAuthenticated() && request.auth.uid == adminId;
+        
+        // Écriture: par l'admin
+        allow write: if isAuthenticated() && request.auth.uid == adminId;
+      }
+      
+      // Sous-collection des utilisateurs
+      match /users/{userId} {
+        allow read, write: if isAuthenticated() && request.auth.uid == adminId;
       }
     }
     
-    // Permettre tout le reste pendant le développement
-    match /{document=**} {
-      allow read, write: if true;
+    // Collection users pour compatibilité
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
   }
 }

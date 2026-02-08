@@ -301,74 +301,69 @@ class _DashboardViewState extends State<DashboardView>
               sliver: SliverGrid(
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: isMobile ? 1 : 2,
-                  childAspectRatio: isMobile ? 1.3 : 1.6,
+                  childAspectRatio: isMobile
+                      ? 1.5
+                      : 1.8, // Augmenté pour plus d'espace
                   crossAxisSpacing: 20,
                   mainAxisSpacing: 20,
                 ),
                 delegate: SliverChildListDelegate([
+                  // Carte LOCALISATION
                   InfoCard(
                     title: "LOCALISATION",
-                    padding: EdgeInsets
-                        .zero, // 1. On enlève le padding interne pour gagner de la place
-                    child: ClipRRect(
-                      borderRadius: const BorderRadius.vertical(
-                        bottom: Radius.circular(15),
-                      ),
-                      child: SizedBox(
-                        height: 200, // Ta hauteur fixe
-                        child: Stack(
-                          children: [
-                            // LA CARTE
-                            Positioned.fill(
-                              // 2. On force la carte à prendre TOUTE la place du Stack
-                              child: Hero(
-                                tag: 'map_preview_hero',
-                                child: ChantierMapPreview(
-                                  chantiers: _chantiers,
-                                  chantierActuel: actuel,
-                                ),
+                    padding: EdgeInsets.zero,
+                    child: SizedBox(
+                      height: 200,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: Hero(
+                              tag: 'map_preview_hero',
+                              child: ChantierMapPreview(
+                                chantiers: _chantiers,
+                                chantierActuel: actuel,
                               ),
                             ),
-
-                            // LE BOUTON
-                            Positioned(
-                              top: 12,
-                              right: 12,
-                              child: FloatingActionButton.small(
-                                heroTag: "btn_map_fullscreen",
-                                backgroundColor: Colors.white.withValues(
-                                  alpha: 0.9,
-                                ),
-                                elevation: 4,
-                                // 3. On réduit un peu la taille de l'icône si besoin
-                                child: const Icon(
-                                  Icons.fullscreen,
-                                  color: Colors.black,
-                                  size: 20,
-                                ),
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => FullScreenMapView(
-                                        chantiers: _chantiers,
-                                        chantierActuel: actuel,
-                                      ),
+                          ),
+                          Positioned(
+                            top: 12,
+                            right: 12,
+                            child: FloatingActionButton.small(
+                              heroTag: "btn_map_fullscreen",
+                              backgroundColor: Colors.white.withValues(
+                                alpha: 0.9,
+                              ),
+                              elevation: 4,
+                              child: const Icon(
+                                Icons.fullscreen,
+                                color: Colors.black,
+                                size: 20,
+                              ),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => FullScreenMapView(
+                                      chantiers: _chantiers,
+                                      chantierActuel: actuel,
                                     ),
-                                  );
-                                },
-                              ),
+                                  ),
+                                );
+                              },
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
+
+                  // Carte ANALYSE DE PERFORMANCE
                   if (!isClient && actuel.id != "0")
                     InfoCard(
                       title: "ANALYSE DE PERFORMANCE",
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min, // Important !
                         children: [
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -383,7 +378,6 @@ class _DashboardViewState extends State<DashboardView>
                               ),
                               _buildKpiItem(
                                 label: "SANTÉ BUDGET",
-                                // Ajout d'une condition : si le budget est 0, on affiche "0.0%" au lieu de calculer
                                 value: globalBudgetInitial > 0
                                     ? "${((globalBudgetConsomme / globalBudgetInitial) * 100).toStringAsFixed(1)}%"
                                     : "0.0%",
@@ -409,47 +403,112 @@ class _DashboardViewState extends State<DashboardView>
                         ],
                       ),
                     ),
+
+                  // Carte TÂCHES
                   if (!isClient)
-                    InfoCard(title: "TÂCHES", child: _listTasksSliver()),
+                    InfoCard(
+                      title: "TÂCHES",
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxHeight: 150, // Limite la hauteur
+                        ),
+                        child: ListView.builder(
+                          physics:
+                              const NeverScrollableScrollPhysics(), // Désactive le scroll interne
+                          shrinkWrap: true,
+                          itemCount: _tasks.length,
+                          itemBuilder: (context, index) {
+                            final task = _tasks[index];
+                            return CheckboxListTile(
+                              value: task.isDone,
+                              title: Text(
+                                task.title,
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                              onChanged: (v) =>
+                                  setState(() => task.isDone = v!),
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+
+                  // Carte FINANCES
                   if (!isClient)
                     InfoCard(
                       title: "FINANCES",
                       child: _isLoadingFinances
                           ? const Center(child: CircularProgressIndicator())
                           : (actuel.id != "0")
-                          ? InkWell(
-                              onLongPress: () => _cloturerChantier(actuel),
-                              child: FinancialStatsCard(
-                                chantier: actuel,
-                                projet: widget.projet,
+                          ? ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxHeight: 180, // Limite la hauteur
+                              ),
+                              child: InkWell(
+                                onLongPress: () => _cloturerChantier(actuel),
+                                child: FinancialStatsCard(
+                                  chantier: actuel,
+                                  projet: widget.projet,
+                                ),
                               ),
                             )
                           : const Center(
                               child: Text("Sélectionnez un chantier"),
                             ),
                     ),
+
+                  // Carte RÉPARTITION GLOBALE
                   if (!isClient)
                     InfoCard(
                       title: "RÉPARTITION GLOBALE",
-                      child: FinancialPieChart(
-                        montantMO: totalMainOeuvre,
-                        montantMat: totalMateriel,
+                      child: SizedBox(
+                        height: 150, // Hauteur fixe
+                        child: FinancialPieChart(
+                          montantMO: totalMainOeuvre,
+                          montantMat: totalMateriel,
+                        ),
                       ),
                     ),
-                  InfoCard(title: "PROGRÈS", child: _listProgresSliver()),
+
+                  // Carte PROGRÈS
+                  InfoCard(
+                    title: "PROGRÈS",
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: 150, // Limite la hauteur
+                      ),
+                      child: _chantiers.isEmpty
+                          ? const Center(child: Text("Aucun chantier"))
+                          : ListView.builder(
+                              physics: const NeverScrollableScrollPhysics(),
+                              shrinkWrap: true,
+                              itemCount: _chantiers
+                                  .take(3)
+                                  .length, // Limite à 3 chantiers
+                              itemBuilder: (context, index) {
+                                final c = _chantiers[index];
+                                return _progressionRow(c);
+                              },
+                            ),
+                    ),
+                  ),
+
+                  // Carte JOURNAL D'INCIDENTS
                   InfoCard(
                     title: "JOURNAL D'INCIDENTS",
-                    child: SingleChildScrollView(
-                      child: IncidentList(incidents: [
-
-                        ],
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: 150, // Limite la hauteur
                       ),
+                      child: IncidentList(incidents: []),
                     ),
                   ),
                 ]),
               ),
             ),
-            const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+            const SliverPadding(padding: EdgeInsets.only(bottom: 150)),
           ],
         ),
       ),
@@ -511,39 +570,30 @@ class _DashboardViewState extends State<DashboardView>
       ),
     );
   }
-  // --- Widgets internes sans ListView.builder (car déjà dans un Sliver) ---
-
-  Widget _listProgresSliver() {
-    if (_chantiers.isEmpty) return const Center(child: Text("Aucun chantier"));
-    // On utilise une Column simple ici car InfoCard limite la taille
-    return SingleChildScrollView(
-      child: Column(
-        children: _chantiers.take(4).map((c) => _progressionRow(c)).toList(),
-      ),
-    );
-  }
 
   Widget _progressionRow(Chantier c) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Flexible(
+              Expanded(
                 child: Text(
                   c.nom,
                   style: const TextStyle(
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
                   overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
               ),
               Text(
                 "${(c.progression * 100).toInt()}%",
-                style: const TextStyle(fontSize: 11),
+                style: const TextStyle(fontSize: 12),
               ),
             ],
           ),
@@ -557,24 +607,6 @@ class _DashboardViewState extends State<DashboardView>
             minHeight: 6,
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _listTasksSliver() {
-    return SingleChildScrollView(
-      child: Column(
-        children: _tasks
-            .map(
-              (task) => CheckboxListTile(
-                value: task.isDone,
-                title: Text(task.title, style: const TextStyle(fontSize: 11)),
-                onChanged: (v) => setState(() => task.isDone = v!),
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-              ),
-            )
-            .toList(),
       ),
     );
   }

@@ -39,7 +39,6 @@ void main() async {
 
     // 🔥 CRÉER LE COMPTE ADMIN SI BESOIN
     // ⚠️ COMMENTEZ CES LIGNES APRÈS LA PREMIÈRE EXÉCUTION
-    await createAdminAccountIfNeeded();
   } catch (e, stackTrace) {
     debugPrint("❌ Erreur d'initialisation Firebase : $e");
     debugPrint("📋 Stack trace: $stackTrace");
@@ -58,11 +57,22 @@ void main() async {
   runApp(ChantierApp(firebaseEnabled: firebaseInitialized));
 }
 
-/// ✅ FONCTION DE CRÉATION D'ADMIN AUTOMATIQUE
+///  FONCTION DE CRÉATION D'ADMIN AUTOMATIQUE
 /// Cette fonction vérifie s'il existe déjà un admin, sinon en crée un
 Future<void> createAdminAccountIfNeeded() async {
   try {
-    // Vérifier s'il existe déjà un admin
+    // Vérifier s'il existe déjà un admin dans la collection 'admins'
+    final adminsSnapshot = await FirebaseFirestore.instance
+        .collection('admins')
+        .limit(1)
+        .get();
+
+    if (adminsSnapshot.docs.isNotEmpty) {
+      debugPrint('ℹ️  Un compte admin existe déjà dans la collection admins');
+      return;
+    }
+
+    // Vérifier aussi dans 'users' pour compatibilité
     final usersSnapshot = await FirebaseFirestore.instance
         .collection('users')
         .where('role', isEqualTo: 'chefProjet')
@@ -70,24 +80,32 @@ Future<void> createAdminAccountIfNeeded() async {
         .get();
 
     if (usersSnapshot.docs.isNotEmpty) {
-      debugPrint('ℹ️  Un compte admin existe déjà');
+      debugPrint('ℹ️  Un compte admin existe déjà dans la collection users');
       return;
     }
 
     debugPrint('🔧 Aucun admin trouvé, création d\'un compte par défaut...');
+
+    // Créer le compte admin avec la BONNE STRUCTURE
+    await createAdminAccount(
+      email: 'admin@ark.com',
+      password: 'Admin123!',
+      nom: 'Administrateur ARK',
+    );
   } catch (e) {
     debugPrint('⚠️ Erreur lors de la vérification/création admin: $e');
   }
 }
 
-/// Fonction de création d'un compte admin
 Future<void> createAdminAccount({
   String email = 'admin@ark.com',
   String password = 'Admin123!',
   String nom = 'Administrateur ARK',
 }) async {
   try {
-    debugPrint('🔧 Création du compte administrateur...');
+    debugPrint(
+      '🔧 Création du compte administrateur avec la nouvelle structure...',
+    );
 
     // 1. Créer le compte Firebase Auth
     UserCredential userCredential = await FirebaseAuth.instance
@@ -96,7 +114,18 @@ Future<void> createAdminAccount({
     final String uid = userCredential.user!.uid;
     debugPrint('✅ Compte Auth créé: $uid');
 
-    // 2. Créer le profil dans la collection 'users'
+    // 2. Créer le document dans la collection 'admins' (structure principale)
+    await FirebaseFirestore.instance.collection('admins').doc(uid).set({
+      'id': uid,
+      'nom': nom,
+      'email': email,
+      'createdAt': FieldValue.serverTimestamp(),
+      'role': 'chefProjet',
+    });
+
+    debugPrint('✅ Document admins créé');
+
+    // 3. Créer aussi un document dans 'users' pour compatibilité
     await FirebaseFirestore.instance.collection('users').doc(uid).set({
       'id': uid,
       'nom': nom,
@@ -105,52 +134,44 @@ Future<void> createAdminAccount({
       'assignedId': null,
       'disabled': false,
       'createdAt': FieldValue.serverTimestamp(),
+      'adminId': uid, // Référence à lui-même comme admin
     });
 
-    debugPrint('✅ Profil users créé');
+    debugPrint('✅ Document users créé (compatibilité)');
 
-    // 3. Créer le profil dans la collection 'admins'
-    await FirebaseFirestore.instance.collection('admins').doc(uid).set({
-      'id': uid,
-      'nom': nom,
-      'email': email,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-
-    debugPrint('✅ Profil admins créé');
-
-    // 4. Créer un projet de démonstration
+    // 4. Créer un projet de démonstration dans la SOUS-COLLECTION 'projets'
+    final demoProjectId = 'demo_${DateTime.now().millisecondsSinceEpoch}';
     await FirebaseFirestore.instance
         .collection('admins')
         .doc(uid)
         .collection('projets')
-        .doc('demo_project')
+        .doc(demoProjectId)
         .set({
-          'id': 'demo_project',
-          'nom': 'Projet de Démonstration',
+          'id': demoProjectId,
+          'nom': 'Projet Démonstration',
           'dateCreation': DateTime.now().toIso8601String(),
           'devise': 'MGA',
           'chantiers': [],
+          'adminId': uid, // Champ adminId dans le projet
+          'createdAt': FieldValue.serverTimestamp(),
         });
 
-    debugPrint('✅ Projet démo créé');
+    debugPrint('✅ Projet démo créé dans admins/{uid}/projets/');
 
     debugPrint('');
     debugPrint('🎉 ==========================================');
-    debugPrint('🎉 COMPTE ADMIN CRÉÉ AVEC SUCCÈS !');
+    debugPrint('🎉 COMPTE ADMIN RECRÉÉ AVEC LA BONNE STRUCTURE !');
     debugPrint('🎉 ==========================================');
     debugPrint('📧 Email: $email');
     debugPrint('🔑 Mot de passe: $password');
     debugPrint('👤 Nom: $nom');
     debugPrint('🆔 UID: $uid');
+    debugPrint('📁 Structure: admins/{uid}/projets/');
     debugPrint('🎉 ==========================================');
     debugPrint('');
   } on FirebaseAuthException catch (e) {
     if (e.code == 'email-already-in-use') {
       debugPrint('ℹ️  Un compte avec cet email existe déjà');
-      debugPrint('📧 Vous pouvez vous connecter avec:');
-      debugPrint('   Email: $email');
-      debugPrint('   Mot de passe: $password');
     } else {
       debugPrint('❌ Erreur Firebase Auth: ${e.code} - ${e.message}');
     }
