@@ -9,6 +9,7 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../models/chantier_model.dart';
 
 class ProjectLauncherScreen extends StatefulWidget {
   final UserModel user;
@@ -30,12 +31,61 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
   }
 
   Future<void> _loadProjets() async {
-    final data = await DataStorage.loadAllProjects();
+    setState(() => _isLoading = true);
+
+    try {
+      // Charger depuis DataStorage
+      final data = await DataStorage.loadAllProjects();
+
+      if (mounted) {
+        setState(() {
+          _projets = data;
+          _isLoading = false;
+        });
+      }
+
+      debugPrint("📁 ${data.length} projet(s) chargé(s)");
+
+      // Si aucun projet et c'est l'admin, créer un projet par défaut
+      if (data.isEmpty && widget.user.role == UserRole.chefProjet && mounted) {
+        await _createDefaultProject();
+      }
+    } catch (e) {
+      debugPrint("❌ Erreur chargement projets: $e");
+      if (mounted) {
+        setState(() {
+          _projets = [];
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _createDefaultProject() async {
+    final defaultProject = Projet(
+      id: 'default_${DateTime.now().millisecondsSinceEpoch}',
+      nom: 'Projet Démonstration',
+      dateCreation: DateTime.now(),
+      devise: 'MGA',
+      chantiers: [
+        Chantier(
+          id: 'chantier_1',
+          nom: 'Chantier Principal',
+          lieu: 'Antananarivo',
+          progression: 0.3,
+          statut: StatutChantier.enCours,
+          latitude: -18.8792,
+          longitude: 47.5079,
+          budgetInitial: 50000000,
+          depensesActuelles: 15000000,
+        ),
+      ],
+    );
+
+    await DataStorage.saveSingleProject(defaultProject);
+
     if (mounted) {
-      setState(() {
-        _projets = data;
-        _isLoading = false;
-      });
+      await _loadProjets(); // Recharger la liste
     }
   }
 
@@ -52,7 +102,7 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
         final importedProject = DataStorage.decodeProjectFromFile(content);
 
         await DataStorage.saveSingleProject(importedProject);
-        _loadProjets();
+        await _loadProjets();
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -118,12 +168,52 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
-              // Supposons que ton DataStorage a une méthode deleteProject
-              // Sinon, tu peux filtrer la liste et tout sauvegarder
-              await DataStorage.deleteProject(p.id);
-              if (!ctx.mounted) return;
-              Navigator.pop(ctx);
-              _loadProjets(); // Recharger la liste
+              Navigator.pop(ctx); // Fermer le dialog
+
+              // Supprimer localement d'abord
+              setState(() => _isLoading = true);
+
+              try {
+                // Sauvegarder l'état actuel pour éviter de perdre d'autres projets
+                final currentProjects = await DataStorage.loadAllProjects();
+                final updatedProjects = currentProjects
+                    .where((proj) => proj.id != p.id)
+                    .toList();
+
+                // Sauvegarder la nouvelle liste
+                await DataStorage.saveAllProjects(updatedProjects);
+
+                // Supprimer du stockage Firebase (si connecté)
+                await DataStorage.deleteProject(p.id);
+
+                // Recharger l'interface
+                if (mounted) {
+                  await _loadProjets(); // Utiliser await pour attendre le chargement
+
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text("Projet '${p.nom}' supprimé avec succès"),
+                      backgroundColor: Colors.green,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              } catch (e) {
+                debugPrint("❌ Erreur suppression: $e");
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text("Erreur lors de la suppression: $e"),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              } finally {
+                if (mounted) {
+                  setState(() => _isLoading = false);
+                }
+              }
             },
             child: const Text(
               "SUPPRIMER",
@@ -173,17 +263,53 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
             ElevatedButton(
               onPressed: () async {
                 if (nomController.text.isNotEmpty) {
-                  final newProject = Projet(
-                    id: const Uuid().v4(),
-                    nom: nomController.text,
-                    devise: selectedDevise,
-                    dateCreation: DateTime.now(),
-                    chantiers: [],
-                  );
-                  await DataStorage.saveSingleProject(newProject);
-                  if (!ctx.mounted) return;
                   Navigator.pop(ctx);
-                  _loadProjets();
+
+                  setState(() => _isLoading = true);
+
+                  try {
+                    final newProject = Projet(
+                      id: const Uuid().v4(),
+                      nom: nomController.text,
+                      devise: selectedDevise,
+                      dateCreation: DateTime.now(),
+                      chantiers: [],
+                    );
+
+                    // Sauvegarder le projet
+                    await DataStorage.saveSingleProject(newProject);
+
+                    debugPrint(
+                      "✅ Projet créé: ${newProject.nom} (${newProject.id})",
+                    );
+
+                    // Recharger la liste
+                    await _loadProjets();
+
+                    // Message de confirmation
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          "Projet '${newProject.nom}' créé avec succès !",
+                        ),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  } catch (e) {
+                    debugPrint("❌ Erreur création projet: $e");
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text("Erreur lors de la création: $e"),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  } finally {
+                    if (mounted) {
+                      setState(() => _isLoading = false);
+                    }
+                  }
                 }
               },
               child: const Text("Créer"),
@@ -386,28 +512,29 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
         style: const TextStyle(color: Colors.grey, fontSize: 12),
       ),
       trailing: !isClient
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  tooltip: "Exporter (.ark)",
-                  icon: const Icon(
-                    Icons.share,
-                    color: Colors.blueAccent,
-                    size: 20,
+          ? IntrinsicWidth(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    padding: const EdgeInsets.all(4),
+                    iconSize: 18,
+                    tooltip: "Exporter (.ark)",
+                    icon: const Icon(Icons.share, color: Colors.blueAccent),
+                    onPressed: () => _exportProject(p),
                   ),
-                  onPressed: () => _exportProject(p),
-                ),
-                IconButton(
-                  tooltip: "Supprimer",
-                  icon: const Icon(
-                    Icons.delete_outline,
-                    color: Colors.white24,
-                    size: 20,
+                  IconButton(
+                    padding: const EdgeInsets.all(4),
+                    iconSize: 18,
+                    tooltip: "Supprimer",
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.white24,
+                    ),
+                    onPressed: () => _confirmDeleteProject(p),
                   ),
-                  onPressed: () => _confirmDeleteProject(p),
-                ),
-              ],
+                ],
+              ),
             )
           : const Icon(
               Icons.arrow_forward_ios,

@@ -50,7 +50,6 @@ class _SyncStatusWidgetState extends State<SyncStatusWidget> {
     }
 
     final isOnline = _syncStatus!['isOnline'] as bool;
-    final isSyncing = _syncStatus!['isSyncing'] as bool;
     final pendingCount = _syncStatus!['pendingCount'] as int;
     final isAuthenticated = _syncStatus!['isAuthenticated'] as bool;
 
@@ -77,15 +76,15 @@ class _SyncStatusWidgetState extends State<SyncStatusWidget> {
                   ),
                 ),
                 const Spacer(),
-                if (isSyncing)
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                else if (isOnline && isAuthenticated)
+                if (isOnline && isAuthenticated)
                   IconButton(
-                    icon: const Icon(Icons.refresh, size: 20),
+                    icon: _isRefreshing
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.refresh, size: 20),
                     onPressed: _isRefreshing ? null : _refresh,
                     tooltip: 'Synchroniser maintenant',
                   ),
@@ -235,19 +234,7 @@ class _CompactSyncIndicatorState extends State<CompactSyncIndicator> {
     }
 
     final isOnline = _syncStatus!['isOnline'] as bool;
-    final isSyncing = _syncStatus!['isSyncing'] as bool;
     final pendingCount = _syncStatus!['pendingCount'] as int;
-
-    if (isSyncing) {
-      return const Tooltip(
-        message: 'Synchronisation en cours...',
-        child: SizedBox(
-          width: 16,
-          height: 16,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-      );
-    }
 
     if (!isOnline) {
       return Tooltip(

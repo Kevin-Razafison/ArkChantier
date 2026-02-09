@@ -42,11 +42,32 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
 
   Future<void> _fetchOuvrierData() async {
     try {
-      final allWorkers = await DataStorage.loadTeam("annuaire_global");
+      debugPrint(
+        '🔍 Recherche ouvrier pour user ID: ${widget.user.id} / Firebase UID: ${widget.user.firebaseUid}',
+      );
+
+      final allWorkers = await DataStorage.loadGlobalOuvriers();
+
+      debugPrint('📋 ${allWorkers.length} ouvrier(s) dans l\'annuaire global');
+
+      // Chercher par ID ou par firebaseUid
       final worker = allWorkers.cast<Ouvrier?>().firstWhere(
-        (w) => w?.id == widget.user.id,
+        (w) => w?.id == widget.user.id || w?.id == widget.user.firebaseUid,
         orElse: () => null,
       );
+
+      if (worker != null) {
+        debugPrint('✅ Ouvrier trouvé: ${worker.nom} (ID: ${worker.id})');
+      } else {
+        debugPrint('⚠️ Aucun ouvrier trouvé dans l\'annuaire global');
+        debugPrint(
+          '   IDs recherchés: ${widget.user.id}, ${widget.user.firebaseUid}',
+        );
+        debugPrint(
+          '   IDs disponibles: ${allWorkers.map((w) => w.id).join(", ")}',
+        );
+      }
+
       if (mounted) {
         setState(() {
           _realWorkerData = worker;
@@ -54,6 +75,7 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
         });
       }
     } catch (e) {
+      debugPrint('❌ Erreur _fetchOuvrierData: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }

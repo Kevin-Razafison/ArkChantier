@@ -409,7 +409,8 @@ class _ChantiersScreenState extends State<ChantiersScreen>
                               email: u.email,
                               role: u.role,
                               passwordHash: u.passwordHash,
-                              assignedId: chantier.id, // On lie au chantier !
+                              assignedIds: [chantier.id],
+                              firebaseUid: u.firebaseUid,
                             );
                           }
                           return u;

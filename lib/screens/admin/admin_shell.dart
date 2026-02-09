@@ -168,6 +168,7 @@ class _AdminShellState extends State<AdminShell> {
                 setState(() => _selectedIndex = i);
                 Navigator.pop(context);
               },
+              parentContext: context,
             )
           : null,
       body: Row(
@@ -178,6 +179,7 @@ class _AdminShellState extends State<AdminShell> {
               currentIndex: _selectedIndex,
               currentProject: widget.currentProject,
               onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+              parentContext: context,
             ),
           Expanded(
             child: IndexedStack(index: _selectedIndex, children: pages),

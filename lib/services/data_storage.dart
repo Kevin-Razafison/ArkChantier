@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Ajouté
-import 'package:cloud_firestore/cloud_firestore.dart'; // Ajouté
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/projet_model.dart';
 import '../models/chantier_model.dart';
 import '../models/journal_model.dart';
@@ -13,16 +13,31 @@ import 'package:flutter/foundation.dart';
 import '../models/depense_model.dart';
 import 'firebase_sync_service.dart';
 
-/// Classe de compatibilité qui redirige vers FirebaseSyncService
-/// Maintient l'API existante pour éviter de casser le code existant
 class DataStorage {
   static final _syncService = FirebaseSyncService();
 
   // ==================== PROJETS ====================
 
   static Future<void> saveAllProjects(List<Projet> projets) async {
-    for (var projet in projets) {
-      await _syncService.saveProjet(projet);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'projects_list',
+        jsonEncode(projets.map((p) => p.toJson()).toList()),
+      );
+
+      // Si l'admin est connecté à Firebase, synchroniser
+      final adminId = FirebaseAuth.instance.currentUser?.uid;
+      if (adminId != null) {
+        for (var projet in projets) {
+          await _syncService.saveProjet(projet);
+        }
+      }
+
+      debugPrint('✅ ${projets.length} projet(s) sauvegardé(s)');
+    } catch (e) {
+      debugPrint('❌ Erreur saveAllProjects: $e');
+      rethrow;
     }
   }
 
@@ -37,7 +52,6 @@ class DataStorage {
   static Future<void> deleteProject(String projectId) async {
     await _syncService.deleteProjet(projectId);
 
-    // Nettoyer aussi les données locales associées
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove("team_$projectId");
     await prefs.remove("reports_$projectId");
@@ -66,7 +80,6 @@ class DataStorage {
     final index = projets.indexWhere((p) => p.id == projetId);
 
     if (index != -1) {
-      // Créer une nouvelle instance de Projet avec les chantiers mis à jour
       projets[index] = Projet(
         id: projets[index].id,
         nom: projets[index].nom,
@@ -174,8 +187,35 @@ class DataStorage {
   // ==================== UTILISATEURS ====================
 
   static Future<void> saveAllUsers(List<UserModel> users) async {
-    for (var user in users) {
-      await _syncService.saveUser(user);
+    try {
+      // Récupérer l'adminId actuel
+      final adminId = FirebaseAuth.instance.currentUser?.uid;
+
+      if (adminId == null) {
+        debugPrint(
+          '⚠️ Admin non connecté à Firebase - Sauvegarde locale uniquement',
+        );
+        // Sauvegarder uniquement en local
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          'users_list',
+          jsonEncode(users.map((u) => u.toJson()).toList()),
+        );
+        return;
+      }
+
+      // Sauvegarder chaque utilisateur avec l'adminId
+      for (var user in users) {
+        // Éviter le mock admin
+        if (user.email == 'admin@ark.com') continue;
+
+        await _syncService.saveUser(user, adminId: adminId);
+      }
+
+      debugPrint('✅ ${users.length} utilisateur(s) sauvegardé(s)');
+    } catch (e) {
+      debugPrint('❌ Erreur saveAllUsers: $e');
+      rethrow;
     }
   }
 
@@ -196,10 +236,61 @@ class DataStorage {
       jsonEncode(ouvriers.map((o) => o.toJson()).toList()),
     );
 
-    // Pour l'instant on garde en local uniquement
+    // Synchroniser avec Firebase si connecté
+    final adminId = FirebaseAuth.instance.currentUser?.uid;
+    if (adminId != null) {
+      try {
+        // Créer une structure pour stocker l'annuaire global
+        await FirebaseFirestore.instance
+            .collection('admins')
+            .doc(adminId)
+            .collection('annuaire_ouvriers')
+            .doc('global')
+            .set({
+              'ouvriers': ouvriers.map((o) => o.toJson()).toList(),
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+      } catch (e) {
+        debugPrint('⚠️ Erreur sync annuaire global: $e');
+      }
+    }
   }
 
   static Future<List<Ouvrier>> loadGlobalOuvriers() async {
+    // Essayer de charger depuis Firebase d'abord
+    final adminId = FirebaseAuth.instance.currentUser?.uid;
+    if (adminId != null) {
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('admins')
+            .doc(adminId)
+            .collection('annuaire_ouvriers')
+            .doc('global')
+            .get();
+
+        if (doc.exists && doc.data() != null) {
+          final data = doc.data()!;
+          if (data['ouvriers'] != null) {
+            final ouvriers = (data['ouvriers'] as List)
+                .map((o) => Ouvrier.fromJson(o))
+                .toList();
+
+            // Sauvegarder en cache local
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString(
+              'team_annuaire_global',
+              jsonEncode(ouvriers.map((o) => o.toJson()).toList()),
+            );
+
+            return ouvriers;
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ Erreur chargement annuaire Firebase: $e');
+      }
+    }
+
+    // Fallback: charger depuis le cache local
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getString('team_annuaire_global');
 
@@ -220,7 +311,6 @@ class DataStorage {
     String chantierId,
     List<Materiel> stocks,
   ) async {
-    // Les stocks sont des matériels, on utilise la même méthode
     await saveMateriels(chantierId, stocks);
   }
 
@@ -228,7 +318,6 @@ class DataStorage {
     final stocks = await loadMateriels(chantierId);
 
     if (stocks.isEmpty) {
-      // Retourner des stocks par défaut si aucun n'existe
       return [
         Materiel(
           id: '1',
@@ -275,58 +364,78 @@ class DataStorage {
 
   // ==================== UTILITAIRES ====================
 
-  /// Force la synchronisation de toutes les modifications en attente
   static Future<void> syncPendingChanges() async {
     await _syncService.syncPendingChanges();
   }
 
-  /// Obtient l'état de synchronisation
   static Future<Map<String, dynamic>> getSyncStatus() async {
     return await _syncService.getSyncStatus();
   }
 
-  /// Initialise le service de synchronisation
   static Future<void> initialize() async {
     await _syncService.initialize();
   }
 
-  /// Migre les utilisateurs locaux vers Firebase
-  static Future<void> migrateLocalUsersToFirebase() async {
+  /// Récupère un utilisateur par son UID Firebase
+  static Future<UserModel?> getUserByFirebaseUid(String firebaseUid) async {
     try {
-      final localUsers = await loadAllUsers();
+      final adminId = FirebaseAuth.instance.currentUser?.uid;
+      if (adminId == null) return null;
 
-      for (var user in localUsers) {
-        // Éviter le mock admin
-        if (user.email == 'admin@ark.com') continue;
+      final doc = await FirebaseFirestore.instance
+          .collection('admins')
+          .doc(adminId)
+          .collection('users')
+          .where('firebaseUid', isEqualTo: firebaseUid)
+          .limit(1)
+          .get();
 
-        try {
-          // Créer le compte Firebase Auth
-          UserCredential cred = await FirebaseAuth.instance
-              .createUserWithEmailAndPassword(
-                email: user.email,
-                password: 'password123', // Mot de passe par défaut
-              );
-
-          // Sauvegarder dans Firestore
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(cred.user!.uid)
-              .set({
-                'id': cred.user!.uid,
-                'nom': user.nom,
-                'email': user.email,
-                'role': user.role.name,
-                'assignedId': user.assignedId,
-                'adminId': 'offline_admin', // Valeur par défaut
-              });
-
-          debugPrint('✅ Utilisateur migré: ${user.email}');
-        } catch (e) {
-          debugPrint('⚠️ Erreur migration ${user.email}: $e');
-        }
+      if (doc.docs.isNotEmpty) {
+        return UserModel.fromJson(doc.docs.first.data());
       }
     } catch (e) {
-      debugPrint('❌ Erreur migration: $e');
+      debugPrint('❌ Erreur getUserByFirebaseUid: $e');
+    }
+    return null;
+  }
+
+  /// Récupère un utilisateur par son email
+  static Future<UserModel?> getUserByEmail(String email) async {
+    try {
+      final users = await loadAllUsers();
+      return users.firstWhere(
+        (user) => user.email.toLowerCase() == email.toLowerCase(),
+        orElse: () => UserModel(
+          id: '',
+          nom: '',
+          email: '',
+          role: UserRole.ouvrier,
+          passwordHash: '',
+          assignedIds: [],
+        ),
+      );
+    } catch (e) {
+      debugPrint('❌ Erreur getUserByEmail: $e');
+      return null;
+    }
+  }
+
+  /// Met à jour les assignations d'un utilisateur
+  static Future<void> updateUserAssignments(
+    UserModel user,
+    List<String> newAssignments,
+  ) async {
+    try {
+      final adminId = FirebaseAuth.instance.currentUser?.uid;
+      if (adminId == null) return;
+
+      final updatedUser = user.withAssignedIds(newAssignments);
+      await _syncService.saveUser(updatedUser, adminId: adminId);
+
+      debugPrint('✅ Assignations mises à jour pour ${user.nom}');
+    } catch (e) {
+      debugPrint('❌ Erreur updateUserAssignments: $e');
+      rethrow;
     }
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
 import '../../models/projet_model.dart';
 import '../../services/data_storage.dart';
+import '../../services/firebase_sync_service.dart';
 import 'payroll_screen.dart';
 
 class ProjectTeamScreen extends StatefulWidget {
@@ -17,45 +18,108 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
   List<UserModel> _assignedUsers = [];
   List<UserModel> _allUsers = [];
   bool _isLoading = true;
+  String? _adminId;
 
   @override
   void initState() {
     super.initState();
+    _loadAdminId();
     _refreshData();
   }
 
-  Future<void> _refreshData() async {
-    setState(() => _isLoading = true);
-    _allUsers = await DataStorage.loadAllUsers();
+  Future<void> _loadAdminId() async {
+    try {
+      // Récupérer l'admin connecté depuis le contexte ou SharedPreferences
+      final users = await DataStorage.loadAllUsers();
+      final admin = users.firstWhere(
+        (u) => u.role == UserRole.chefProjet,
+        orElse: () => users.first,
+      );
+      setState(() {
+        _adminId = admin.firebaseUid ?? admin.id;
+      });
+    } catch (e) {
+      debugPrint('Erreur chargement adminId: $e');
+      _adminId = 'default_admin';
+    }
+  }
 
-    setState(() {
-      _assignedUsers = _allUsers
-          .where(
-            (u) =>
-                u.assignedId != null &&
-                (u.assignedId == widget.projet.id ||
-                    widget.projet.chantiers.any((c) => c.id == u.assignedId)),
-          )
-          .toList();
-      _isLoading = false;
-    });
+  Future<void> _refreshData() async {
+    if (!mounted) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      _allUsers = await DataStorage.loadAllUsers();
+
+      debugPrint('=== DEBUG ProjectTeamScreen ===');
+      debugPrint('Projet: ${widget.projet.nom} (ID: ${widget.projet.id})');
+      debugPrint('Nombre total d\'utilisateurs: ${_allUsers.length}');
+
+      for (var user in _allUsers) {
+        debugPrint('  - ${user.nom} (${user.role.name})');
+        debugPrint('    ID: ${user.id}, AssignedIds: ${user.assignedIds}');
+      }
+
+      debugPrint('Chantiers de ce projet: ${widget.projet.chantiers.length}');
+      for (var chantier in widget.projet.chantiers) {
+        debugPrint('  - ${chantier.nom} (ID: ${chantier.id})');
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _assignedUsers = _allUsers.where((u) {
+          // Utilisateurs sans assignation
+          if (u.assignedIds.isEmpty) {
+            debugPrint('✗ ${u.nom} n\'est pas assigné (assignedIds vide)');
+            return false;
+          }
+
+          // Vérifier si assigné au projet global
+          if (u.isAssignedToProject(widget.projet.id)) {
+            debugPrint('✓ ${u.nom} assigné au projet global');
+            return true;
+          }
+
+          // Vérifier si assigné à un chantier de ce projet
+          final isAssignedToChantier = widget.projet.chantiers.any((c) {
+            if (u.isAssignedToChantier(c.id)) {
+              debugPrint('✓ ${u.nom} assigné au chantier: ${c.nom}');
+              return true;
+            }
+            return false;
+          });
+
+          if (!isAssignedToChantier) {
+            debugPrint(
+              '✗ ${u.nom} assigné à autre chose (assignedIds: ${u.assignedIds})',
+            );
+          }
+
+          return isAssignedToChantier;
+        }).toList();
+
+        debugPrint(
+          'Nombre d\'utilisateurs assignés à ce projet: ${_assignedUsers.length}',
+        );
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('❌ Erreur dans _refreshData: $e');
+      setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _assignUserToProject(UserModel user) async {
     final index = _allUsers.indexWhere((u) => u.id == user.id);
 
     if (index != -1) {
-      _allUsers[index] = UserModel(
-        id: user.id,
-        nom: user.nom,
-        email: user.email,
-        role: user.role,
-        assignedId: widget.projet.id,
-        passwordHash: user.passwordHash,
-      );
+      // Utiliser la méthode assignTo pour ajouter le projet
+      _allUsers[index] = user.assignTo(widget.projet.id);
 
       await DataStorage.saveAllUsers(_allUsers);
-      _refreshData();
+      if (mounted) _refreshData();
     }
   }
 
@@ -63,17 +127,21 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
     final index = _allUsers.indexWhere((u) => u.id == user.id);
 
     if (index != -1) {
-      _allUsers[index] = UserModel(
-        id: user.id,
-        nom: user.nom,
-        email: user.email,
-        role: user.role,
-        assignedId: null,
-        passwordHash: user.passwordHash,
-      );
+      // Retirer toutes les assignations liées à ce projet
+      UserModel updatedUser = user;
+
+      // Retirer le projet lui-même
+      updatedUser = updatedUser.unassignFrom(widget.projet.id);
+
+      // Retirer tous les chantiers de ce projet
+      for (var chantier in widget.projet.chantiers) {
+        updatedUser = updatedUser.unassignFrom(chantier.id);
+      }
+
+      _allUsers[index] = updatedUser;
 
       await DataStorage.saveAllUsers(_allUsers);
-      _refreshData();
+      if (mounted) _refreshData();
     }
   }
 
@@ -81,8 +149,11 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
     final availableUsers = _allUsers
         .where(
           (u) =>
-              u.assignedId != widget.projet.id &&
-              !widget.projet.chantiers.any((c) => c.id == u.assignedId),
+              u.assignedIds.isEmpty || // Utilisateurs non assignés
+              (!u.isAssignedToProject(widget.projet.id) &&
+                  !widget.projet.chantiers.any(
+                    (c) => u.isAssignedToChantier(c.id),
+                  )),
         )
         .toList();
 
@@ -103,18 +174,18 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
                     return ListTile(
                       leading: CircleAvatar(
                         backgroundColor: _getRoleColor(user.role),
-                        child: const Icon(Icons.person, color: Colors.white),
+                        child: user.nom.isNotEmpty
+                            ? Text(
+                                user.nom[0],
+                                style: const TextStyle(color: Colors.white),
+                              )
+                            : const Icon(Icons.person, color: Colors.white),
                       ),
-                      title: Text(user.nom),
+                      title: Text(user.nom.isNotEmpty ? user.nom : "Sans nom"),
                       subtitle: Text(user.role.name.toUpperCase()),
                       onTap: () {
-                        _assignUserToProject(user);
                         Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text("${user.nom} ajouté au projet"),
-                          ),
-                        );
+                        _assignUserToProject(user);
                       },
                     );
                   },
@@ -125,6 +196,21 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
   }
 
   void _showAssignToSpecificChantierDialog(UserModel user) {
+    // Si c'est un chef de projet, on ne permet PAS de l'assigner à un chantier
+    if (user.role == UserRole.chefProjet) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Les chefs de projet sont automatiquement assignés au projet global",
+            style: TextStyle(color: Colors.white),
+          ),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -137,26 +223,59 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
             separatorBuilder: (context, index) => const Divider(),
             itemBuilder: (context, index) {
               final c = widget.projet.chantiers[index];
+              final isCurrentlyAssigned = user.isAssignedToChantier(c.id);
+
               return ListTile(
-                leading: const Icon(Icons.location_on, color: Colors.orange),
+                leading: Icon(
+                  isCurrentlyAssigned ? Icons.check_circle : Icons.location_on,
+                  color: isCurrentlyAssigned ? Colors.green : Colors.orange,
+                ),
                 title: Text(c.nom),
                 subtitle: Text(c.lieu),
+                trailing: isCurrentlyAssigned
+                    ? const Text(
+                        'Assigné',
+                        style: TextStyle(
+                          color: Colors.green,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      )
+                    : null,
                 onTap: () async {
                   final indexUser = _allUsers.indexWhere(
                     (u) => u.id == user.id,
                   );
                   if (indexUser != -1) {
-                    _allUsers[indexUser] = UserModel(
-                      id: user.id,
-                      nom: user.nom,
-                      email: user.email,
-                      role: user.role,
-                      assignedId: c.id,
-                      passwordHash: user.passwordHash,
-                    );
+                    // Retirer l'ancienne assignation et ajouter la nouvelle
+                    UserModel updatedUser = user;
+
+                    // Retirer l'ancien chantier si existant
+                    if (user.assignedChantierId != null) {
+                      updatedUser = updatedUser.unassignFrom(
+                        user.assignedChantierId!,
+                      );
+                    }
+
+                    // Ajouter le nouveau chantier
+                    updatedUser = updatedUser.assignTo(c.id);
+
+                    _allUsers[indexUser] = updatedUser;
                     await DataStorage.saveAllUsers(_allUsers);
-                    _refreshData();
-                    if (context.mounted) Navigator.pop(context);
+
+                    // Sync Firebase si nécessaire
+                    if (user.firebaseUid != null && _adminId != null) {
+                      final syncService = FirebaseSyncService();
+                      await syncService.updateUser(
+                        _allUsers[indexUser],
+                        adminId: _adminId!,
+                      );
+                    }
+
+                    if (mounted) {
+                      _refreshData();
+                      if (!context.mounted) return;
+                      Navigator.pop(context);
+                    }
                   }
                 },
               );
@@ -224,11 +343,11 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
                 final user = _assignedUsers[index];
 
                 String nomChantier = "Non assigné";
-                if (user.assignedId == widget.projet.id) {
+                if (user.isAssignedToProject(widget.projet.id)) {
                   nomChantier = "Projet Global";
-                } else if (user.assignedId != null) {
+                } else if (user.assignedChantierId != null) {
                   final chantierMatch = widget.projet.chantiers.where(
-                    (c) => c.id == user.assignedId,
+                    (c) => c.id == user.assignedChantierId,
                   );
                   if (chantierMatch.isNotEmpty) {
                     nomChantier = chantierMatch.first.nom;

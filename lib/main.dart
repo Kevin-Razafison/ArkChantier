@@ -4,50 +4,44 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'models/user_model.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'screens/admin/project_launcher_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/encryption_service.dart';
 import 'services/data_storage.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
+import 'screens/admin/project_launcher_screen.dart';
+import 'screens/worker/worker_shell.dart';
+import 'screens/foreman_screen/foreman_shell.dart';
+import 'screens/Client/client_shell.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. INITIALISATION FIREBASE
+  // 1. Initialiser DataStorage
+  await DataStorage.initialize();
+
+  // 3. Essayer Firebase (optionnel)
   bool firebaseInitialized = false;
+
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // Configuration de la persistance offline
+    // Configuration Firestore avec cache persistant
     FirebaseFirestore.instance.settings = const Settings(
       persistenceEnabled: true,
       cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
     );
 
     firebaseInitialized = true;
-    debugPrint("🔥 Firebase ArkChantier connecté !");
-    debugPrint(
-      "📱 Project ID: ${DefaultFirebaseOptions.currentPlatform.projectId}",
-    );
-
-    // 2. INITIALISER LE SERVICE DE SYNCHRONISATION
-    await DataStorage.initialize();
-    debugPrint("🔄 Service de synchronisation initialisé");
-
-    // 🔥 CRÉER LE COMPTE ADMIN SI BESOIN
-    // ⚠️ COMMENTEZ CES LIGNES APRÈS LA PREMIÈRE EXÉCUTION
-  } catch (e, stackTrace) {
-    debugPrint("❌ Erreur d'initialisation Firebase : $e");
-    debugPrint("📋 Stack trace: $stackTrace");
-    debugPrint("⚠️ L'app va continuer SANS Firebase");
-    debugPrint("💡 Les fonctionnalités de chat et sync seront désactivées");
+    debugPrint("✅ Firebase initialisé avec succès");
+  } catch (e) {
+    debugPrint("⚠️ Firebase non disponible - Mode hors ligne: $e");
     firebaseInitialized = false;
   }
 
-  // 3. INITIALISATION DES DATES
+  // 4. Initialiser les dates
   try {
     await initializeDateFormatting('fr_FR');
   } catch (e) {
@@ -55,129 +49,6 @@ void main() async {
   }
 
   runApp(ChantierApp(firebaseEnabled: firebaseInitialized));
-}
-
-///  FONCTION DE CRÉATION D'ADMIN AUTOMATIQUE
-/// Cette fonction vérifie s'il existe déjà un admin, sinon en crée un
-Future<void> createAdminAccountIfNeeded() async {
-  try {
-    // Vérifier s'il existe déjà un admin dans la collection 'admins'
-    final adminsSnapshot = await FirebaseFirestore.instance
-        .collection('admins')
-        .limit(1)
-        .get();
-
-    if (adminsSnapshot.docs.isNotEmpty) {
-      debugPrint('ℹ️  Un compte admin existe déjà dans la collection admins');
-      return;
-    }
-
-    // Vérifier aussi dans 'users' pour compatibilité
-    final usersSnapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .where('role', isEqualTo: 'chefProjet')
-        .limit(1)
-        .get();
-
-    if (usersSnapshot.docs.isNotEmpty) {
-      debugPrint('ℹ️  Un compte admin existe déjà dans la collection users');
-      return;
-    }
-
-    debugPrint('🔧 Aucun admin trouvé, création d\'un compte par défaut...');
-
-    // Créer le compte admin avec la BONNE STRUCTURE
-    await createAdminAccount(
-      email: 'admin@ark.com',
-      password: 'Admin123!',
-      nom: 'Administrateur ARK',
-    );
-  } catch (e) {
-    debugPrint('⚠️ Erreur lors de la vérification/création admin: $e');
-  }
-}
-
-Future<void> createAdminAccount({
-  String email = 'admin@ark.com',
-  String password = 'Admin123!',
-  String nom = 'Administrateur ARK',
-}) async {
-  try {
-    debugPrint(
-      '🔧 Création du compte administrateur avec la nouvelle structure...',
-    );
-
-    // 1. Créer le compte Firebase Auth
-    UserCredential userCredential = await FirebaseAuth.instance
-        .createUserWithEmailAndPassword(email: email, password: password);
-
-    final String uid = userCredential.user!.uid;
-    debugPrint('✅ Compte Auth créé: $uid');
-
-    // 2. Créer le document dans la collection 'admins' (structure principale)
-    await FirebaseFirestore.instance.collection('admins').doc(uid).set({
-      'id': uid,
-      'nom': nom,
-      'email': email,
-      'createdAt': FieldValue.serverTimestamp(),
-      'role': 'chefProjet',
-    });
-
-    debugPrint('✅ Document admins créé');
-
-    // 3. Créer aussi un document dans 'users' pour compatibilité
-    await FirebaseFirestore.instance.collection('users').doc(uid).set({
-      'id': uid,
-      'nom': nom,
-      'email': email,
-      'role': 'chefProjet',
-      'assignedId': null,
-      'disabled': false,
-      'createdAt': FieldValue.serverTimestamp(),
-      'adminId': uid, // Référence à lui-même comme admin
-    });
-
-    debugPrint('✅ Document users créé (compatibilité)');
-
-    // 4. Créer un projet de démonstration dans la SOUS-COLLECTION 'projets'
-    final demoProjectId = 'demo_${DateTime.now().millisecondsSinceEpoch}';
-    await FirebaseFirestore.instance
-        .collection('admins')
-        .doc(uid)
-        .collection('projets')
-        .doc(demoProjectId)
-        .set({
-          'id': demoProjectId,
-          'nom': 'Projet Démonstration',
-          'dateCreation': DateTime.now().toIso8601String(),
-          'devise': 'MGA',
-          'chantiers': [],
-          'adminId': uid, // Champ adminId dans le projet
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-
-    debugPrint('✅ Projet démo créé dans admins/{uid}/projets/');
-
-    debugPrint('');
-    debugPrint('🎉 ==========================================');
-    debugPrint('🎉 COMPTE ADMIN RECRÉÉ AVEC LA BONNE STRUCTURE !');
-    debugPrint('🎉 ==========================================');
-    debugPrint('📧 Email: $email');
-    debugPrint('🔑 Mot de passe: $password');
-    debugPrint('👤 Nom: $nom');
-    debugPrint('🆔 UID: $uid');
-    debugPrint('📁 Structure: admins/{uid}/projets/');
-    debugPrint('🎉 ==========================================');
-    debugPrint('');
-  } on FirebaseAuthException catch (e) {
-    if (e.code == 'email-already-in-use') {
-      debugPrint('ℹ️  Un compte avec cet email existe déjà');
-    } else {
-      debugPrint('❌ Erreur Firebase Auth: ${e.code} - ${e.message}');
-    }
-  } catch (e) {
-    debugPrint('❌ Erreur lors de la création: $e');
-  }
 }
 
 class ChantierApp extends StatefulWidget {
@@ -199,6 +70,7 @@ class ChantierAppState extends State<ChantierApp> {
     email: 'admin@chantier.com',
     role: UserRole.chefProjet,
     passwordHash: EncryptionService.hashPassword("1234"),
+    assignedIds: [], // ✅ CORRIGÉ : utiliser assignedIds
   );
 
   ThemeMode _adminThemeMode = ThemeMode.light;
@@ -293,7 +165,7 @@ class ChantierAppState extends State<ChantierApp> {
           nom: savedName,
           email: currentUser.email,
           role: currentUser.role,
-          assignedId: currentUser.assignedId,
+          assignedIds: currentUser.assignedIds, // ✅ CORRIGÉ
           passwordHash: currentUser.passwordHash,
         );
       }
@@ -309,7 +181,7 @@ class ChantierAppState extends State<ChantierApp> {
         nom: newName,
         email: currentUser.email,
         role: currentUser.role,
-        assignedId: currentUser.assignedId,
+        assignedIds: currentUser.assignedIds, // ✅ CORRIGÉ
         passwordHash: currentUser.passwordHash,
       );
     });
@@ -358,6 +230,139 @@ class ChantierAppState extends State<ChantierApp> {
     }
   }
 
+  Future<void> navigateByRole(UserModel user, BuildContext ctx) async {
+    debugPrint('🎯 Navigation pour ${user.nom} (${user.role.name})');
+
+    // Attendre QUE le widget soit complètement monté
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    if (!context.mounted) return;
+    final navigator = Navigator.of(ctx, rootNavigator: true);
+
+    // Charger les projets
+    final projets = await DataStorage.loadAllProjects();
+
+    switch (user.role) {
+      case UserRole.chefProjet:
+        // Admin → ProjectLauncherScreen (peut gérer plusieurs projets)
+        navigator.pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (context) => ProjectLauncherScreen(user: user),
+          ),
+          (route) => false,
+        );
+        break;
+
+      case UserRole.ouvrier:
+        if (projets.isEmpty) {
+          if (!ctx.mounted) return;
+          _showNoProjectError(ctx);
+          return;
+        }
+        // ✅ CORRIGÉ : Utiliser assignedChantierId pour trouver le projet
+        final projetOuvrier = projets.firstWhere(
+          (p) => p.chantiers.any((c) => c.id == user.assignedChantierId),
+          orElse: () => projets.first,
+        );
+        navigator.pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (context) =>
+                WorkerShell(user: user, projet: projetOuvrier),
+          ),
+          (route) => false,
+        );
+        break;
+
+      case UserRole.chefDeChantier:
+        if (projets.isEmpty) {
+          if (!ctx.mounted) return;
+          _showNoProjectError(ctx);
+          return;
+        }
+        // ✅ CORRIGÉ : Utiliser assignedChantierId pour trouver le projet
+        final projetForeman = projets.firstWhere(
+          (p) => p.chantiers.any((c) => c.id == user.assignedChantierId),
+          orElse: () => projets.first,
+        );
+        navigator.pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (context) =>
+                ForemanShell(user: user, projet: projetForeman),
+          ),
+          (route) => false,
+        );
+        break;
+
+      case UserRole.client:
+        if (projets.isEmpty) {
+          if (!ctx.mounted) return;
+          _showNoProjectError(ctx);
+          return;
+        }
+        // ✅ CORRIGÉ : Utiliser assignedProjectId pour trouver le projet
+        final projetClient = projets.firstWhere(
+          (p) => p.id == user.assignedProjectId,
+          orElse: () => projets.first,
+        );
+        navigator.pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (context) => ClientShell(user: user, projet: projetClient),
+          ),
+          (route) => false,
+        );
+        break;
+    }
+  }
+
+  void _showNoProjectError(BuildContext ctx) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!ctx.mounted) return;
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Aucun projet disponible. Contactez l\'administrateur.',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    });
+  }
+
+  Future<void> logout(BuildContext context) async {
+    // Déconnexion Firebase si activé
+    if (widget.firebaseEnabled) {
+      try {
+        await FirebaseAuth.instance.signOut();
+        debugPrint('✅ Déconnexion Firebase réussie');
+      } catch (e) {
+        debugPrint('⚠️ Erreur déconnexion Firebase: $e');
+      }
+    }
+
+    // Réinitialiser l'utilisateur
+    setState(() {
+      currentUser = UserModel(
+        id: '0',
+        nom: 'Admin',
+        email: 'admin@chantier.com',
+        role: UserRole.chefProjet,
+        passwordHash: EncryptionService.hashPassword("1234"),
+        assignedIds: [], // ✅ CORRIGÉ
+      );
+    });
+
+    // Rediriger vers le login
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (context) =>
+              LoginScreen(firebaseEnabled: widget.firebaseEnabled),
+        ),
+        (route) => false,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -373,10 +378,40 @@ class ChantierAppState extends State<ChantierApp> {
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF0F172A),
       ),
-      initialRoute: '/',
+      home: Builder(
+        builder: (buildContext) => LoginScreen(
+          firebaseEnabled: widget.firebaseEnabled,
+          onLocalLoginSuccess: (user) {
+            debugPrint(
+              '🎯 onLocalLoginSuccess reçu pour ${user.nom} (${user.role.name})',
+            );
+            updateUser(user);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                debugPrint('🚀 Lancement navigateByRole');
+                navigateByRole(user, buildContext);
+              } else {
+                debugPrint('❌ Widget non monté, navigation annulée');
+              }
+            });
+          },
+          onFirebaseLoginSuccess: (firebaseUser) {
+            debugPrint('Firebase user connecté: ${firebaseUser.email}');
+          },
+        ),
+      ),
       routes: {
-        '/': (context) => const LoginScreen(),
-        '/login': (context) => const LoginScreen(),
+        '/login': (context) => Builder(
+          builder: (ctx) => LoginScreen(
+            firebaseEnabled: widget.firebaseEnabled,
+            onLocalLoginSuccess: (user) {
+              updateUser(user);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) navigateByRole(user, ctx);
+              });
+            },
+          ),
+        ),
         '/project_launcher': (context) =>
             ProjectLauncherScreen(user: currentUser),
       },

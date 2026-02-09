@@ -15,6 +15,17 @@ class Projet {
     this.devise = "MGA", // Valeur par défaut (Ariary par exemple)
   });
 
+  // AJOUTER CETTE MÉTHODE :
+  static Projet empty() {
+    return Projet(
+      id: 'empty',
+      nom: 'Projet vide',
+      dateCreation: DateTime.now(),
+      chantiers: [],
+      devise: "MGA",
+    );
+  }
+
   // Conversion pour la sauvegarde JSON
   Map<String, dynamic> toJson() => {
     'id': id,

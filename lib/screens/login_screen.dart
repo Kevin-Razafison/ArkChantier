@@ -2,336 +2,443 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
-import '../models/projet_model.dart';
-import '../main.dart';
-import '../services/data_storage.dart';
 import '../services/encryption_service.dart';
-import 'worker/worker_shell.dart';
-import 'foreman_screen/foreman_shell.dart';
-import '../screens/Client/client_shell.dart';
-import 'admin/project_launcher_screen.dart';
+import '../services/data_storage.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final bool firebaseEnabled;
+  final Function(UserModel)? onLocalLoginSuccess;
+  final Function(User)? onFirebaseLoginSuccess;
+
+  const LoginScreen({
+    super.key,
+    this.firebaseEnabled = true,
+    this.onLocalLoginSuccess,
+    this.onFirebaseLoginSuccess,
+  });
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _isLoading = false;
-  bool _useLocalAuth = true;
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   Future<void> _handleLogin() async {
-    final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
-
-    if (email.isEmpty || password.isEmpty) {
-      _showError("Veuillez remplir tous les champs");
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      setState(() => _errorMessage = "Veuillez remplir tous les champs");
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
-    try {
-      if (ChantierApp.of(context).isFirebaseEnabled && !_useLocalAuth) {
-        await _handleFirebaseLogin(email, password);
-      } else {
-        await _handleLocalLogin(email, password);
-      }
-    } catch (e) {
-      debugPrint("Erreur login: $e");
-      _showError("Échec de connexion : $e");
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+    if (widget.firebaseEnabled) {
+      await _loginWithFirebase();
+    } else {
+      await _loginLocally();
     }
+
+    if (mounted) setState(() => _isLoading = false);
   }
 
-  Future<void> _handleFirebaseLogin(String email, String password) async {
+  Future<void> _loginWithFirebase() async {
     try {
-      UserCredential userCredential = await FirebaseAuth.instance
-          .signInWithEmailAndPassword(email: email, password: password);
+      // 1. Authentification Firebase
+      final UserCredential userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text,
+          );
 
-      if (userCredential.user != null) {
-        DocumentSnapshot userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(userCredential.user!.uid)
-            .get();
-
-        if (!userDoc.exists) {
-          throw "Votre compte a été supprimé ou désactivé.";
-        }
-
-        final userData = userDoc.data() as Map<String, dynamic>;
-
-        // ✅ NOUVEAU: Vérifier si le compte est désactivé
-        if (userData['disabled'] == true) {
-          await FirebaseAuth.instance.signOut();
-          throw "Votre compte a été désactivé. Contactez l'administrateur.";
-        }
-
-        UserModel user = UserModel.fromJson(userData);
-        await _processUserLogin(user);
-      }
-    } on FirebaseAuthException catch (e) {
-      String message = "Erreur Firebase Auth";
-      if (e.code == 'user-not-found') {
-        message = "Aucun utilisateur trouvé pour cet email.";
-      } else if (e.code == 'wrong-password') {
-        message = "Mot de passe incorrect.";
-      } else if (e.code == 'invalid-credential') {
-        await _handleLocalLogin(email, password);
+      if (userCredential.user == null) {
+        setState(() => _errorMessage = "Erreur d'authentification");
         return;
       }
-      _showError(message);
-    }
-  }
 
-  Future<void> _handleLocalLogin(String email, String password) async {
-    List<UserModel> allUsers = await DataStorage.loadAllUsers();
+      debugPrint('✅ Firebase Auth réussi: ${userCredential.user!.uid}');
 
-    UserModel? user = allUsers.firstWhere(
-      (u) => u.email.toLowerCase() == email.toLowerCase(),
-      orElse: () => UserModel(
-        id: '',
-        nom: '',
-        email: '',
-        role: UserRole.ouvrier,
-        passwordHash: '',
-      ),
-    );
-
-    if (user.id.isEmpty) {
-      _showError("Utilisateur non trouvé");
-      return;
-    }
-
-    if (EncryptionService.verifyPassword(password, user.passwordHash)) {
-      await _processUserLogin(user);
-    } else {
-      _showError("Mot de passe incorrect");
-    }
-  }
-
-  Future<void> _processUserLogin(UserModel user) async {
-    if (!mounted) return;
-
-    ChantierApp.of(context).updateUser(user);
-
-    if (user.role == UserRole.chefProjet) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ProjectLauncherScreen(user: user),
-        ),
+      // 2. Récupérer les données utilisateur depuis Firestore
+      final UserModel? user = await _fetchUserFromFirestore(
+        userCredential.user!.uid,
       );
-      return;
-    }
 
-    List<Projet> allProjects = await DataStorage.loadAllProjects();
-    _redirectUser(user, allProjects);
-  }
-
-  void _redirectUser(UserModel user, List<Projet> allProjects) {
-    if (user.role == UserRole.chefProjet) {
-      Navigator.pushReplacementNamed(context, '/project_launcher');
-    } else {
-      Projet? projetRattache;
-
-      if (user.role == UserRole.client) {
-        projetRattache = allProjects.cast<Projet?>().firstWhere(
-          (p) => p?.id == user.assignedId,
-          orElse: () => null,
-        );
-      } else if (user.assignedId != null) {
-        projetRattache = allProjects.cast<Projet?>().firstWhere(
-          (p) => p?.chantiers.any((c) => c.id == user.assignedId) ?? false,
-          orElse: () => null,
-        );
-      }
-
-      if (projetRattache == null) {
-        _showError("Aucun projet ou chantier rattaché à ce compte.");
+      if (user == null) {
+        setState(() => _errorMessage = "Profil utilisateur introuvable");
         return;
       }
 
-      Widget destination;
-      switch (user.role) {
-        case UserRole.ouvrier:
-          destination = WorkerShell(user: user, projet: projetRattache);
+      debugPrint('✅ Profil chargé: ${user.nom} (${user.role.name})');
+
+      // 3. Sauvegarder localement pour utilisation offline
+      await _saveUserLocally(user);
+
+      // 4. Notifier le succès du login
+      widget.onFirebaseLoginSuccess?.call(userCredential.user!);
+      widget.onLocalLoginSuccess?.call(user);
+    } on FirebaseAuthException catch (e) {
+      String errorMsg = "Erreur de connexion";
+
+      switch (e.code) {
+        case 'user-not-found':
+          errorMsg = "Aucun compte trouvé avec cet email";
           break;
-        case UserRole.chefDeChantier:
-          destination = ForemanShell(user: user, projet: projetRattache);
+        case 'wrong-password':
+          errorMsg = "Mot de passe incorrect";
           break;
-        case UserRole.client:
-          destination = ClientShell(user: user, projet: projetRattache);
+        case 'invalid-email':
+          errorMsg = "Email invalide";
+          break;
+        case 'user-disabled':
+          errorMsg = "Ce compte a été désactivé";
+          break;
+        case 'too-many-requests':
+          errorMsg = "Trop de tentatives. Réessayez plus tard";
           break;
         default:
-          _showError("Rôle non reconnu");
-          return;
+          errorMsg = "Erreur: ${e.message}";
       }
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => destination),
-      );
+      setState(() => _errorMessage = errorMsg);
+      debugPrint('❌ Firebase Auth Error: ${e.code} - ${e.message}');
+    } catch (e) {
+      setState(() => _errorMessage = "Erreur inattendue: $e");
+      debugPrint('❌ Login error: $e');
     }
   }
 
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.redAccent,
-        duration: const Duration(seconds: 3),
-      ),
+  /// Récupère les données utilisateur depuis Firestore
+  Future<UserModel?> _fetchUserFromFirestore(String firebaseUid) async {
+    try {
+      // Chercher d'abord dans la collection 'users'
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(firebaseUid)
+          .get();
+
+      if (userDoc.exists) {
+        final data = userDoc.data()!;
+        return UserModel.fromJson({
+          ...data,
+          'id': firebaseUid,
+          'firebaseUid': firebaseUid,
+        });
+      }
+
+      // Sinon chercher dans 'admins'
+      final adminDoc = await FirebaseFirestore.instance
+          .collection('admins')
+          .doc(firebaseUid)
+          .get();
+
+      if (adminDoc.exists) {
+        final data = adminDoc.data()!;
+        return UserModel(
+          id: firebaseUid,
+          nom: data['nom'] ?? 'Admin',
+          email: data['email'] ?? '',
+          role: UserRole.chefProjet,
+          assignedIds:
+              [], // ✅ CORRIGÉ : utiliser assignedIds vide pour les admins
+          passwordHash: '',
+          firebaseUid: firebaseUid,
+        );
+      }
+
+      // Si pas trouvé, créer un profil par défaut
+      debugPrint('⚠️ Aucun profil trouvé, création profil par défaut');
+
+      final newUser = UserModel(
+        id: firebaseUid,
+        nom: _emailController.text.split('@').first,
+        email: _emailController.text,
+        role: UserRole.chefProjet,
+        assignedIds: [], // ✅ CORRIGÉ : utiliser assignedIds vide
+        passwordHash: '',
+        firebaseUid: firebaseUid,
+      );
+
+      // Créer le profil dans Firestore
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(firebaseUid)
+          .set(newUser.toJson());
+
+      return newUser;
+    } catch (e) {
+      debugPrint('❌ Erreur _fetchUserFromFirestore: $e');
+      return null;
+    }
+  }
+
+  /// Sauvegarde l'utilisateur localement
+  Future<void> _saveUserLocally(UserModel user) async {
+    try {
+      final users = await DataStorage.loadAllUsers();
+
+      // Chercher si l'utilisateur existe déjà (par firebaseUid)
+      final existingIndex = users.indexWhere(
+        (u) => u.firebaseUid == user.firebaseUid || u.id == user.id,
+      );
+
+      if (existingIndex != -1) {
+        // Mettre à jour
+        users[existingIndex] = user;
+      } else {
+        // Ajouter
+        users.add(user);
+      }
+
+      await DataStorage.saveAllUsers(users);
+      debugPrint('💾 Utilisateur sauvegardé localement');
+    } catch (e) {
+      debugPrint('⚠️ Erreur sauvegarde locale: $e');
+    }
+  }
+
+  Future<void> _loginLocally() async {
+    final users = await DataStorage.loadAllUsers();
+
+    final user = users.cast<UserModel?>().firstWhere(
+      (u) =>
+          u!.email == _emailController.text &&
+          EncryptionService.verifyPassword(
+            _passwordController.text,
+            u.passwordHash,
+          ),
+      orElse: () => null,
     );
+
+    if (user != null) {
+      widget.onLocalLoginSuccess?.call(user);
+    } else {
+      setState(() => _errorMessage = "Email ou mot de passe incorrect");
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final bool firebaseEnabled = ChantierApp.of(context).isFirebaseEnabled;
-
     return Scaffold(
-      backgroundColor: const Color(0xFF1A334D),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(30),
-          child: Column(
-            children: [
-              Hero(
-                tag: 'logo_ark',
-                child: Container(
-                  padding: const EdgeInsets.all(15),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.05),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Image.asset(
-                    'assets/images/logo.png',
-                    height: 120,
-                    errorBuilder: (context, error, stackTrace) => const Icon(
-                      Icons.architecture,
-                      size: 80,
-                      color: Colors.orange,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 15),
-              const Text(
-                "ARK CHANTIER PRO",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.5,
-                ),
-              ),
-              const Text(
-                "Management & Expertise BTP",
-                style: TextStyle(color: Colors.white60, fontSize: 12),
-              ),
-              const SizedBox(height: 40),
-              _buildLoginForm(),
-              if (firebaseEnabled) ...[
-                const SizedBox(height: 20),
-                _buildAuthToggle(),
-              ],
-            ],
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF1A334D), Color(0xFF2C5282)],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildLoginForm() {
-    return Container(
-      padding: const EdgeInsets.all(25),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        children: [
-          TextField(
-            controller: _emailController,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              labelText: "Email Professionnel",
-              prefixIcon: Icon(Icons.email_outlined),
-            ),
-          ),
-          const SizedBox(height: 20),
-          TextField(
-            controller: _passwordController,
-            obscureText: true,
-            decoration: const InputDecoration(
-              labelText: "Mot de passe",
-              prefixIcon: Icon(Icons.lock_outline),
-            ),
-          ),
-          const SizedBox(height: 30),
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _handleLogin,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1A334D),
-                foregroundColor: Colors.white,
-              ),
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Hero(
+                    tag: 'logo_ark',
+                    child: Container(
+                      padding: const EdgeInsets.all(15),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.05),
+                        shape: BoxShape.circle,
                       ),
-                    )
-                  : const Text("SE CONNECTER"),
+                      child: Image.asset(
+                        'assets/images/logo.png',
+                        height: 100,
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Icon(
+                            Icons.architecture,
+                            size: 100,
+                            color: Colors.white,
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                  const Text(
+                    'ARK CHANTIER',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Gestion de construction simplifiée',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                  const SizedBox(height: 50),
+
+                  if (_errorMessage != null)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 20),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.red, width: 1),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.error_outline, color: Colors.red),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _errorMessage!,
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  TextField(
+                    controller: _emailController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'Email',
+                      labelStyle: const TextStyle(color: Colors.white70),
+                      prefixIcon: const Icon(
+                        Icons.email,
+                        color: Colors.white70,
+                      ),
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: 0.1),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        borderSide: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        borderSide: const BorderSide(
+                          color: Colors.white,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  TextField(
+                    controller: _passwordController,
+                    obscureText: true,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'Mot de passe',
+                      labelStyle: const TextStyle(color: Colors.white70),
+                      prefixIcon: const Icon(Icons.lock, color: Colors.white70),
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: 0.1),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        borderSide: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        borderSide: const BorderSide(
+                          color: Colors.white,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 55,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _handleLogin,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color(0xFF1A334D),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        elevation: 5,
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 25,
+                              width: 25,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 3,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Color(0xFF1A334D),
+                                ),
+                              ),
+                            )
+                          : const Text(
+                              'CONNEXION',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.5,
+                              ),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Version 2.0 - Offline First',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                      fontSize: 12,
+                    ),
+                  ),
+                  if (!widget.firebaseEnabled)
+                    Container(
+                      margin: const EdgeInsets.only(top: 20),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.cloud_off, color: Colors.orange, size: 16),
+                          SizedBox(width: 8),
+                          Text(
+                            'Mode hors ligne',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAuthToggle() {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.info, color: Colors.orange, size: 16),
-          const SizedBox(width: 8),
-          Text(
-            _useLocalAuth ? "Mode hors ligne actif" : "Mode Firebase actif",
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
-          ),
-          const SizedBox(width: 8),
-          Switch(
-            value: _useLocalAuth,
-            onChanged: ChantierApp.of(context).isFirebaseEnabled
-                ? (value) {
-                    setState(() => _useLocalAuth = value);
-                    _showError(
-                      value
-                          ? "Utilisation de la base locale"
-                          : "Utilisation de Firebase",
-                    );
-                  }
-                : null,
-            activeThumbColor: Colors.orange,
-          ),
-        ],
+        ),
       ),
     );
   }

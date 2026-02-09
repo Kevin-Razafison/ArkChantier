@@ -20,7 +20,6 @@ class IncidentList extends StatelessWidget {
       );
     }
 
-    // ✅ FIX: Use shrinkWrap and remove Expanded
     return ListView.separated(
       shrinkWrap: true, // ← CRITICAL FIX: Let ListView size itself
       physics:

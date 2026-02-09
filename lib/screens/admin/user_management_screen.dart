@@ -54,25 +54,20 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     });
   }
 
-  /// ✅ IMPROVED: Utilise la nouvelle méthode deleteUser du service
   void _deleteUser(UserModel user) async {
     final bool firebaseEnabled = ChantierApp.of(context).isFirebaseEnabled;
 
     try {
-      // 1. Utiliser le service de sync pour gérer la suppression
       final syncService = FirebaseSyncService();
       await syncService.deleteUser(user);
 
-      // 2. Mettre à jour l'UI localement
       setState(() {
         _allUsers.removeWhere((u) => u.id == user.id);
         _applyFilters();
       });
 
-      // 3. Sauvegarder la liste mise à jour
       await DataStorage.saveAllUsers(_allUsers);
 
-      // 4. Si c'est un ouvrier, supprimer aussi de l'annuaire global
       if (user.role == UserRole.ouvrier) {
         final List<Ouvrier> globalOuvriers =
             await DataStorage.loadGlobalOuvriers();
@@ -80,7 +75,6 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
         await DataStorage.saveGlobalOuvriers(globalOuvriers);
       }
 
-      // 5. Message de confirmation
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -130,12 +124,16 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                         child: ListTile(
                           leading: CircleAvatar(
                             backgroundColor: _getRoleColor(user.role),
-                            child: Text(
-                              user.nom[0],
-                              style: const TextStyle(color: Colors.white),
-                            ),
+                            child: user.nom.isNotEmpty
+                                ? Text(
+                                    user.nom[0],
+                                    style: const TextStyle(color: Colors.white),
+                                  )
+                                : const Icon(Icons.person, color: Colors.white),
                           ),
-                          title: Text(user.nom),
+                          title: Text(
+                            user.nom.isNotEmpty ? user.nom : "Sans nom",
+                          ),
                           subtitle: Text(
                             "${user.role.name.toUpperCase()} • ${user.email}",
                           ),
@@ -166,6 +164,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     final emailController = TextEditingController();
     final passwordController = TextEditingController();
     final salaryController = TextEditingController(text: "25000");
+
     UserRole selectedRole = UserRole.ouvrier;
     String? selectedProjectId;
 
@@ -250,15 +249,39 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                 if (nomController.text.isNotEmpty &&
                     emailController.text.isNotEmpty &&
                     passwordController.text.isNotEmpty) {
-                  final String generatedId = DateTime.now()
-                      .millisecondsSinceEpoch
-                      .toString();
-
-                  UserModel newUser;
+                  String generatedId;
                   String? firebaseUid;
+                  List<String> assignedIds = [];
+
+                  // 🎯 Gérer les assignations selon le rôle
+                  if (selectedRole == UserRole.client) {
+                    if (selectedProjectId == null) {
+                      ScaffoldMessenger.of(pageContext).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            "Un client doit être assigné à un projet",
+                          ),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
+                    assignedIds = [selectedProjectId!];
+                  } else if (selectedRole == UserRole.chefProjet) {
+                    // L'admin gère TOUS les projets - assignIds vide = tous les projets
+                    assignedIds = [];
+                  } else {
+                    // Ouvriers et chefs de chantier : pas d'assignation à la création
+                    assignedIds = [];
+                  }
+
+                  final bool firebaseEnabled = ChantierApp.of(
+                    pageContext,
+                  ).isFirebaseEnabled;
+                  final admin = ChantierApp.of(pageContext).currentUser;
 
                   // 1. Si Firebase est activé, créer le compte Firebase d'abord
-                  if (ChantierApp.of(pageContext).isFirebaseEnabled) {
+                  if (firebaseEnabled) {
                     try {
                       UserCredential userCredential = await FirebaseAuth
                           .instance
@@ -268,69 +291,77 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                           );
 
                       firebaseUid = userCredential.user!.uid;
+                      generatedId = firebaseUid;
 
-                      // Récupérer l'admin ID actuel
-                      if (!context.mounted) return;
-                      final adminId = ChantierApp.of(
-                        pageContext,
-                      ).currentUser.id;
+                      // Sauvegarder dans Firestore uniquement si l'admin a un UID Firebase
+                      if (admin.firebaseUid != null) {
+                        await FirebaseFirestore.instance
+                            .collection('admins')
+                            .doc(admin.firebaseUid)
+                            .collection('users')
+                            .doc(firebaseUid)
+                            .set({
+                              'id': firebaseUid,
+                              'nom': nomController.text,
+                              'email': emailController.text,
+                              'role': selectedRole.name,
+                              'assignedIds':
+                                  assignedIds, // ✅ Liste d'assignations
+                              'adminId': admin.firebaseUid,
+                              'disabled': false,
+                              'firebaseUid': firebaseUid,
+                            });
 
-                      await FirebaseFirestore.instance
-                          .collection('users')
-                          .doc(firebaseUid)
-                          .set({
-                            'id': firebaseUid,
-                            'nom': nomController.text,
-                            'email': emailController.text,
-                            'role': selectedRole.name,
-                            'assignedId': selectedProjectId,
-                            'adminId': adminId,
-                            'disabled': false, // ✅ Ajouté pour tracking
-                          });
-
-                      debugPrint(
-                        '✅ Compte Firebase créé pour ${nomController.text}',
-                      );
+                        debugPrint(
+                          '✅ Compte Firebase créé pour ${nomController.text}',
+                        );
+                      } else {
+                        debugPrint(
+                          '⚠️ Admin sans UID Firebase - Sauvegarde locale uniquement',
+                        );
+                      }
                     } catch (e) {
                       debugPrint('⚠️ Erreur création Firebase Auth: $e');
-                      // On continue avec le stockage local seulement
+                      generatedId = DateTime.now().millisecondsSinceEpoch
+                          .toString();
                     }
+                  } else {
+                    generatedId = DateTime.now().millisecondsSinceEpoch
+                        .toString();
                   }
 
                   // 2. Créer l'utilisateur local
-                  newUser = UserModel(
+                  final newUser = UserModel(
                     id: generatedId,
                     nom: nomController.text,
                     email: emailController.text,
                     role: selectedRole,
-                    assignedId: selectedProjectId,
+                    assignedIds: assignedIds, // ✅ Correction ici
                     passwordHash: EncryptionService.hashPassword(
                       passwordController.text,
                     ),
                     firebaseUid: firebaseUid,
                   );
 
-                  // 3. Si c'est un ouvrier, créer sa fiche technique
+                  // 3. Si c'est un ouvrier, créer sa fiche technique dans l'annuaire global
                   if (selectedRole == UserRole.ouvrier) {
                     final double salary =
                         double.tryParse(salaryController.text) ?? 25000.0;
 
-                    List<Ouvrier> currentTeam = await DataStorage.loadTeam(
-                      "annuaire_global",
+                    List<Ouvrier> globalOuvriers =
+                        await DataStorage.loadGlobalOuvriers();
+
+                    final nouvelOuvrier = Ouvrier(
+                      id: generatedId,
+                      nom: nomController.text,
+                      specialite: "Ouvrier",
+                      telephone: "",
+                      salaireJournalier: salary,
+                      joursPointes: [],
                     );
 
-                    currentTeam.add(
-                      Ouvrier(
-                        id: generatedId,
-                        nom: nomController.text,
-                        specialite: "Ouvrier",
-                        telephone: "",
-                        salaireJournalier: salary,
-                        joursPointes: [],
-                      ),
-                    );
-
-                    await DataStorage.saveTeam("annuaire_global", currentTeam);
+                    globalOuvriers.add(nouvelOuvrier);
+                    await DataStorage.saveGlobalOuvriers(globalOuvriers);
                   }
 
                   // 4. Mettre à jour l'UI
@@ -343,7 +374,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
 
                   if (dialogContext.mounted) Navigator.pop(dialogContext);
 
-                  if (!context.mounted) return;
+                  if (!pageContext.mounted) return;
                   ScaffoldMessenger.of(pageContext).showSnackBar(
                     SnackBar(
                       content: Text(

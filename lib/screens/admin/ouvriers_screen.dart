@@ -28,7 +28,6 @@ class _OuvriersScreenState extends State<OuvriersScreen>
 
   String? _selectedChantierId;
   List<Ouvrier> _allOuvriers = [];
-  // ✅ _filteredOuvriers SUPPRIMÉ ICI
   final TextEditingController _searchController = TextEditingController();
   final String _today = DateTime.now().toIso8601String().split('T')[0];
   bool _isLoading = true;
@@ -62,8 +61,6 @@ class _OuvriersScreenState extends State<OuvriersScreen>
       if (mounted) setState(() => _isLoading = false);
     }
   }
-
-  // ✅ _filterOuvriers SUPPRIMÉ ICI (Inutile avec le getter)
 
   // --- ACTIONS DE GROUPE ---
 

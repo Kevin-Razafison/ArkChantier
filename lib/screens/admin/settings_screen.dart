@@ -61,7 +61,6 @@ class _SettingsScreenState extends State<SettingsScreen>
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
         actions: [
-          // Indicateur compact dans l'AppBar
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: CompactSyncIndicator(),
@@ -70,7 +69,6 @@ class _SettingsScreenState extends State<SettingsScreen>
       ),
       body: ListView(
         children: [
-          // Section État de synchronisation
           _buildSectionTitle("Synchronisation"),
           const SyncStatusWidget(),
 

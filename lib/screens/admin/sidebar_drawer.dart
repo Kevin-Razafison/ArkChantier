@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../main.dart';
 import '../../models/user_model.dart';
 import '../../models/projet_model.dart';
 import 'project_team_screen.dart';
@@ -8,6 +9,7 @@ class SidebarDrawer extends StatelessWidget {
   final int currentIndex;
   final Function(int) onDestinationSelected;
   final Projet currentProject;
+  final BuildContext parentContext;
 
   const SidebarDrawer({
     super.key,
@@ -15,9 +17,10 @@ class SidebarDrawer extends StatelessWidget {
     required this.currentIndex,
     required this.onDestinationSelected,
     required this.currentProject,
+    required this.parentContext,
   });
 
-  void _handleLogout(BuildContext context) {
+  Future<void> _handleLogout(BuildContext context) async {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -29,17 +32,14 @@ class SidebarDrawer extends StatelessWidget {
             child: const Text("ANNULER"),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx);
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/login',
-                (route) => false,
-              );
+              // ✅ Utiliser la méthode logout de ChantierAppState
+              await ChantierApp.of(parentContext).logout(parentContext);
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text(
-              "DÉCONNEXION",
+              "DÉCONNECTER",
               style: TextStyle(color: Colors.white),
             ),
           ),
@@ -52,7 +52,6 @@ class SidebarDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool isMobile = MediaQuery.of(context).size.width < 800;
 
-    // On prépare la liste des menus (Plus besoin de "if role != client")
     final List<_MenuItemData> tabs = [
       _MenuItemData(Icons.dashboard, "Dashboard"),
       _MenuItemData(Icons.business, "Chantiers"),
@@ -60,7 +59,6 @@ class SidebarDrawer extends StatelessWidget {
       _MenuItemData(Icons.inventory_2, "Matériel"),
     ];
 
-    // On ajoute les stats seulement pour le Chef de Projet
     if (role == UserRole.chefProjet) {
       tabs.add(_MenuItemData(Icons.bar_chart, "Statistiques"));
     }
@@ -109,7 +107,6 @@ class SidebarDrawer extends StatelessWidget {
                       );
                     }),
 
-                    // Item spécial : Uniquement Chef de projet (pas client)
                     if (role == UserRole.chefProjet) ...[
                       const Divider(
                         color: Colors.white10,
@@ -221,9 +218,9 @@ class SidebarDrawer extends StatelessWidget {
         roleLabel = "ADMIN / CP";
         roleColor = Colors.greenAccent;
         break;
-      case UserRole.chefDeChantier: // 👈 Ajout du nouveau rôle
+      case UserRole.chefDeChantier:
         roleLabel = "CHEF DE CHANTIER";
-        roleColor = Colors.tealAccent; // Une couleur pro et distincte
+        roleColor = Colors.tealAccent;
         break;
       case UserRole.client:
         roleLabel = "ESPACE CLIENT";
