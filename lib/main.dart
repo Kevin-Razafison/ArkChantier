@@ -13,6 +13,7 @@ import 'screens/admin/project_launcher_screen.dart';
 import 'screens/worker/worker_shell.dart';
 import 'screens/foreman_screen/foreman_shell.dart';
 import 'screens/Client/client_shell.dart';
+import 'create_admin_script.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,7 +29,6 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // Configuration Firestore avec cache persistant
     FirebaseFirestore.instance.settings = const Settings(
       persistenceEnabled: true,
       cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
@@ -36,6 +36,8 @@ void main() async {
 
     firebaseInitialized = true;
     debugPrint("✅ Firebase initialisé avec succès");
+
+    await AdminCreationScript.createDefaultAdmin();
   } catch (e) {
     debugPrint("⚠️ Firebase non disponible - Mode hors ligne: $e");
     firebaseInitialized = false;
@@ -70,7 +72,7 @@ class ChantierAppState extends State<ChantierApp> {
     email: 'admin@chantier.com',
     role: UserRole.chefProjet,
     passwordHash: EncryptionService.hashPassword("1234"),
-    assignedIds: [], // ✅ CORRIGÉ : utiliser assignedIds
+    assignedIds: [],
   );
 
   ThemeMode _adminThemeMode = ThemeMode.light;
@@ -88,6 +90,7 @@ class ChantierAppState extends State<ChantierApp> {
   void initState() {
     super.initState();
     _loadSettings();
+    _initializeAdmin();
 
     if (!widget.firebaseEnabled) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -107,6 +110,23 @@ class ChantierAppState extends State<ChantierApp> {
     } else {
       _checkSyncStatus();
     }
+  }
+
+  Future<void> _initializeAdmin() async {
+    // Charger les projets existants
+    final projets = await DataStorage.loadAllProjects();
+    final projectIds = projets.map((p) => p.id).toList();
+
+    setState(() {
+      currentUser = UserModel(
+        id: '0',
+        nom: 'Admin',
+        email: 'admin@chantier.com',
+        role: UserRole.chefProjet,
+        assignedIds: projectIds, // ✅ Admin assigné à TOUS les projets
+        passwordHash: EncryptionService.hashPassword("1234"),
+      );
+    });
   }
 
   Future<void> _checkSyncStatus() async {
@@ -233,18 +253,15 @@ class ChantierAppState extends State<ChantierApp> {
   Future<void> navigateByRole(UserModel user, BuildContext ctx) async {
     debugPrint('🎯 Navigation pour ${user.nom} (${user.role.name})');
 
-    // Attendre QUE le widget soit complètement monté
     await Future.delayed(const Duration(milliseconds: 100));
 
     if (!context.mounted) return;
     final navigator = Navigator.of(ctx, rootNavigator: true);
 
-    // Charger les projets
     final projets = await DataStorage.loadAllProjects();
 
     switch (user.role) {
       case UserRole.chefProjet:
-        // Admin → ProjectLauncherScreen (peut gérer plusieurs projets)
         navigator.pushAndRemoveUntil(
           MaterialPageRoute(
             builder: (context) => ProjectLauncherScreen(user: user),
@@ -347,7 +364,7 @@ class ChantierAppState extends State<ChantierApp> {
         email: 'admin@chantier.com',
         role: UserRole.chefProjet,
         passwordHash: EncryptionService.hashPassword("1234"),
-        assignedIds: [], // ✅ CORRIGÉ
+        assignedIds: [],
       );
     });
 

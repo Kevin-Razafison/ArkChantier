@@ -188,31 +188,37 @@ class DataStorage {
 
   static Future<void> saveAllUsers(List<UserModel> users) async {
     try {
-      // Récupérer l'adminId actuel
-      final adminId = FirebaseAuth.instance.currentUser?.uid;
-
-      if (adminId == null) {
-        debugPrint(
-          '⚠️ Admin non connecté à Firebase - Sauvegarde locale uniquement',
-        );
-        // Sauvegarder uniquement en local
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(
-          'users_list',
-          jsonEncode(users.map((u) => u.toJson()).toList()),
-        );
+      // Récupérer l'UID Firebase de l'admin connecté
+      final adminUser = FirebaseAuth.instance.currentUser;
+      if (adminUser == null) {
+        debugPrint('⚠️ Aucun admin connecté à Firebase');
         return;
       }
 
-      // Sauvegarder chaque utilisateur avec l'adminId
+      final adminId = adminUser.uid;
+      debugPrint('🔧 Admin ID: $adminId');
+
+      int savedCount = 0;
       for (var user in users) {
+        // Éviter les utilisateurs sans firebaseUid
+        if (user.firebaseUid == null) {
+          debugPrint(
+            '⚠️ Utilisateur ${user.nom} (${user.email}) n\'a pas de firebaseUid, ignoré',
+          );
+          continue;
+        }
+
         // Éviter le mock admin
-        if (user.email == 'admin@ark.com') continue;
+        if (user.email == 'admin@ark.com' ||
+            user.email == 'admin@chantier.com') {
+          continue;
+        }
 
         await _syncService.saveUser(user, adminId: adminId);
+        savedCount++;
       }
 
-      debugPrint('✅ ${users.length} utilisateur(s) sauvegardé(s)');
+      debugPrint('✅ $savedCount utilisateur(s) sauvegardé(s) sur Firebase');
     } catch (e) {
       debugPrint('❌ Erreur saveAllUsers: $e');
       rethrow;

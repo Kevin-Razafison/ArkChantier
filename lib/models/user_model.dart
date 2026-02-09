@@ -172,13 +172,13 @@ class UserModel {
   bool get isForeman => role == UserRole.chefDeChantier;
   bool get isWorker => role == UserRole.ouvrier;
 
-  static UserModel mockAdmin() {
+  static UserModel mockAdmin({List<String> assignedIds = const []}) {
     return UserModel(
       id: 'admin_default',
       nom: 'Administrateur ARK',
       email: 'admin@ark.com',
       role: UserRole.chefProjet,
-      assignedIds: [],
+      assignedIds: assignedIds,
       passwordHash: EncryptionService.hashPassword("admin123"),
     );
   }

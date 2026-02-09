@@ -272,7 +272,8 @@ class _OuvrierDetailScreenState extends State<OuvrierDetailScreen> {
     return Column(
       children: [
         Hero(
-          tag: "avatar-${widget.worker.id}",
+          tag:
+              "avatar-${widget.worker.id}-${DateTime.now().millisecondsSinceEpoch}",
           child: CircleAvatar(
             radius: 50,
             backgroundColor: Colors.blue[100],

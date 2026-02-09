@@ -7,6 +7,8 @@ import 'ouvrier_detail_screen.dart';
 import '../../models/chantier_model.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../models/depense_model.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class OuvriersScreen extends StatefulWidget {
   final Projet projet;
@@ -49,7 +51,7 @@ class _OuvriersScreenState extends State<OuvriersScreen>
 
   Future<void> _loadData() async {
     try {
-      final savedOuvriers = await DataStorage.loadTeam("annuaire_global");
+      final savedOuvriers = await DataStorage.loadGlobalOuvriers();
       if (mounted) {
         setState(() {
           _allOuvriers = savedOuvriers;
@@ -89,7 +91,7 @@ class _OuvriersScreenState extends State<OuvriersScreen>
         _allOuvriers.removeWhere((o) => _selectedIds.contains(o.id));
         _selectedIds.clear();
       });
-      await DataStorage.saveTeam("annuaire_global", _allOuvriers);
+      await DataStorage.saveGlobalOuvriers(_allOuvriers);
     }
   }
 
@@ -144,7 +146,7 @@ class _OuvriersScreenState extends State<OuvriersScreen>
         }
       }
     });
-    await DataStorage.saveTeam("annuaire_global", _allOuvriers);
+    await DataStorage.saveGlobalOuvriers(_allOuvriers);
     await DataStorage.saveSingleProject(widget.projet);
   }
 
@@ -221,7 +223,7 @@ class _OuvriersScreenState extends State<OuvriersScreen>
             ),
       floatingActionButton: canEdit && !_isSelectionMode
           ? FloatingActionButton(
-              heroTag: "fab_add_worker",
+              heroTag: "fab_add_worker_${widget.projet.id}",
               backgroundColor: Colors.orange,
               onPressed: _showAddWorkerDialog,
               child: const Icon(Icons.person_add, color: Colors.white),
@@ -239,11 +241,42 @@ class _OuvriersScreenState extends State<OuvriersScreen>
       foregroundColor: Colors.white,
       actions: [
         IconButton(
+          icon: const Icon(Icons.bug_report),
+          onPressed: _debugFirebaseData,
+        ),
+        IconButton(
           icon: const Icon(Icons.qr_code_scanner),
           onPressed: _openScanner,
         ),
       ],
     );
+  }
+
+  void _debugFirebaseData() async {
+    try {
+      debugPrint("=== DEBUG Firebase Data ===");
+
+      final adminId = FirebaseAuth.instance.currentUser?.uid;
+      if (adminId != null) {
+        // Récupérer tous les utilisateurs
+        final snapshot = await FirebaseFirestore.instance
+            .collection('admins')
+            .doc(adminId)
+            .collection('users')
+            .get();
+
+        debugPrint("Utilisateurs dans Firebase: ${snapshot.docs.length}");
+
+        for (var doc in snapshot.docs) {
+          final data = doc.data();
+          debugPrint("  - ${data['nom']} (${data['role']})");
+          debugPrint("    assignedIds: ${data['assignedIds'] ?? 'aucun'}");
+          debugPrint("    firebaseUid: ${data['firebaseUid']}");
+        }
+      }
+    } catch (e) {
+      debugPrint("Erreur debug Firebase: $e");
+    }
   }
 
   AppBar _buildSelectionAppBar() {
@@ -344,14 +377,50 @@ class _OuvriersScreenState extends State<OuvriersScreen>
 
   Future<void> _loadProjectTeamAndShowDialog() async {
     final allUsers = await DataStorage.loadAllUsers();
-    final projectWorkers = allUsers
-        .where(
-          (u) => u.assignedId == widget.projet.id && u.role == UserRole.ouvrier,
-        )
-        .toList();
+
+    // DEBUG : Vérifier ce qui est chargé
+    debugPrint("=== DEBUG OuvriersScreen ===");
+    debugPrint("Projet: ${widget.projet.nom} (ID: ${widget.projet.id})");
+    debugPrint("Total users: ${allUsers.length}");
+
+    for (var user in allUsers) {
+      debugPrint(
+        "  - ${user.nom} (${user.role.name}) - assignedIds: ${user.assignedIds}",
+      );
+    }
+
+    // CORRECTION : Filtrez correctement les ouvriers
+    final projectWorkers = allUsers.where((u) {
+      // 1. Doit être un ouvrier
+      if (u.role != UserRole.ouvrier) {
+        return false;
+      }
+
+      // 2. Doit être assigné soit au projet, soit à un chantier du projet
+      final isAssignedToProject = u.assignedIds.contains(widget.projet.id);
+      final isAssignedToChantier = widget.projet.chantiers.any(
+        (chantier) => u.assignedIds.contains(chantier.id),
+      );
+
+      if (isAssignedToProject) {
+        debugPrint("✓ ${u.nom} est assigné au projet");
+      } else if (isAssignedToChantier) {
+        debugPrint("✓ ${u.nom} est assigné à un chantier du projet");
+      } else {
+        debugPrint("✗ ${u.nom} n'est pas assigné à ce projet");
+      }
+
+      return isAssignedToProject || isAssignedToChantier;
+    }).toList();
+
+    debugPrint("Ouvriers trouvés: ${projectWorkers.length}");
+
     final availableToAdd = projectWorkers
         .where((u) => !_allOuvriers.any((o) => o.id == u.id))
         .toList();
+
+    debugPrint("Disponibles à ajouter: ${availableToAdd.length}");
+
     if (!mounted) return;
 
     showDialog(
@@ -363,7 +432,27 @@ class _OuvriersScreenState extends State<OuvriersScreen>
           content: SizedBox(
             width: double.maxFinite,
             child: availableToAdd.isEmpty
-                ? const Text("Aucun ouvrier disponible.")
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.people_outline,
+                        size: 50,
+                        color: Colors.grey,
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        "Aucun ouvrier disponible",
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        "Les ouvriers doivent être assignés à ce projet dans 'Gestion de l'équipe'",
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  )
                 : Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -371,8 +460,14 @@ class _OuvriersScreenState extends State<OuvriersScreen>
                         controller: salaryController,
                         keyboardType: TextInputType.number,
                         decoration: const InputDecoration(
-                          labelText: "Salaire Journalier",
+                          labelText: "Salaire Journalier (Ar)",
+                          border: OutlineInputBorder(),
                         ),
+                      ),
+                      const SizedBox(height: 15),
+                      const Text(
+                        "Sélectionnez un ouvrier à ajouter:",
+                        style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 10),
                       Flexible(
@@ -380,25 +475,39 @@ class _OuvriersScreenState extends State<OuvriersScreen>
                           shrinkWrap: true,
                           itemCount: availableToAdd.length,
                           itemBuilder: (c, i) => ListTile(
+                            leading: CircleAvatar(
+                              child: Text(availableToAdd[i].nom[0]),
+                            ),
                             title: Text(availableToAdd[i].nom),
+                            subtitle: Text(availableToAdd[i].email),
                             onTap: () async {
                               final worker = Ouvrier(
                                 id: availableToAdd[i].id,
                                 nom: availableToAdd[i].nom,
                                 specialite: "Ouvrier",
-                                telephone: "",
+                                telephone:
+                                    "", // CORRECTION : pas de telephone dans UserModel
                                 salaireJournalier:
                                     double.tryParse(salaryController.text) ??
                                     25000,
                                 joursPointes: [],
                               );
                               setState(() => _allOuvriers.add(worker));
-                              await DataStorage.saveTeam(
-                                "annuaire_global",
+                              await DataStorage.saveGlobalOuvriers(
                                 _allOuvriers,
                               );
                               if (!ctx.mounted) return;
                               Navigator.pop(ctx);
+
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    "${worker.nom} ajouté à l'équipe",
+                                  ),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
                             },
                           ),
                         ),
@@ -406,6 +515,12 @@ class _OuvriersScreenState extends State<OuvriersScreen>
                     ],
                   ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Annuler"),
+            ),
+          ],
         );
       },
     );
