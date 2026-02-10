@@ -17,23 +17,59 @@ class ClientDashboardView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // On récupère le chantier lié au client
-    final chantier = projet.chantiers.firstWhere(
-      (c) => c.id == user.assignedId,
-      orElse: () => projet.chantiers.first,
-    );
+    Chantier? chantier;
+
+    if (projet.chantiers.isNotEmpty) {
+      // Chercher le chantier assigné au client
+      try {
+        chantier = projet.chantiers.firstWhere(
+          (c) => c.id == user.assignedId,
+          orElse: () => projet.chantiers.first,
+        );
+      } catch (e) {
+        debugPrint('⚠️ Erreur récupération chantier: $e');
+        chantier = projet.chantiers.first;
+      }
+    }
+
+    // Si pas de chantier disponible, afficher un message
+    if (chantier == null) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.construction, size: 80, color: Colors.grey),
+              const SizedBox(height: 20),
+              const Text(
+                "Aucun chantier assigné",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                "Contactez votre chef de projet",
+                style: TextStyle(color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          // 1. Bienvenue & Météo
-          WeatherBanner(
-            city: chantier.lieu,
-            lat: chantier.latitude,
-            lon: chantier.longitude,
-          ),
-          const SizedBox(height: 25),
+          // 1. Bienvenue & Météo (avec gestion d'erreur)
+          // ✅ CORRECTION : Météo désactivée si pas de coordonnées valides
+          if (chantier.latitude != 0.0 && chantier.longitude != 0.0)
+            WeatherBanner(
+              city: chantier.lieu,
+              lat: chantier.latitude,
+              lon: chantier.longitude,
+            ),
+          if (chantier.latitude != 0.0 && chantier.longitude != 0.0)
+            const SizedBox(height: 25),
 
           Text(
             "Bonjour ${user.nom},",
@@ -57,7 +93,8 @@ class ClientDashboardView extends StatelessWidget {
                   "Poser une\nquestion",
                   Colors.blue,
                   () {
-                    /* La logique de navigation vers le chat sera gérée par le Shell */
+                    // Navigation vers le chat
+                    // La navigation sera gérée par le parent Shell
                   },
                 ),
               ),
@@ -69,7 +106,11 @@ class ClientDashboardView extends StatelessWidget {
                   "Voir les\nphotos",
                   Colors.orange,
                   () {
-                    /* Navigation vers galerie photos */
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Fonctionnalité bientôt disponible"),
+                      ),
+                    );
                   },
                 ),
               ),
@@ -85,18 +126,22 @@ class ClientDashboardView extends StatelessWidget {
               children: [
                 _buildFinanceRow(
                   "Budget Total",
-                  "${chantier.budgetInitial} €",
+                  "${_formatMoney(chantier.budgetInitial)} ${projet.devise}",
                   Colors.black,
                 ),
                 const Divider(),
                 _buildFinanceRow(
                   "Consommé",
-                  "${chantier.depensesActuelles} €",
+                  "${_formatMoney(chantier.depensesActuelles)} ${projet.devise}",
                   Colors.red,
                 ),
                 const SizedBox(height: 10),
+                // ✅ CORRECTION : Protection contre division par zéro
                 LinearProgressIndicator(
-                  value: chantier.depensesActuelles / chantier.budgetInitial,
+                  value: chantier.budgetInitial > 0
+                      ? (chantier.depensesActuelles / chantier.budgetInitial)
+                            .clamp(0.0, 1.0)
+                      : 0.0,
                   color: Colors.redAccent,
                   backgroundColor: Colors.grey[200],
                 ),
@@ -129,7 +174,8 @@ class ClientDashboardView extends StatelessWidget {
                 height: 100,
                 width: 100,
                 child: CircularProgressIndicator(
-                  value: c.progression,
+                  // ✅ CORRECTION : Clamp la progression entre 0 et 1
+                  value: c.progression.clamp(0.0, 1.0),
                   strokeWidth: 10,
                   color: Colors.orange,
                   backgroundColor: Colors.white10,
@@ -207,5 +253,14 @@ class ClientDashboardView extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _formatMoney(double amount) {
+    if (amount >= 1000000) {
+      return "${(amount / 1000000).toStringAsFixed(1)}M";
+    } else if (amount >= 1000) {
+      return "${(amount / 1000).toStringAsFixed(1)}K";
+    }
+    return amount.toStringAsFixed(0);
   }
 }

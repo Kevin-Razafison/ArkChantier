@@ -34,7 +34,6 @@ class SidebarDrawer extends StatelessWidget {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              // ✅ Utiliser la méthode logout de ChantierAppState
               await ChantierApp.of(parentContext).logout(parentContext);
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),

@@ -11,6 +11,8 @@ class UserModel {
   final String passwordHash;
   final String? firebaseUid;
   final bool disabled;
+  final String?
+  assignedProjectId; // NOUVEAU: ID du projet assigné spécifiquement
 
   UserModel({
     required this.id,
@@ -21,6 +23,7 @@ class UserModel {
     required this.passwordHash,
     this.firebaseUid,
     this.disabled = false,
+    this.assignedProjectId, // NOUVEAU
   }) : assignedIds = assignedIds ?? [];
 
   // ============ GETTERS DE COMPATIBILITÉ ============
@@ -37,11 +40,19 @@ class UserModel {
     return [];
   }
 
-  /// ID du projet assigné pour les clients (retourne le premier projet)
-  String? get assignedProjectId {
+  /// ID du projet assigné (priorité: assignedProjectId, puis premier assignedIds pour client)
+  String? get assignedProjectIdValue {
+    // 1. Si assignedProjectId est défini, l'utiliser (priorité)
+    if (assignedProjectId != null && assignedProjectId!.isNotEmpty) {
+      return assignedProjectId;
+    }
+
+    // 2. Pour les clients, utiliser le premier assignedIds
     if (role == UserRole.client && assignedIds.isNotEmpty) {
       return assignedIds.first;
     }
+
+    // 3. Pour les autres rôles, null
     return null;
   }
 
@@ -58,6 +69,10 @@ class UserModel {
 
   /// Vérifie si l'utilisateur est assigné à un projet spécifique
   bool isAssignedToProject(String projectId) {
+    // Vérifier assignedProjectId d'abord
+    if (assignedProjectId == projectId) return true;
+
+    // Vérifier dans assignedIds
     return assignedIds.contains(projectId);
   }
 
@@ -79,6 +94,7 @@ class UserModel {
       passwordHash: passwordHash,
       firebaseUid: firebaseUid,
       disabled: disabled,
+      assignedProjectId: assignedProjectId, // Conserver l'ID de projet
     );
   }
 
@@ -93,6 +109,7 @@ class UserModel {
       passwordHash: passwordHash,
       firebaseUid: firebaseUid,
       disabled: disabled,
+      assignedProjectId: assignedProjectId,
     );
   }
 
@@ -107,6 +124,22 @@ class UserModel {
       passwordHash: passwordHash,
       firebaseUid: firebaseUid,
       disabled: disabled,
+      assignedProjectId: assignedProjectId,
+    );
+  }
+
+  /// Définit l'ID du projet assigné
+  UserModel withAssignedProjectId(String? projectId) {
+    return UserModel(
+      id: id,
+      nom: nom,
+      email: email,
+      role: role,
+      assignedIds: assignedIds,
+      passwordHash: passwordHash,
+      firebaseUid: firebaseUid,
+      disabled: disabled,
+      assignedProjectId: projectId,
     );
   }
 
@@ -121,6 +154,7 @@ class UserModel {
     'passwordHash': passwordHash,
     'firebaseUid': firebaseUid,
     'disabled': disabled,
+    'assignedProjectId': assignedProjectId, // NOUVEAU
   };
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -162,6 +196,7 @@ class UserModel {
       passwordHash: json['passwordHash'] ?? '',
       firebaseUid: json['firebaseUid'],
       disabled: json['disabled'] ?? false,
+      assignedProjectId: json['assignedProjectId'], // NOUVEAU
     );
   }
 
@@ -180,11 +215,29 @@ class UserModel {
       role: UserRole.chefProjet,
       assignedIds: assignedIds,
       passwordHash: EncryptionService.hashPassword("admin123"),
+      assignedProjectId: null,
     );
   }
 
   @override
   String toString() {
-    return 'UserModel(id: $id, nom: $nom, role: ${role.name}, assignedIds: $assignedIds)';
+    return 'UserModel(id: $id, nom: $nom, role: ${role.name}, assignedIds: $assignedIds, assignedProjectId: $assignedProjectId)';
+  }
+
+  factory UserModel.adminFromFirebase(
+    String firebaseUid,
+    String email,
+    String nom,
+  ) {
+    return UserModel(
+      id: firebaseUid,
+      nom: nom,
+      email: email,
+      role: UserRole.chefProjet,
+      assignedIds: [],
+      passwordHash: '',
+      firebaseUid: firebaseUid,
+      disabled: false,
+    );
   }
 }

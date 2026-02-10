@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../main.dart';
 import '../../models/user_model.dart';
 
 class ClientSidebar extends StatelessWidget {
@@ -13,6 +14,35 @@ class ClientSidebar extends StatelessWidget {
     required this.onDestinationSelected,
   });
 
+  /// ✅ CORRECTION : Fonction de déconnexion avec dialog et utilisation de ChantierApp.logout
+  Future<void> _handleLogout(BuildContext context) async {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Déconnexion"),
+        content: const Text("Voulez-vous vraiment quitter l'espace client ?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("ANNULER"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx); // Fermer le dialog
+              // ✅ Utiliser la méthode logout de ChantierApp
+              await ChantierApp.of(context).logout(context);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text(
+              "DÉCONNECTER",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Drawer(
@@ -26,11 +56,14 @@ class ClientSidebar extends StatelessWidget {
           _buildMenuItem(Icons.settings_outlined, "Paramètres", 3),
           const Spacer(),
           const Divider(color: Colors.white24),
-          _buildMenuItem(
-            Icons.logout,
-            "Déconnexion",
-            -1,
-            color: Colors.redAccent,
+          // ✅ CORRECTION : Utiliser _handleLogout au lieu de passer -1
+          ListTile(
+            leading: const Icon(Icons.logout, color: Colors.redAccent),
+            title: const Text(
+              "Déconnexion",
+              style: TextStyle(color: Colors.redAccent, fontSize: 14),
+            ),
+            onTap: () => _handleLogout(context),
           ),
           const SizedBox(height: 20),
         ],

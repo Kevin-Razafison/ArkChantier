@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../main.dart';
 import '../../models/user_model.dart';
 import 'dart:io';
 
@@ -13,6 +14,34 @@ class ForemanSidebar extends StatelessWidget {
     this.profileImage,
     required this.onDestinationSelected,
   });
+
+  Future<void> _handleLogout(BuildContext context) async {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Déconnexion"),
+        content: const Text("Voulez-vous vraiment quitter l'application ?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("ANNULER"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              // ✅ Use the global app state to logout
+              await ChantierApp.of(context).logout(context);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text(
+              "DÉCONNECTER",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -44,11 +73,13 @@ class ForemanSidebar extends StatelessWidget {
 
           const Spacer(),
           const Divider(color: Colors.white24),
-          _buildMenuItem(
-            Icons.logout,
-            "Déconnexion",
-            -1,
-            color: Colors.orangeAccent,
+          ListTile(
+            leading: Icon(Icons.logout, color: Colors.orangeAccent),
+            title: Text(
+              "Déconnexion",
+              style: TextStyle(color: Colors.orangeAccent),
+            ),
+            onTap: () => _handleLogout(context),
           ),
           const SizedBox(height: 20),
         ],

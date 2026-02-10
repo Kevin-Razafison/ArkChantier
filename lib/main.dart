@@ -13,7 +13,7 @@ import 'screens/admin/project_launcher_screen.dart';
 import 'screens/worker/worker_shell.dart';
 import 'screens/foreman_screen/foreman_shell.dart';
 import 'screens/Client/client_shell.dart';
-import 'create_admin_script.dart';
+import 'models/projet_model.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,8 +36,6 @@ void main() async {
 
     firebaseInitialized = true;
     debugPrint("✅ Firebase initialisé avec succès");
-
-    await AdminCreationScript.createDefaultAdmin();
   } catch (e) {
     debugPrint("⚠️ Firebase non disponible - Mode hors ligne: $e");
     firebaseInitialized = false;
@@ -75,6 +73,9 @@ class ChantierAppState extends State<ChantierApp> {
     assignedIds: [],
   );
 
+  bool _isLoggingOut = false;
+  bool _isNavigating = false;
+
   ThemeMode _adminThemeMode = ThemeMode.light;
   ThemeMode _workerThemeMode = ThemeMode.light;
 
@@ -86,11 +87,32 @@ class ChantierAppState extends State<ChantierApp> {
 
   bool get isFirebaseEnabled => widget.firebaseEnabled;
 
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
   @override
   void initState() {
     super.initState();
     _loadSettings();
     _initializeAdmin();
+
+    if (widget.firebaseEnabled) {
+      FirebaseAuth.instance.authStateChanges().listen((User? user) {
+        debugPrint(
+          '🔄 authStateChanges: ${user?.email}, isLoggingOut: $_isLoggingOut, isNavigating: $_isNavigating',
+        );
+
+        // Don't process auth changes during logout or navigation
+        if (_isLoggingOut || _isNavigating) {
+          debugPrint('🚫 Ignoring authStateChange during logout/navigation');
+          return;
+        }
+
+        if (user != null && mounted) {
+          debugPrint('🔐 Auth state changed: ${user.email} - Navigating...');
+          _reloadUserAndNavigate(user.uid);
+        }
+      });
+    }
 
     if (!widget.firebaseEnabled) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -112,8 +134,242 @@ class ChantierAppState extends State<ChantierApp> {
     }
   }
 
+  /// 🔧 FONCTION CORRIGÉE : Recharge l'utilisateur et navigue vers la bonne destination
+  Future<void> _reloadUserAndNavigate(String firebaseUid) async {
+    if (_isNavigating) {
+      debugPrint('⚠️ Navigation déjà en cours, abandon');
+      return;
+    }
+
+    try {
+      _isNavigating = true;
+
+      // 1. Récupérer l'utilisateur depuis Firestore
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(firebaseUid)
+          .get();
+
+      UserModel? user;
+
+      if (userDoc.exists) {
+        user = UserModel.fromJson({
+          ...userDoc.data()!,
+          'id': firebaseUid,
+          'firebaseUid': firebaseUid,
+        });
+        debugPrint('✅ Utilisateur trouvé dans users: ${user.nom}');
+      } else {
+        // Chercher dans admins
+        final adminDoc = await FirebaseFirestore.instance
+            .collection('admins')
+            .doc(firebaseUid)
+            .get();
+
+        if (adminDoc.exists) {
+          final data = adminDoc.data()!;
+          user = UserModel(
+            id: firebaseUid,
+            nom: data['nom'] ?? 'Admin',
+            email: data['email'] ?? '',
+            role: UserRole.chefProjet,
+            assignedIds: data['assignedIds'] ?? [],
+            passwordHash: '',
+            firebaseUid: firebaseUid,
+          );
+          debugPrint('✅ Utilisateur trouvé dans admins: ${user.nom}');
+        }
+      }
+
+      if (user == null) {
+        debugPrint('❌ Utilisateur non trouvé dans Firestore');
+        _isNavigating = false;
+        return;
+      }
+
+      // 2. Sauvegarder localement
+      await _saveUserLocally(user);
+
+      // 3. Attendre un peu pour éviter les conflits
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      if (!mounted) {
+        _isNavigating = false;
+        return;
+      }
+
+      // 4. 🎯 CORRECTION : Utiliser navigateByRole au lieu de _getDestinationForUser
+      //    pour avoir une logique de navigation cohérente
+      setState(() {
+        currentUser = user!;
+      });
+
+      // Utiliser navigateByRole qui gère correctement tous les rôles
+      final destination = await _buildDestinationForUser(user);
+
+      if (_navigatorKey.currentState != null && mounted) {
+        _navigatorKey.currentState!.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => destination),
+          (route) => false,
+        );
+        debugPrint('✅ Navigation réussie vers ${user.role.name}');
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur rechargement utilisateur: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isNavigating = false;
+        });
+      }
+    }
+  }
+
+  /// 🔧 NOUVELLE FONCTION : Construit la destination correcte selon le rôle
+  Future<Widget> _buildDestinationForUser(UserModel user) async {
+    debugPrint(
+      '🎯 Construction destination pour ${user.nom} (${user.role.name})',
+    );
+
+    switch (user.role) {
+      case UserRole.chefProjet:
+        return ProjectLauncherScreen(user: user);
+
+      case UserRole.client:
+      case UserRole.chefDeChantier:
+      case UserRole.ouvrier:
+        // Charger tous les projets
+        final projets = await DataStorage.loadAllProjects();
+        debugPrint('📁 ${projets.length} projet(s) disponibles');
+
+        if (projets.isEmpty) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Erreur')),
+            body: const Center(
+              child: Text(
+                'Aucun projet disponible. Contactez l\'administrateur.',
+                style: TextStyle(fontSize: 16),
+              ),
+            ),
+          );
+        }
+
+        // Trouver le projet assigné
+        Projet? targetProject;
+
+        // 1. Chercher par assignedProjectId (priorité)
+        if (user.assignedProjectId != null &&
+            user.assignedProjectId!.isNotEmpty) {
+          targetProject = projets.firstWhere(
+            (p) => p.id == user.assignedProjectId,
+            orElse: () => Projet.empty(),
+          );
+          if (targetProject.id == 'empty') targetProject = null;
+          if (targetProject != null) {
+            debugPrint(
+              '✅ Projet trouvé via assignedProjectId: ${targetProject.nom}',
+            );
+          }
+        }
+
+        // 2. Chercher par chantier assigné
+        if (targetProject == null && user.assignedChantierId != null) {
+          for (var p in projets) {
+            for (var c in p.chantiers) {
+              if (c.id == user.assignedChantierId) {
+                targetProject = p;
+                debugPrint('✅ Projet trouvé via chantier: ${p.nom}');
+                break;
+              }
+            }
+            if (targetProject != null) break;
+          }
+        }
+
+        // 3. Chercher dans assignedIds
+        if (targetProject == null && user.assignedIds.isNotEmpty) {
+          // D'abord chercher un projet
+          for (var assignedId in user.assignedIds) {
+            targetProject = projets.firstWhere(
+              (p) => p.id == assignedId,
+              orElse: () => Projet.empty(),
+            );
+            if (targetProject.id != 'empty') {
+              debugPrint(
+                '✅ Projet trouvé via assignedIds: ${targetProject.nom}',
+              );
+              break;
+            }
+          }
+
+          // Sinon chercher un chantier
+          if (targetProject == null || targetProject.id == 'empty') {
+            for (var p in projets) {
+              for (var c in p.chantiers) {
+                if (user.assignedIds.contains(c.id)) {
+                  targetProject = p;
+                  debugPrint(
+                    '✅ Projet trouvé via chantier dans assignedIds: ${p.nom}',
+                  );
+                  break;
+                }
+              }
+              if (targetProject != null) break;
+            }
+          }
+        }
+
+        // 4. Par défaut : premier projet
+        if (targetProject == null || targetProject.id == 'empty') {
+          targetProject = projets.first;
+          debugPrint(
+            '⚠️ Utilisation du premier projet par défaut: ${targetProject.nom}',
+          );
+        }
+
+        // Naviguer selon le rôle
+        switch (user.role) {
+          case UserRole.chefDeChantier:
+            debugPrint('👨‍🏭 Destination: ForemanShell');
+            return ForemanShell(user: user, projet: targetProject);
+          case UserRole.ouvrier:
+            debugPrint('👷 Destination: WorkerShell');
+            return WorkerShell(user: user, projet: targetProject);
+          case UserRole.client:
+            debugPrint('👔 Destination: ClientShell');
+            return ClientShell(user: user, projet: targetProject);
+          default:
+            return const Scaffold(
+              body: Center(child: Text('Rôle non reconnu')),
+            );
+        }
+    }
+  }
+
+  /// Sauvegarde l'utilisateur localement
+  Future<void> _saveUserLocally(UserModel user) async {
+    try {
+      final users = await DataStorage.loadAllUsers();
+
+      // Chercher si l'utilisateur existe déjà
+      final existingIndex = users.indexWhere(
+        (u) => u.firebaseUid == user.firebaseUid || u.id == user.id,
+      );
+
+      if (existingIndex != -1) {
+        users[existingIndex] = user;
+      } else {
+        users.add(user);
+      }
+
+      await DataStorage.saveAllUsers(users);
+      debugPrint('💾 Utilisateur sauvegardé localement');
+    } catch (e) {
+      debugPrint('⚠️ Erreur sauvegarde locale: $e');
+    }
+  }
+
   Future<void> _initializeAdmin() async {
-    // Charger les projets existants
     final projets = await DataStorage.loadAllProjects();
     final projectIds = projets.map((p) => p.id).toList();
 
@@ -123,7 +379,7 @@ class ChantierAppState extends State<ChantierApp> {
         nom: 'Admin',
         email: 'admin@chantier.com',
         role: UserRole.chefProjet,
-        assignedIds: projectIds, // ✅ Admin assigné à TOUS les projets
+        assignedIds: projectIds,
         passwordHash: EncryptionService.hashPassword("1234"),
       );
     });
@@ -139,93 +395,34 @@ class ChantierAppState extends State<ChantierApp> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '🔄 ${status['pendingCount']} modification(s) en attente de synchronisation',
-              style: const TextStyle(color: Colors.white),
+              '📤 ${status['pendingCount']} modification(s) en attente de synchronisation',
             ),
-            backgroundColor: Colors.blue,
-            duration: const Duration(seconds: 3),
-            action: SnackBarAction(
-              label: 'SYNC',
-              textColor: Colors.white,
-              onPressed: () async {
-                await DataStorage.syncPendingChanges();
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('✅ Synchronisation terminée'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              },
-            ),
+            action: SnackBarAction(label: 'Synchroniser', onPressed: _syncNow),
+            duration: const Duration(seconds: 5),
           ),
         );
       }
     });
   }
 
-  void updateUser(UserModel user) {
-    setState(() => currentUser = user);
-  }
-
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _adminThemeMode = (prefs.getBool('isAdminDarkMode') ?? false)
+      _adminThemeMode = prefs.getBool('admin_dark_mode') == true
           ? ThemeMode.dark
           : ThemeMode.light;
-      _workerThemeMode = (prefs.getBool('isWorkerDarkMode') ?? false)
+      _workerThemeMode = prefs.getBool('worker_dark_mode') == true
           ? ThemeMode.dark
           : ThemeMode.light;
-      final savedName = prefs.getString('userName');
-      if (savedName != null) {
-        currentUser = UserModel(
-          id: currentUser.id,
-          nom: savedName,
-          email: currentUser.email,
-          role: currentUser.role,
-          assignedIds: currentUser.assignedIds, // ✅ CORRIGÉ
-          passwordHash: currentUser.passwordHash,
-        );
-      }
     });
   }
 
-  Future<void> updateAdminName(String newName) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('userName', newName);
-    setState(() {
-      currentUser = UserModel(
-        id: currentUser.id,
-        nom: newName,
-        email: currentUser.email,
-        role: currentUser.role,
-        assignedIds: currentUser.assignedIds, // ✅ CORRIGÉ
-        passwordHash: currentUser.passwordHash,
-      );
-    });
-  }
-
-  Future<void> toggleTheme(bool isDark) async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      if (currentUser.role == UserRole.chefProjet) {
-        _adminThemeMode = isDark ? ThemeMode.dark : ThemeMode.light;
-        prefs.setBool('isAdminDarkMode', isDark);
-      } else {
-        _workerThemeMode = isDark ? ThemeMode.dark : ThemeMode.light;
-        prefs.setBool('isWorkerDarkMode', isDark);
-      }
-    });
-  }
-
-  Future<void> forceSyncNow() async {
-    if (!widget.firebaseEnabled) {
+  Future<void> _syncNow() async {
+    if (!isFirebaseEnabled) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Firebase non disponible'),
-          backgroundColor: Colors.red,
+          content: Text('Firebase désactivé'),
+          backgroundColor: Colors.orange,
         ),
       );
       return;
@@ -250,139 +447,228 @@ class ChantierAppState extends State<ChantierApp> {
     }
   }
 
+  /// 🔧 FONCTION CORRIGÉE : Navigation par rôle avec logique unifiée
   Future<void> navigateByRole(UserModel user, BuildContext ctx) async {
+    if (_isNavigating) {
+      debugPrint('⚠️ Navigation déjà en cours');
+      return;
+    }
+
     debugPrint('🎯 Navigation pour ${user.nom} (${user.role.name})');
 
-    await Future.delayed(const Duration(milliseconds: 100));
+    setState(() {
+      _isNavigating = true;
+      currentUser = user;
+    });
 
-    if (!context.mounted) return;
-    final navigator = Navigator.of(ctx, rootNavigator: true);
+    try {
+      // Construire la destination
+      final destination = await _buildDestinationForUser(user);
 
-    final projets = await DataStorage.loadAllProjects();
+      // Naviguer
+      if (_navigatorKey.currentState != null && mounted) {
+        _navigatorKey.currentState!.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => destination),
+          (route) => false,
+        );
+        debugPrint('✅ Navigation réussie');
+      } else if (ctx.mounted) {
+        Navigator.of(ctx, rootNavigator: true).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => destination),
+          (route) => false,
+        );
+        debugPrint('✅ Navigation via context réussie');
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur navigation: $e');
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text('Erreur de navigation: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isNavigating = false;
+        });
+      }
+    }
+  }
 
-    switch (user.role) {
-      case UserRole.chefProjet:
-        navigator.pushAndRemoveUntil(
+  void navigateDirectly(UserModel user) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_navigatorKey.currentState != null) {
+        _navigatorKey.currentState!.pushAndRemoveUntil(
           MaterialPageRoute(
             builder: (context) => ProjectLauncherScreen(user: user),
           ),
           (route) => false,
         );
-        break;
+      }
+    });
+  }
 
-      case UserRole.ouvrier:
-        if (projets.isEmpty) {
-          if (!ctx.mounted) return;
-          _showNoProjectError(ctx);
-          return;
-        }
-        // ✅ CORRIGÉ : Utiliser assignedChantierId pour trouver le projet
-        final projetOuvrier = projets.firstWhere(
-          (p) => p.chantiers.any((c) => c.id == user.assignedChantierId),
-          orElse: () => projets.first,
-        );
-        navigator.pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (context) =>
-                WorkerShell(user: user, projet: projetOuvrier),
-          ),
-          (route) => false,
-        );
-        break;
-
-      case UserRole.chefDeChantier:
-        if (projets.isEmpty) {
-          if (!ctx.mounted) return;
-          _showNoProjectError(ctx);
-          return;
-        }
-        // ✅ CORRIGÉ : Utiliser assignedChantierId pour trouver le projet
-        final projetForeman = projets.firstWhere(
-          (p) => p.chantiers.any((c) => c.id == user.assignedChantierId),
-          orElse: () => projets.first,
-        );
-        navigator.pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (context) =>
-                ForemanShell(user: user, projet: projetForeman),
-          ),
-          (route) => false,
-        );
-        break;
-
-      case UserRole.client:
-        if (projets.isEmpty) {
-          if (!ctx.mounted) return;
-          _showNoProjectError(ctx);
-          return;
-        }
-        // ✅ CORRIGÉ : Utiliser assignedProjectId pour trouver le projet
-        final projetClient = projets.firstWhere(
-          (p) => p.id == user.assignedProjectId,
-          orElse: () => projets.first,
-        );
-        navigator.pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (context) => ClientShell(user: user, projet: projetClient),
-          ),
-          (route) => false,
-        );
-        break;
+  void resetLoginState() {
+    if (mounted) {
+      setState(() {
+        _isNavigating = false;
+        _isLoggingOut = false;
+      });
     }
   }
 
-  void _showNoProjectError(BuildContext ctx) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!ctx.mounted) return;
-      ScaffoldMessenger.of(ctx).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Aucun projet disponible. Contactez l\'administrateur.',
-          ),
-          backgroundColor: Colors.red,
-        ),
+  /// Mettre à jour le nom de l'admin
+  Future<void> updateAdminName(String newName) async {
+    if (currentUser.role != UserRole.chefProjet) {
+      debugPrint('⚠️ Seuls les admins peuvent modifier leur nom');
+      return;
+    }
+
+    try {
+      // Mettre à jour localement
+      setState(() {
+        currentUser = UserModel(
+          id: currentUser.id,
+          nom: newName,
+          email: currentUser.email,
+          role: currentUser.role,
+          assignedIds: currentUser.assignedIds,
+          passwordHash: currentUser.passwordHash,
+          firebaseUid: currentUser.firebaseUid,
+          assignedProjectId: currentUser.assignedProjectId,
+        );
+      });
+
+      // Sauvegarder dans DataStorage
+      final users = await DataStorage.loadAllUsers();
+      final index = users.indexWhere(
+        (u) =>
+            u.id == currentUser.id || u.firebaseUid == currentUser.firebaseUid,
       );
+
+      if (index != -1) {
+        users[index] = currentUser;
+        await DataStorage.saveAllUsers(users);
+        debugPrint('✅ Nom admin mis à jour localement');
+      }
+
+      // Mettre à jour dans Firebase si connecté
+      if (currentUser.firebaseUid != null && isFirebaseEnabled) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.firebaseUid)
+            .update({'nom': newName});
+        debugPrint('✅ Nom admin mis à jour dans Firebase');
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur mise à jour nom admin: $e');
+    }
+  }
+
+  /// Toggle theme mode
+  Future<void> toggleTheme(bool isDarkMode) async {
+    final prefs = await SharedPreferences.getInstance();
+    final isAdmin = currentUser.role == UserRole.chefProjet;
+
+    setState(() {
+      if (isAdmin) {
+        _adminThemeMode = isDarkMode ? ThemeMode.dark : ThemeMode.light;
+        prefs.setBool('admin_dark_mode', isDarkMode);
+      } else {
+        _workerThemeMode = isDarkMode ? ThemeMode.dark : ThemeMode.light;
+        prefs.setBool('worker_dark_mode', isDarkMode);
+      }
     });
   }
 
   Future<void> logout(BuildContext context) async {
-    // Déconnexion Firebase si activé
-    if (widget.firebaseEnabled) {
+    try {
+      debugPrint('🚪 === DÉBUT DÉCONNEXION ===');
+
+      // ✅ CORRECTION : Réinitialiser les flags immédiatement
+      if (mounted) {
+        setState(() {
+          _isLoggingOut = true;
+          _isNavigating = false; // Reset navigation flag
+        });
+      }
+
+      // 1. Déconnexion Firebase Auth
       try {
         await FirebaseAuth.instance.signOut();
-        debugPrint('✅ Déconnexion Firebase réussie');
+        debugPrint('✅ Firebase signOut réussi');
       } catch (e) {
-        debugPrint('⚠️ Erreur déconnexion Firebase: $e');
+        debugPrint('⚠️ Erreur Firebase signOut: $e');
       }
-    }
 
-    // Réinitialiser l'utilisateur
-    setState(() {
-      currentUser = UserModel(
-        id: '0',
-        nom: 'Admin',
-        email: 'admin@chantier.com',
-        role: UserRole.chefProjet,
-        passwordHash: EncryptionService.hashPassword("1234"),
-        assignedIds: [],
-      );
-    });
+      // 2. Nettoyer le cache utilisateur
+      try {
+        await DataStorage.clearUserCache();
+        debugPrint('✅ Cache utilisateur nettoyé');
+      } catch (e) {
+        debugPrint('⚠️ Erreur nettoyage cache: $e');
+      }
 
-    // Rediriger vers le login
-    if (context.mounted) {
-      Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (context) =>
-              LoginScreen(firebaseEnabled: widget.firebaseEnabled),
-        ),
-        (route) => false,
-      );
+      // 3. ✅ CORRECTION : Réinitialiser le flag AVANT la navigation
+      if (mounted) {
+        setState(() {
+          _isLoggingOut = false;
+        });
+      }
+
+      // 4. Wait for auth state to settle
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // 5. Navigate to login screen
+      if (_navigatorKey.currentState != null) {
+        _navigatorKey.currentState!.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+        debugPrint('✅ Navigation vers login via navigatorKey réussie');
+      } else if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+        debugPrint('✅ Navigation vers login via context réussie');
+      }
+
+      debugPrint('🚪 === FIN DÉCONNEXION ===');
+    } catch (e, stack) {
+      debugPrint('❌ ERREUR CRITIQUE LOGOUT: $e');
+      debugPrint('Stack trace: $stack');
+
+      // Always try to navigate to login even on error
+      if (_navigatorKey.currentState != null) {
+        _navigatorKey.currentState!.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+      } else if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+
+      // Reset flag
+      if (mounted) {
+        setState(() {
+          _isLoggingOut = false;
+          _isNavigating = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
       themeMode: effectiveTheme,
       theme: ThemeData(
@@ -400,38 +686,24 @@ class ChantierAppState extends State<ChantierApp> {
           firebaseEnabled: widget.firebaseEnabled,
           onLocalLoginSuccess: (user) {
             debugPrint(
-              '🎯 onLocalLoginSuccess reçu pour ${user.nom} (${user.role.name})',
+              '🎯 onLocalLoginSuccess: ${user.nom} (${user.role.name})',
             );
-            updateUser(user);
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) {
-                debugPrint('🚀 Lancement navigateByRole');
-                navigateByRole(user, buildContext);
-              } else {
-                debugPrint('❌ Widget non monté, navigation annulée');
-              }
+
+            // Pour les connexions locales, naviguer immédiatement
+            setState(() {
+              currentUser = user;
             });
+
+            if (mounted) {
+              navigateByRole(user, buildContext);
+            }
           },
           onFirebaseLoginSuccess: (firebaseUser) {
-            debugPrint('Firebase user connecté: ${firebaseUser.email}');
+            debugPrint('🔥 Firebase user connecté: ${firebaseUser.email}');
+            // Pour Firebase, le listener authStateChanges gère la navigation
           },
         ),
       ),
-      routes: {
-        '/login': (context) => Builder(
-          builder: (ctx) => LoginScreen(
-            firebaseEnabled: widget.firebaseEnabled,
-            onLocalLoginSuccess: (user) {
-              updateUser(user);
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) navigateByRole(user, ctx);
-              });
-            },
-          ),
-        ),
-        '/project_launcher': (context) =>
-            ProjectLauncherScreen(user: currentUser),
-      },
     );
   }
 }

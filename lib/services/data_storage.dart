@@ -186,51 +186,142 @@ class DataStorage {
 
   // ==================== UTILISATEURS ====================
 
-  static Future<void> saveAllUsers(List<UserModel> users) async {
+  /// Sauvegarder tous les utilisateurs avec update local immédiat
+  static Future<void> saveAllUsers(
+    List<UserModel> users, {
+    bool updateLocal = true,
+  }) async {
     try {
-      // Récupérer l'UID Firebase de l'admin connecté
       final adminUser = FirebaseAuth.instance.currentUser;
-      if (adminUser == null) {
-        debugPrint('⚠️ Aucun admin connecté à Firebase');
-        return;
+
+      // 1. TOUJOURS sauvegarder en local d'abord (offline-first)
+      if (updateLocal) {
+        final prefs = await SharedPreferences.getInstance();
+
+        // Filtrer les utilisateurs valides
+        final validUsers = users
+            .where(
+              (u) =>
+                  u.firebaseUid != null &&
+                  u.email != 'admin@ark.com' &&
+                  u.email != 'admin@chantier.com',
+            )
+            .toList();
+
+        await prefs.setString(
+          'users_list',
+          jsonEncode(validUsers.map((u) => u.toJson()).toList()),
+        );
+
+        debugPrint(
+          '💾 ${validUsers.length} utilisateur(s) sauvegardé(s) localement',
+        );
       }
 
-      final adminId = adminUser.uid;
-      debugPrint('🔧 Admin ID: $adminId');
+      // 2. Synchroniser sur Firebase si connecté
+      if (adminUser != null) {
+        final adminId = adminUser.uid;
+        int savedCount = 0;
 
-      int savedCount = 0;
-      for (var user in users) {
-        // Éviter les utilisateurs sans firebaseUid
-        if (user.firebaseUid == null) {
-          debugPrint(
-            '⚠️ Utilisateur ${user.nom} (${user.email}) n\'a pas de firebaseUid, ignoré',
-          );
-          continue;
+        for (var user in users) {
+          // Ignorer les utilisateurs sans firebaseUid
+          if (user.firebaseUid == null) {
+            debugPrint('⚠️ ${user.nom} ignoré (pas de firebaseUid)');
+            continue;
+          }
+
+          // Ignorer les comptes mock
+          if (user.email == 'admin@ark.com' ||
+              user.email == 'admin@chantier.com') {
+            continue;
+          }
+
+          await _syncService.saveUser(user, adminId: adminId);
+          savedCount++;
         }
 
-        // Éviter le mock admin
-        if (user.email == 'admin@ark.com' ||
-            user.email == 'admin@chantier.com') {
-          continue;
-        }
-
-        await _syncService.saveUser(user, adminId: adminId);
-        savedCount++;
+        debugPrint('☁️ $savedCount utilisateur(s) synchronisé(s) sur Firebase');
+      } else {
+        debugPrint(
+          '📴 Mode offline - Utilisateurs sauvegardés localement uniquement',
+        );
       }
-
-      debugPrint('✅ $savedCount utilisateur(s) sauvegardé(s) sur Firebase');
     } catch (e) {
       debugPrint('❌ Erreur saveAllUsers: $e');
       rethrow;
     }
   }
 
+  /// Charger tous les utilisateurs
   static Future<List<UserModel>> loadAllUsers() async {
     final users = await _syncService.loadUsers();
     if (users.isEmpty) {
       return [UserModel.mockAdmin()];
     }
     return users;
+  }
+
+  /// Rafraîchir les utilisateurs depuis Firebase
+  static Future<List<UserModel>> refreshUsersFromFirebase() async {
+    try {
+      debugPrint('🔄 Rafraîchissement utilisateurs depuis Firebase...');
+
+      final users = await _syncService.loadUsers();
+
+      // Sauvegarder en cache local
+      final prefs = await SharedPreferences.getInstance();
+      final validUsers = users
+          .where(
+            (u) =>
+                u.firebaseUid != null &&
+                u.email != 'admin@ark.com' &&
+                u.email != 'admin@chantier.com',
+          )
+          .toList();
+
+      await prefs.setString(
+        'users_list',
+        jsonEncode(validUsers.map((u) => u.toJson()).toList()),
+      );
+
+      debugPrint('✅ ${users.length} utilisateurs rafraîchis depuis Firebase');
+      return users;
+    } catch (e) {
+      debugPrint('❌ Erreur refresh users: $e');
+      // Fallback sur cache local
+      return await loadAllUsers();
+    }
+  }
+
+  /// Nettoyer le cache utilisateur au logout
+  static Future<void> clearUserCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // Nettoyer uniquement les données de session
+      await prefs.remove('current_user_id');
+      await prefs.remove('auth_token');
+
+      // NE PAS supprimer:
+      // - 'projects_list' (pour mode offline)
+      // - 'users_list' (pour mode offline)
+      // - Les données des chantiers (pour mode offline)
+
+      debugPrint('🧹 Cache utilisateur nettoyé (session terminée)');
+    } catch (e) {
+      debugPrint('❌ Erreur clearUserCache: $e');
+    }
+  }
+
+  /// Nettoyer TOUTES les données (pour reset complet)
+  static Future<void> clearAllCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+      debugPrint('🧹 TOUT le cache a été nettoyé');
+    } catch (e) {
+      debugPrint('❌ Erreur clearAllCache: $e');
+    }
   }
 
   // ==================== ANNUAIRE GLOBAL OUVRIERS ====================
@@ -246,7 +337,6 @@ class DataStorage {
     final adminId = FirebaseAuth.instance.currentUser?.uid;
     if (adminId != null) {
       try {
-        // Créer une structure pour stocker l'annuaire global
         await FirebaseFirestore.instance
             .collection('admins')
             .doc(adminId)

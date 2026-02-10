@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../main.dart';
 
 class WorkerSidebar extends StatelessWidget {
   final int currentIndex;
@@ -9,6 +10,35 @@ class WorkerSidebar extends StatelessWidget {
     required this.currentIndex,
     required this.onDestinationSelected,
   });
+
+  /// ✅ CORRECTION : Fonction de déconnexion avec dialog et utilisation de ChantierApp.logout
+  Future<void> _handleLogout(BuildContext context) async {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Déconnexion"),
+        content: const Text("Voulez-vous vraiment quitter l'application ?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("ANNULER"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx); // Fermer le dialog
+              // ✅ Utiliser la méthode logout de ChantierApp
+              await ChantierApp.of(context).logout(context);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text(
+              "DÉCONNECTER",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,16 +51,17 @@ class WorkerSidebar extends StatelessWidget {
           const SizedBox(height: 20),
           _buildItem(0, Icons.person, "MON PROFIL"),
           _buildItem(1, Icons.construction, "MON CHANTIER"),
-          _buildItem(2, Icons.settings, "PARAMÈTRES"), // ← Changé de 3 à 2
-          _buildItem(3, Icons.chat_outlined, "DISCUSSION"), // ← Changé de 2 à 3
+          _buildItem(2, Icons.settings, "PARAMÈTRES"),
+          _buildItem(3, Icons.chat_outlined, "DISCUSSION"),
           const Spacer(),
+          // ✅ CORRECTION : Utiliser _handleLogout au lieu de Navigator.pushReplacementNamed
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.redAccent),
             title: const Text(
               "DÉCONNEXION",
               style: TextStyle(color: Colors.redAccent),
             ),
-            onTap: () => Navigator.pushReplacementNamed(context, '/login'),
+            onTap: () => _handleLogout(context),
           ),
           const SizedBox(height: 20),
         ],

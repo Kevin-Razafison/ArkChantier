@@ -95,20 +95,26 @@ class FirebaseSyncService {
       debugPrint('💾 Projet "${projet.nom}" sauvegardé localement');
 
       // 2. Si online ET connecté, sauvegarder sur Firebase
-      if (_isOnline && isUserAuthenticated && _currentAdminId != null) {
+      if (_isOnline && isUserAuthenticated) {
         try {
           final projetData = projet.toJson();
-          projetData['adminId'] = _currentAdminId;
+
+          // Ajouter l'adminId si disponible
+          if (_currentAdminId != null) {
+            projetData['adminId'] = _currentAdminId;
+          }
+
           projetData['lastModified'] = FieldValue.serverTimestamp();
 
+          // Sauvegarder dans la collection globale 'projets'
           await _firestore
-              .collection('admins')
-              .doc(_currentAdminId)
-              .collection('projets')
+              .collection('projets') // Collection globale
               .doc(projet.id)
               .set(projetData, SetOptions(merge: true));
 
-          debugPrint('☁️ Projet "${projet.nom}" synchronisé sur Firebase');
+          debugPrint(
+            '☁️ Projet "${projet.nom}" synchronisé sur Firebase (collection globale)',
+          );
         } catch (e) {
           debugPrint('⚠️ Erreur sync Firebase (sera réessayé) : $e');
           _addPendingOperation('saveProjet', projet.toJson());
@@ -124,19 +130,19 @@ class FirebaseSyncService {
   }
 
   /// Charge les projets (Firebase PUIS local)
+
   Future<List<Projet>> loadProjets() async {
     try {
       List<Projet> projets = [];
 
       // 1. Si online ET connecté, charger depuis Firebase
-      if (_isOnline && isUserAuthenticated && _currentAdminId != null) {
+      if (_isOnline && isUserAuthenticated) {
         try {
           debugPrint('🔍 Chargement des projets depuis Firebase...');
 
+          // Pour tous les utilisateurs, charger depuis la collection globale 'projets'
           final snapshot = await _firestore
-              .collection('admins')
-              .doc(_currentAdminId)
-              .collection('projets')
+              .collection('projets') // Collection globale
               .get();
 
           if (snapshot.docs.isNotEmpty) {

@@ -10,6 +10,7 @@ import 'stats_screen.dart';
 import 'admin_profile_view.dart';
 import 'settings_screen.dart';
 import '../chat_screen.dart';
+import '../../main.dart';
 import 'project_launcher_screen.dart';
 
 class AdminShell extends StatefulWidget {
@@ -105,10 +106,9 @@ class _AdminShellState extends State<AdminShell> {
           icon: const Icon(Icons.more_vert),
           onSelected: (value) {
             if (value == 'deconnexion') {
-              // Ajoute ta logique de déconnexion ici
-              Navigator.pushReplacementNamed(context, '/');
+              ChantierApp.of(context).logout(context);
             } else if (value == 'profil') {
-              setState(() => _selectedIndex = 5); // Index du profil
+              setState(() => _selectedIndex = 5);
             }
           },
           itemBuilder: (context) => [

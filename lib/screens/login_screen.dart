@@ -86,8 +86,9 @@ class _LoginScreenState extends State<LoginScreen> {
       await _saveUserLocally(user);
 
       // 4. Notifier le succès du login
+      // ✅ CORRECTION : Ne pas appeler onLocalLoginSuccess car onFirebaseLoginSuccess
+      // déclenche déjà le authStateChanges listener qui gère la navigation
       widget.onFirebaseLoginSuccess?.call(userCredential.user!);
-      widget.onLocalLoginSuccess?.call(user);
     } on FirebaseAuthException catch (e) {
       String errorMsg = "Erreur de connexion";
 
@@ -150,8 +151,7 @@ class _LoginScreenState extends State<LoginScreen> {
           nom: data['nom'] ?? 'Admin',
           email: data['email'] ?? '',
           role: UserRole.chefProjet,
-          assignedIds:
-              [], // ✅ CORRIGÉ : utiliser assignedIds vide pour les admins
+          assignedIds: data['assignedIds'] ?? [],
           passwordHash: '',
           firebaseUid: firebaseUid,
         );

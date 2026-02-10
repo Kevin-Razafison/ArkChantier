@@ -22,27 +22,27 @@ class InfoCard extends StatelessWidget {
 
     if (constrainHeight) {
       content = ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: 180),
+        constraints: const BoxConstraints(maxHeight: 180),
         child: child,
       );
     }
 
     return Container(
-      padding: padding ?? const EdgeInsets.all(16), // Réduit de 20 à 16
+      padding: padding ?? const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: backgroundColor ?? Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(12), // Réduit de 15 à 12
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 8, // Réduit de 10 à 8
+            blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: MainAxisSize.min, // ✅ CORRECTION CRITIQUE
         children: [
           Text(
             title,
@@ -53,7 +53,7 @@ class InfoCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          Expanded(child: content),
+          content, // ✅ PLUS de Expanded !
         ],
       ),
     );

@@ -5,6 +5,7 @@ import '../../models/chantier_model.dart';
 import '../../widgets/weather_banner.dart';
 import '../../widgets/incident_widget.dart';
 import '../../widgets/info_card.dart';
+import '../../widgets/simple_chantier_map.dart'; // Version simplifiée
 import 'foreman_sidebar.dart';
 import 'foreman_attendance_view.dart';
 import 'foreman_report_view.dart';
@@ -15,7 +16,6 @@ import 'foreman_setting_screen.dart';
 import 'foreman_profile_view.dart';
 import '../../services/pdf_service.dart';
 import '../../services/data_storage.dart';
-import '../../widgets/chantier_map_preview.dart';
 import '../../models/depense_model.dart' as dm;
 import 'dart:io';
 import '../chat_screen.dart';
@@ -35,6 +35,14 @@ class _ForemanShellState extends State<ForemanShell> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   File? _profileImage;
 
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(Duration.zero, () {
+      if (mounted) setState(() {});
+    });
+  }
+
   Future<void> _generateDailyReport(Chantier chantier) async {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -46,7 +54,6 @@ class _ForemanShellState extends State<ForemanShell> {
     try {
       final equipe = await DataStorage.loadTeam(chantier.id);
       final stocks = await DataStorage.loadStocks(chantier.id);
-      // 1. Charger les dépenses depuis le stockage local
       final List<dm.Depense> depenses = await DataStorage.loadDepenses(
         chantier.id,
       );
@@ -55,7 +62,7 @@ class _ForemanShellState extends State<ForemanShell> {
         incidents: chantier.incidents,
         equipage: equipe,
         stocks: stocks,
-        depenses: depenses, // 2. Ajouter l'argument manquant ici
+        depenses: depenses,
       );
     } catch (e) {
       if (!mounted) return;
@@ -76,10 +83,25 @@ class _ForemanShellState extends State<ForemanShell> {
 
   @override
   Widget build(BuildContext context) {
-    final monChantier = widget.projet.chantiers.firstWhere(
-      (c) => c.id == widget.user.assignedId,
-      orElse: () => widget.projet.chantiers.first,
-    );
+    Chantier monChantier;
+    if (widget.projet.chantiers.isEmpty) {
+      monChantier = Chantier(
+        id: 'chantier_default_${widget.user.id}',
+        nom: 'Chantier Principal',
+        lieu: 'Localisation non définie',
+        progression: 0.0,
+        statut: StatutChantier.enCours,
+        budgetInitial: 0,
+        depensesActuelles: 0,
+        latitude: 0.0,
+        longitude: 0.0,
+      );
+    } else {
+      monChantier = widget.projet.chantiers.firstWhere(
+        (c) => c.id == widget.user.assignedId,
+        orElse: () => widget.projet.chantiers.first,
+      );
+    }
 
     final List<Widget> pages = [
       _buildDashboard(monChantier),
@@ -97,12 +119,10 @@ class _ForemanShellState extends State<ForemanShell> {
       ChatScreen(chantierId: monChantier.id, currentUser: widget.user),
     ];
 
-    // On définit le seuil de bascule
     bool isLargeScreen = MediaQuery.of(context).size.width > 1000;
 
     return Scaffold(
       key: _scaffoldKey,
-      // Le Drawer n'apparaît que sur petit écran
       drawer: isLargeScreen
           ? null
           : ForemanSidebar(
@@ -113,18 +133,12 @@ class _ForemanShellState extends State<ForemanShell> {
                   Navigator.pushReplacementNamed(context, '/login');
                 } else {
                   setState(() => _currentIndex = index);
-                  Navigator.pop(context); // Ferme le drawer sur mobile
+                  Navigator.pop(context);
                 }
               },
             ),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1A334D),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.only(
-            topRight: Radius.circular(0),
-            bottomRight: Radius.circular(0),
-          ),
-        ),
         elevation: 0,
         automaticallyImplyLeading: true,
         leading: isLargeScreen
@@ -140,15 +154,13 @@ class _ForemanShellState extends State<ForemanShell> {
             icon: const Icon(Icons.picture_as_pdf, color: Colors.orangeAccent),
             onPressed: () => _generateDailyReport(monChantier),
           ),
-          const SizedBox(width: 8),
         ],
       ),
-      // LOGIQUE RESPONSIVE ICI
       body: Row(
         children: [
           if (isLargeScreen)
             SizedBox(
-              width: 280, // Largeur fixe identique au Drawer standard
+              width: 280,
               child: ForemanSidebar(
                 user: widget.user,
                 profileImage: _profileImage,
@@ -157,7 +169,6 @@ class _ForemanShellState extends State<ForemanShell> {
                     Navigator.pushReplacementNamed(context, '/login');
                   } else {
                     setState(() => _currentIndex = index);
-                    // Pas de Navigator.pop ici car ce n'est pas un Drawer coulissant
                   }
                 },
               ),
@@ -180,9 +191,9 @@ class _ForemanShellState extends State<ForemanShell> {
       case 1:
         return "POINTAGE PERSONNEL";
       case 2:
-        return "STOCKS & MATÉRIEL";
-      case 3:
         return "RAPPORTS PHOTOS";
+      case 3:
+        return "MATÉRIEL & STOCKS";
       case 4:
         return "JOURNAL D'INCIDENTS";
       case 5:
@@ -199,152 +210,244 @@ class _ForemanShellState extends State<ForemanShell> {
   }
 
   Widget _buildDashboard(Chantier chantier) {
-    // Détecter si on est en mode sombre pour ajuster certains textes
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: CustomScrollView(
+        slivers: [
+          // 🌦️ BANNIÈRE MÉTÉO
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: WeatherBanner(
+                city: chantier.lieu,
+                lat: chantier.latitude,
+                lon: chantier.longitude,
+              ),
+            ),
+          ),
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        WeatherBanner(
-          city: chantier.lieu,
-          lat: chantier.latitude,
-          lon: chantier.longitude,
-        ),
-        const SizedBox(height: 20),
-        Text(
-          "EMPLACEMENT DU CHANTIER",
-          style: TextStyle(
-            color: Colors.orange.shade700,
-            fontWeight: FontWeight.bold,
-            fontSize: 12,
-            letterSpacing: 1.1,
+          // 📊 STATISTIQUES PRINCIPALES avec InfoCard
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: InfoCard(
+                title: "VUE D'ENSEMBLE",
+                padding: const EdgeInsets.all(16),
+                child: SizedBox(
+                  height: 100, // ✅ Hauteur fixe
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildStatCard(
+                        "BUDGET",
+                        "${(chantier.budgetInitial / 1000000).toStringAsFixed(1)}M",
+                        Icons.account_balance_wallet,
+                        Colors.blue,
+                      ),
+                      _buildStatCard(
+                        "DÉPENSES",
+                        "${(chantier.depensesActuelles / 1000000).toStringAsFixed(1)}M",
+                        Icons.trending_down,
+                        Colors.orange,
+                      ),
+                      _buildStatCard(
+                        "PROGRESSION",
+                        "${(chantier.progression * 100).toInt()}%",
+                        Icons.analytics,
+                        Colors.green,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
-        ),
-        const SizedBox(height: 10),
-        Container(
-          height: 200,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(15),
-            // Bordure plus visible en mode clair
-            border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
+
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
+          // 🗺️ CARTE DU CHANTIER avec InfoCard et SimpleChantierMap
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: InfoCard(
+                title: "LOCALISATION DU CHANTIER",
+                padding: const EdgeInsets.all(12),
+                child: SimpleChantierMap(
+                  latitude: chantier.latitude,
+                  longitude: chantier.longitude,
+                  nomChantier: chantier.nom,
+                ),
+              ),
+            ),
           ),
-          child: ChantierMapPreview(
-            chantiers: [chantier],
-            chantierActuel: chantier,
-          ),
-        ),
-        const SizedBox(height: 20), // Ajout d'un espace
-        // CARTE DE PROGRESSION
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            // Utilise la couleur de carte du thème (Blanche en clair, Bleue en sombre)
-            color: isDark ? const Color(0xFF1A334D) : Colors.white,
-            borderRadius: BorderRadius.circular(15),
-            boxShadow: isDark
-                ? []
-                : [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 10,
+
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
+          // 🚨 RÉSUMÉ DES INCIDENTS avec IncidentSummary
+          if (chantier.incidents.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: InfoCard(
+                  title: "INCIDENTS PAR PRIORITÉ",
+                  padding: const EdgeInsets.all(16),
+                  child: SizedBox(
+                    height: 80, // ✅ Hauteur fixe
+                    child: IncidentSummary(incidents: chantier.incidents),
+                  ),
+                ),
+              ),
+            ),
+
+          if (chantier.incidents.isNotEmpty)
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
+          // 🎯 ACTIONS RAPIDES
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: InfoCard(
+                title: "ACTIONS RAPIDES",
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min, // ✅ Important
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _simpleActionBtn(
+                            "MATÉRIEL",
+                            Icons.inventory,
+                            Colors.blue,
+                            () => setState(() => _currentIndex = 3),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _simpleActionBtn(
+                            "DÉPENSES",
+                            Icons.receipt_long,
+                            Colors.orange,
+                            () => setState(() => _currentIndex = 5),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _simpleActionBtn(
+                            "INCIDENTS",
+                            Icons.warning_amber_rounded,
+                            Colors.red,
+                            () => setState(() => _currentIndex = 4),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _simpleActionBtn(
+                            "CHAT",
+                            Icons.chat_bubble,
+                            Colors.green,
+                            () => setState(() => _currentIndex = 8),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
-          ),
-          child: Column(
-            children: [
-              Text(
-                "PROGRESSION GLOBALE",
-                style: TextStyle(
-                  color: isDark ? Colors.white70 : Colors.black54,
-                  fontSize: 12,
                 ),
               ),
-              const SizedBox(height: 10),
-              LinearProgressIndicator(
-                value: chantier.progression,
-                backgroundColor: isDark ? Colors.white10 : Colors.grey.shade200,
-                color: Colors.orange,
-                minHeight: 10,
-                borderRadius: BorderRadius.circular(5),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                "${(chantier.progression * 100).toInt()}% achevé",
-                style: TextStyle(
-                  color: isDark ? Colors.white : Colors.black87,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
 
-        const SizedBox(height: 20),
-        _buildActionGrid(),
-        const SizedBox(height: 20),
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
-        InfoCard(
-          title: "DERNIERS INCIDENTS",
-          // L'InfoCard devrait déjà s'adapter si elle utilise le thème
-          child: IncidentList(incidents: chantier.incidents),
-        ),
-        const SizedBox(height: 80),
-      ],
+          // 📋 LISTE DES DERNIERS INCIDENTS avec IncidentList
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: InfoCard(
+                title: "DERNIERS INCIDENTS",
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: IncidentList(incidents: chantier.incidents),
+              ),
+            ),
+          ),
+
+          const SliverToBoxAdapter(child: SizedBox(height: 80)),
+        ],
+      ),
     );
   }
 
-  Widget _buildActionGrid() {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      mainAxisSpacing: 10,
-      crossAxisSpacing: 10,
-      childAspectRatio: 2.5,
+  Widget _buildStatCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        _quickActionBtn("MATÉRIEL", Icons.inventory, Colors.blue, () {
-          setState(() => _currentIndex = 2);
-        }),
-        _quickActionBtn("DÉPENSES", Icons.receipt_long, Colors.orange, () {
-          setState(() => _currentIndex = 5);
-        }),
-        _quickActionBtn(
-          "INCIDENTS",
-          Icons.warning_amber_rounded,
-          Colors.red,
-          () {
-            setState(() => _currentIndex = 4);
-          },
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 26),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 20, color: color),
         ),
-        _quickActionBtn(
-          "CHAT",
-          Icons.chat_bubble,
-          Colors.green,
-          () => setState(() => _currentIndex = 8),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 10,
+            color: isDark ? Colors.white60 : Colors.grey[600],
+          ),
         ),
       ],
     );
   }
 
-  Widget _quickActionBtn(
+  Widget _simpleActionBtn(
     String label,
     IconData icon,
     Color color,
     VoidCallback onTap,
   ) {
-    return ElevatedButton.icon(
+    return ElevatedButton(
       style: ElevatedButton.styleFrom(
-        backgroundColor: color.withValues(alpha: 0.1),
+        backgroundColor: color.withValues(alpha: 26),
         foregroundColor: color,
         elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        padding: const EdgeInsets.symmetric(vertical: 12),
       ),
       onPressed: onTap,
-      icon: Icon(icon, size: 18),
-      label: Text(
-        label,
-        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 18),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+          ),
+        ],
       ),
     );
   }

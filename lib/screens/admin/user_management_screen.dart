@@ -23,6 +23,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
   List<Projet> _availableProjects = [];
   String _searchQuery = "";
   UserRole? _selectedFilter;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -30,16 +31,65 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     _loadInitialData();
   }
 
+  /// Rafraîchir les données depuis Firebase
+  Future<void> _refreshFromFirebase() async {
+    setState(() => _isLoading = true);
+
+    try {
+      debugPrint('🔄 Rafraîchissement depuis Firebase...');
+
+      final users = await DataStorage.refreshUsersFromFirebase();
+
+      if (mounted) {
+        setState(() {
+          _allUsers = users;
+          _isLoading = false;
+        });
+        _applyFilters();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Liste rafraîchie depuis Firebase'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur refresh: $e');
+
+      if (mounted) {
+        setState(() => _isLoading = false);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Erreur: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   Future<void> _loadInitialData() async {
-    final results = await Future.wait([
-      DataStorage.loadAllUsers(),
-      DataStorage.loadAllProjects(),
-    ]);
-    setState(() {
-      _allUsers = results[0] as List<UserModel>;
-      _availableProjects = results[1] as List<Projet>;
-      _applyFilters();
-    });
+    setState(() => _isLoading = true);
+
+    try {
+      final results = await Future.wait([
+        DataStorage.loadAllUsers(),
+        DataStorage.loadAllProjects(),
+      ]);
+
+      if (mounted) {
+        setState(() {
+          _allUsers = results[0] as List<UserModel>;
+          _availableProjects = results[1] as List<Projet>;
+          _isLoading = false;
+        });
+        _applyFilters();
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur chargement données: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   void _applyFilters() {
@@ -138,72 +188,81 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
         title: const Text("Annuaire des Utilisateurs"),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
-      ),
-      body: Column(
-        children: [
-          _buildSearchAndFilters(),
-          Expanded(
-            child: _filteredUsers.isEmpty
-                ? const Center(child: Text("Aucun utilisateur trouvé"))
-                : ListView.builder(
-                    itemCount: _filteredUsers.length,
-                    itemBuilder: (context, index) {
-                      final user = _filteredUsers[index];
-                      return Card(
-                        margin: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: _getRoleColor(user.role),
-                            child: Icon(
-                              _getRoleIcon(user.role),
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                          ),
-                          title: Text(
-                            user.nom.isNotEmpty ? user.nom : "Sans nom",
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "${user.role.name.toUpperCase()} • ${user.email}",
-                              ),
-                              if (user.role == UserRole.chefDeChantier)
-                                const Text(
-                                  "Salaire mensuel fixe",
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.green,
-                                  ),
-                                ),
-                              if (user.role == UserRole.ouvrier)
-                                const Text(
-                                  "Salaire journalier",
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.orange,
-                                  ),
-                                ),
-                            ],
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(
-                              Icons.delete_outline,
-                              color: Colors.red,
-                            ),
-                            onPressed: () => _showDeleteConfirm(user),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Rafraîchir depuis Firebase',
+            onPressed: _isLoading ? null : _refreshFromFirebase,
           ),
         ],
       ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                _buildSearchAndFilters(),
+                Expanded(
+                  child: _filteredUsers.isEmpty
+                      ? const Center(child: Text("Aucun utilisateur trouvé"))
+                      : ListView.builder(
+                          itemCount: _filteredUsers.length,
+                          itemBuilder: (context, index) {
+                            final user = _filteredUsers[index];
+                            return Card(
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              child: ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: _getRoleColor(user.role),
+                                  child: Icon(
+                                    _getRoleIcon(user.role),
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                                title: Text(
+                                  user.nom.isNotEmpty ? user.nom : "Sans nom",
+                                ),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      "${user.role.name.toUpperCase()} • ${user.email}",
+                                    ),
+                                    if (user.role == UserRole.chefDeChantier)
+                                      const Text(
+                                        "Salaire mensuel fixe",
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.green,
+                                        ),
+                                      ),
+                                    if (user.role == UserRole.ouvrier)
+                                      const Text(
+                                        "Salaire journalier",
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.orange,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                trailing: IconButton(
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    color: Colors.red,
+                                  ),
+                                  onPressed: () => _showDeleteConfirm(user),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: const Color(0xFF1A334D),
         child: const Icon(Icons.person_add, color: Colors.white),
@@ -230,14 +289,10 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
         builder: (context, setDialogState) {
           return AlertDialog(
             title: const Text("Nouvel Utilisateur"),
-            content: SizedBox(
-              width: double.maxFinite,
-              height:
-                  MediaQuery.of(context).size.height * 0.7, // Limite la hauteur
+            content: SingleChildScrollView(
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Section informations de base
                     const Text(
@@ -819,11 +874,21 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                     // Vous pouvez ajouter un champ dans UserModel ou créer un système séparé
                   }
 
-                  // 4. Mettre à jour l'interface
-                  setState(() {
-                    _allUsers.add(newUser);
+                  // 4. Ajouter à la liste locale IMMÉDIATEMENT
+                  final updatedUsers = [..._allUsers, newUser];
+
+                  // 5. Sauvegarder
+                  await DataStorage.saveAllUsers(updatedUsers);
+
+                  // 6. Mettre à jour l'UI IMMÉDIATEMENT
+                  if (mounted) {
+                    setState(() {
+                      _allUsers = updatedUsers;
+                    });
                     _applyFilters();
-                  });
+                  }
+
+                  debugPrint('✅ Utilisateur ajouté et UI mise à jour');
 
                   await DataStorage.saveAllUsers(_allUsers);
 

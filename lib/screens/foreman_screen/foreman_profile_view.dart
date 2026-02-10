@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/user_model.dart';
 
 class ForemanProfileView extends StatefulWidget {
@@ -20,6 +21,18 @@ class ForemanProfileView extends StatefulWidget {
 
 class _ForemanProfileViewState extends State<ForemanProfileView> {
   final ImagePicker _picker = ImagePicker();
+  final TextEditingController _oldPasswordController = TextEditingController();
+  final TextEditingController _newPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
+
+  @override
+  void dispose() {
+    _oldPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
 
   // Fonction pour changer la photo de profil (similaire à l'ouvrier)
   Future<void> _pickImage() async {
@@ -27,6 +40,136 @@ class _ForemanProfileViewState extends State<ForemanProfileView> {
     if (image != null) {
       widget.onImageChanged(File(image.path));
     }
+  }
+
+  // ✅ NOUVELLE FONCTION : Dialog de changement de mot de passe
+  void _showChangePasswordDialog() {
+    _oldPasswordController.clear();
+    _newPasswordController.clear();
+    _confirmPasswordController.clear();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Modifier le mot de passe"),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _oldPasswordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: "Ancien mot de passe",
+                  prefixIcon: Icon(Icons.lock_outline),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 15),
+              TextField(
+                controller: _newPasswordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: "Nouveau mot de passe",
+                  prefixIcon: Icon(Icons.lock),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 15),
+              TextField(
+                controller: _confirmPasswordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: "Confirmer le mot de passe",
+                  prefixIcon: Icon(Icons.lock),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("ANNULER"),
+          ),
+          ElevatedButton(
+            onPressed: () => _handlePasswordChange(ctx),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            child: const Text(
+              "MODIFIER",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ NOUVELLE FONCTION : Gérer le changement de mot de passe
+  Future<void> _handlePasswordChange(BuildContext dialogContext) async {
+    // Validation
+    if (_oldPasswordController.text.isEmpty ||
+        _newPasswordController.text.isEmpty ||
+        _confirmPasswordController.text.isEmpty) {
+      _showSnackBar("Veuillez remplir tous les champs", Colors.red);
+      return;
+    }
+
+    if (_newPasswordController.text != _confirmPasswordController.text) {
+      _showSnackBar("Les mots de passe ne correspondent pas", Colors.red);
+      return;
+    }
+
+    if (_newPasswordController.text.length < 6) {
+      _showSnackBar(
+        "Le mot de passe doit contenir au moins 6 caractères",
+        Colors.red,
+      );
+      return;
+    }
+
+    try {
+      // Si Firebase est disponible, utiliser Firebase Auth
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        // Ré-authentifier l'utilisateur
+        final credential = EmailAuthProvider.credential(
+          email: user.email!,
+          password: _oldPasswordController.text,
+        );
+
+        await user.reauthenticateWithCredential(credential);
+
+        // Changer le mot de passe
+        await user.updatePassword(_newPasswordController.text);
+
+        if (dialogContext.mounted) Navigator.pop(dialogContext);
+        _showSnackBar("Mot de passe modifié avec succès", Colors.green);
+      } else {
+        // Mode local - implémenter la logique locale si nécessaire
+        if (dialogContext.mounted) Navigator.pop(dialogContext);
+        _showSnackBar("Modification locale non implémentée", Colors.orange);
+      }
+    } on FirebaseAuthException catch (e) {
+      String errorMsg = "Erreur lors de la modification";
+
+      if (e.code == 'wrong-password') {
+        errorMsg = "Ancien mot de passe incorrect";
+      } else if (e.code == 'weak-password') {
+        errorMsg = "Le mot de passe est trop faible";
+      }
+
+      _showSnackBar(errorMsg, Colors.red);
+    } catch (e) {
+      _showSnackBar("Erreur: $e", Colors.red);
+    }
+  }
+
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
   }
 
   @override
@@ -72,9 +215,7 @@ class _ForemanProfileViewState extends State<ForemanProfileView> {
             const SizedBox(height: 40),
             Center(
               child: OutlinedButton.icon(
-                onPressed: () {
-                  // Logique de modification de mot de passe ou autre
-                },
+                onPressed: () => _showChangePasswordDialog(),
                 icon: const Icon(Icons.lock_reset),
                 label: const Text("MODIFIER LE MOT DE PASSE"),
                 style: OutlinedButton.styleFrom(
