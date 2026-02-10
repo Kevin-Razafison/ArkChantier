@@ -2,17 +2,21 @@ import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
 import '../../models/projet_model.dart';
 import '../../models/chantier_model.dart';
+import '../../models/message_model.dart';
 import '../../widgets/info_card.dart';
 import '../../widgets/weather_banner.dart';
+import '../../services/chat_service.dart';
 
 class ClientDashboardView extends StatelessWidget {
   final UserModel user;
   final Projet projet;
+  final Function(int)? onNavigate; // Callback pour naviguer
 
   const ClientDashboardView({
     super.key,
     required this.user,
     required this.projet,
+    this.onNavigate,
   });
 
   @override
@@ -20,7 +24,6 @@ class ClientDashboardView extends StatelessWidget {
     Chantier? chantier;
 
     if (projet.chantiers.isNotEmpty) {
-      // Chercher le chantier assigné au client
       try {
         chantier = projet.chantiers.firstWhere(
           (c) => c.id == user.assignedId,
@@ -32,7 +35,6 @@ class ClientDashboardView extends StatelessWidget {
       }
     }
 
-    // Si pas de chantier disponible, afficher un message
     if (chantier == null) {
       return Scaffold(
         body: Center(
@@ -60,8 +62,7 @@ class ClientDashboardView extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          // 1. Bienvenue & Météo (avec gestion d'erreur)
-          // ✅ CORRECTION : Météo désactivée si pas de coordonnées valides
+          // Météo
           if (chantier.latitude != 0.0 && chantier.longitude != 0.0)
             WeatherBanner(
               city: chantier.lieu,
@@ -78,12 +79,11 @@ class ClientDashboardView extends StatelessWidget {
           const Text("Voici l'état d'avancement de votre projet."),
           const SizedBox(height: 25),
 
-          // 2. Jauge de progression (Visuelle et rassurante)
+          // Progression
           _buildProgressCard(chantier),
-
           const SizedBox(height: 20),
 
-          // 3. Section Infos & Contact
+          // Actions rapides - FONCTIONNELLES
           Row(
             children: [
               Expanded(
@@ -92,26 +92,17 @@ class ClientDashboardView extends StatelessWidget {
                   Icons.chat_bubble_outline,
                   "Poser une\nquestion",
                   Colors.blue,
-                  () {
-                    // Navigation vers le chat
-                    // La navigation sera gérée par le parent Shell
-                  },
+                  () => _askQuestion(context, chantier!),
                 ),
               ),
               const SizedBox(width: 15),
               Expanded(
                 child: _buildQuickAction(
                   context,
-                  Icons.photo_library_outlined,
-                  "Voir les\nphotos",
-                  Colors.orange,
-                  () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("Fonctionnalité bientôt disponible"),
-                      ),
-                    );
-                  },
+                  Icons.forum_outlined,
+                  "Voir la\ndiscussion",
+                  Colors.green,
+                  () => _openChat(context),
                 ),
               ),
             ],
@@ -119,7 +110,7 @@ class ClientDashboardView extends StatelessWidget {
 
           const SizedBox(height: 20),
 
-          // 4. Budget (Transparence)
+          // Budget
           InfoCard(
             title: "RÉSUMÉ FINANCIER",
             child: Column(
@@ -136,7 +127,6 @@ class ClientDashboardView extends StatelessWidget {
                   Colors.red,
                 ),
                 const SizedBox(height: 10),
-                // ✅ CORRECTION : Protection contre division par zéro
                 LinearProgressIndicator(
                   value: chantier.budgetInitial > 0
                       ? (chantier.depensesActuelles / chantier.budgetInitial)
@@ -151,6 +141,113 @@ class ClientDashboardView extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// ✅ FONCTION : Poser une question urgente
+  void _askQuestion(BuildContext context, Chantier chantier) {
+    final TextEditingController questionController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.priority_high, color: Colors.red),
+            SizedBox(width: 10),
+            Text('Question Urgente'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Votre question sera marquée comme prioritaire et le chef de projet sera notifié.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 15),
+            TextField(
+              controller: questionController,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                hintText: 'Tapez votre question ici...',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('ANNULER'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              if (questionController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Veuillez écrire une question'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+
+              // Envoyer la question comme message prioritaire
+              final msg = Message(
+                id: '',
+                senderId: user.id,
+                senderName: user.nom,
+                text: questionController.text.trim(),
+                timestamp: DateTime.now(),
+                chantierId: projet.id,
+                type: MessageType.question,
+                isRead: false,
+              );
+
+              try {
+                await ChatService().sendMessage(projet.id, msg);
+
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('✅ Question envoyée au chef de projet'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Erreur: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            icon: const Icon(Icons.send, color: Colors.white),
+            label: const Text('ENVOYER', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// ✅ FONCTION : Ouvrir le chat
+  void _openChat(BuildContext context) {
+    // Si callback fourni, naviguer vers l'index du chat (1)
+    if (onNavigate != null) {
+      onNavigate!(1);
+    } else {
+      // Sinon, afficher un message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Accédez au chat via le menu Discussion')),
+      );
+    }
   }
 
   Widget _buildProgressCard(Chantier c) {
@@ -174,7 +271,6 @@ class ClientDashboardView extends StatelessWidget {
                 height: 100,
                 width: 100,
                 child: CircularProgressIndicator(
-                  // ✅ CORRECTION : Clamp la progression entre 0 et 1
                   value: c.progression.clamp(0.0, 1.0),
                   strokeWidth: 10,
                   color: Colors.orange,

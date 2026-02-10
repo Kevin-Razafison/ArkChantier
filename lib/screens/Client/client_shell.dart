@@ -20,17 +20,27 @@ class ClientShell extends StatefulWidget {
 class _ClientShellState extends State<ClientShell> {
   int _currentIndex = 0;
 
+  /// ✅ FONCTION : Naviguer vers un index spécifique
+  void _navigateToIndex(int index) {
+    setState(() => _currentIndex = index);
+  }
+
   @override
   Widget build(BuildContext context) {
     // Liste des pages synchronisée avec les index de la Sidebar
     final List<Widget> pages = [
-      ClientDashboardView(user: widget.user, projet: widget.projet), // Index 0
-      ChatScreen(
-        chantierId: widget.projet.id,
-        currentUser: widget.user,
-      ), // Index 1
-      AdminProfileScreen(user: widget.user, projet: widget.projet), // Index 2
-      ClientSettingsView(user: widget.user), // Index 3
+      // Index 0 - Dashboard avec callback de navigation
+      ClientDashboardView(
+        user: widget.user,
+        projet: widget.projet,
+        onNavigate: _navigateToIndex, // ✅ CALLBACK fourni
+      ),
+      // Index 1 - Chat
+      ChatScreen(chantierId: widget.projet.id, currentUser: widget.user),
+      // Index 2 - Profil
+      AdminProfileScreen(user: widget.user, projet: widget.projet),
+      // Index 3 - Paramètres
+      ClientSettingsView(user: widget.user),
     ];
 
     return Scaffold(
@@ -38,16 +48,14 @@ class _ClientShellState extends State<ClientShell> {
         title: Text(_getTitle(_currentIndex)),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
-        // ✅ CORRECTION : Enlever automaticallyImplyLeading: false pour afficher le menu
         automaticallyImplyLeading: true,
       ),
       drawer: ClientSidebar(
         user: widget.user,
         currentIndex: _currentIndex,
         onDestinationSelected: (index) {
-          // ✅ CORRECTION : Pas besoin de gérer -1 ici, c'est dans la sidebar
           setState(() => _currentIndex = index);
-          Navigator.pop(context); // Ferme le tiroir
+          Navigator.pop(context);
         },
       ),
       body: IndexedStack(index: _currentIndex, children: pages),
