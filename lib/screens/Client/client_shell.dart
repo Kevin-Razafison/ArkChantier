@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
 import '../../models/projet_model.dart';
+import '../../models/message_model.dart';
 import 'client_sidebar.dart';
 import 'client_dashboard_view.dart';
 import '../chat_screen.dart';
@@ -20,26 +21,25 @@ class ClientShell extends StatefulWidget {
 class _ClientShellState extends State<ClientShell> {
   int _currentIndex = 0;
 
-  /// ✅ FONCTION : Naviguer vers un index spécifique
   void _navigateToIndex(int index) {
     setState(() => _currentIndex = index);
   }
 
   @override
   Widget build(BuildContext context) {
-    // Liste des pages synchronisée avec les index de la Sidebar
     final List<Widget> pages = [
-      // Index 0 - Dashboard avec callback de navigation
       ClientDashboardView(
         user: widget.user,
         projet: widget.projet,
-        onNavigate: _navigateToIndex, // ✅ CALLBACK fourni
+        onNavigate: _navigateToIndex,
       ),
-      // Index 1 - Chat
-      ChatScreen(chantierId: widget.projet.id, currentUser: widget.user),
-      // Index 2 - Profil
+      // ✅ CLIENT voit le SALON PROJET (Client ↔️ Admin)
+      ChatScreen(
+        chatRoomId: widget.projet.id,
+        chatRoomType: ChatRoomType.projet,
+        currentUser: widget.user,
+      ),
       AdminProfileScreen(user: widget.user, projet: widget.projet),
-      // Index 3 - Paramètres
       ClientSettingsView(user: widget.user),
     ];
 
@@ -67,7 +67,7 @@ class _ClientShellState extends State<ClientShell> {
       case 0:
         return "MON PROJET";
       case 1:
-        return "DISCUSSION";
+        return "DISCUSSION AVEC L'ADMIN"; // ✅ Titre clair
       case 2:
         return "MON PROFIL";
       case 3:

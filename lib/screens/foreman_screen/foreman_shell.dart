@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
 import '../../models/projet_model.dart';
 import '../../models/chantier_model.dart';
+import '../../models/message_model.dart';
 import '../../widgets/weather_banner.dart';
 import '../../widgets/incident_widget.dart';
 import '../../widgets/info_card.dart';
-import '../../widgets/simple_chantier_map.dart'; // Version simplifiée
+import '../../widgets/simple_chantier_map.dart';
 import 'foreman_sidebar.dart';
 import 'foreman_attendance_view.dart';
 import 'foreman_report_view.dart';
@@ -116,7 +117,12 @@ class _ForemanShellState extends State<ForemanShell> {
         currentImage: _profileImage,
         onImageChanged: _updateProfileImage,
       ),
-      ChatScreen(chantierId: monChantier.id, currentUser: widget.user),
+      // ✅ CHEF DE CHANTIER voit le SALON CHANTIER (Admin + Chef Chantier + Ouvriers)
+      ChatScreen(
+        chatRoomId: monChantier.id,
+        chatRoomType: ChatRoomType.chantier,
+        currentUser: widget.user,
+      ),
     ];
 
     bool isLargeScreen = MediaQuery.of(context).size.width > 1000;
@@ -203,7 +209,7 @@ class _ForemanShellState extends State<ForemanShell> {
       case 7:
         return "MON PROFIL";
       case 8:
-        return "DISCUSSION CHANTIER";
+        return "DISCUSSION ÉQUIPE"; // ✅ Titre clair
       default:
         return "CHANTIER";
     }
@@ -214,7 +220,6 @@ class _ForemanShellState extends State<ForemanShell> {
       color: Theme.of(context).scaffoldBackgroundColor,
       child: CustomScrollView(
         slivers: [
-          // 🌦️ BANNIÈRE MÉTÉO
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -226,7 +231,6 @@ class _ForemanShellState extends State<ForemanShell> {
             ),
           ),
 
-          // 📊 STATISTIQUES PRINCIPALES avec InfoCard
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -234,7 +238,7 @@ class _ForemanShellState extends State<ForemanShell> {
                 title: "VUE D'ENSEMBLE",
                 padding: const EdgeInsets.all(16),
                 child: SizedBox(
-                  height: 100, // ✅ Hauteur fixe
+                  height: 100,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
@@ -265,7 +269,6 @@ class _ForemanShellState extends State<ForemanShell> {
 
           const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
-          // 🗺️ CARTE DU CHANTIER avec InfoCard et SimpleChantierMap
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -283,7 +286,6 @@ class _ForemanShellState extends State<ForemanShell> {
 
           const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
-          // 🚨 RÉSUMÉ DES INCIDENTS avec IncidentSummary
           if (chantier.incidents.isNotEmpty)
             SliverToBoxAdapter(
               child: Padding(
@@ -292,7 +294,7 @@ class _ForemanShellState extends State<ForemanShell> {
                   title: "INCIDENTS PAR PRIORITÉ",
                   padding: const EdgeInsets.all(16),
                   child: SizedBox(
-                    height: 80, // ✅ Hauteur fixe
+                    height: 80,
                     child: IncidentSummary(incidents: chantier.incidents),
                   ),
                 ),
@@ -302,7 +304,6 @@ class _ForemanShellState extends State<ForemanShell> {
           if (chantier.incidents.isNotEmpty)
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
-          // 🎯 ACTIONS RAPIDES
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -310,7 +311,7 @@ class _ForemanShellState extends State<ForemanShell> {
                 title: "ACTIONS RAPIDES",
                 padding: const EdgeInsets.all(16),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min, // ✅ Important
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Row(
                       children: [
@@ -363,7 +364,6 @@ class _ForemanShellState extends State<ForemanShell> {
 
           const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
-          // 📋 LISTE DES DERNIERS INCIDENTS avec IncidentList
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),

@@ -6,6 +6,7 @@ import '../../models/message_model.dart';
 import '../../widgets/info_card.dart';
 import '../../widgets/weather_banner.dart';
 import '../../services/chat_service.dart';
+import '../chat_screen.dart';
 
 class ClientDashboardView extends StatelessWidget {
   final UserModel user;
@@ -193,20 +194,23 @@ class ClientDashboardView extends StatelessWidget {
                 return;
               }
 
-              // Envoyer la question comme message prioritaire
+              // CORRECTION : Créer le message avec les nouveaux paramètres
               final msg = Message(
                 id: '',
                 senderId: user.id,
                 senderName: user.nom,
                 text: questionController.text.trim(),
                 timestamp: DateTime.now(),
-                chantierId: projet.id,
+                chatRoomId: projet.id, // ID du projet pour le chat projet
+                chatRoomType: ChatRoomType.projet, // Type de salon projet
                 type: MessageType.question,
                 isRead: false,
               );
 
               try {
-                await ChatService().sendMessage(projet.id, msg);
+                // CORRECTION : Utiliser la nouvelle méthode sendMessage
+                final chatService = ChatService();
+                await chatService.sendMessage(msg);
 
                 if (ctx.mounted) Navigator.pop(ctx);
                 if (context.mounted) {
@@ -243,9 +247,16 @@ class ClientDashboardView extends StatelessWidget {
     if (onNavigate != null) {
       onNavigate!(1);
     } else {
-      // Sinon, afficher un message
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Accédez au chat via le menu Discussion')),
+      // Sinon, ouvrir directement le chat
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChatScreen(
+            chatRoomId: projet.id,
+            chatRoomType: ChatRoomType.projet,
+            currentUser: user,
+          ),
+        ),
       );
     }
   }

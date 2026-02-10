@@ -1,10 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum MessageType {
-  text, // Message texte normal
-  photo, // Message avec photo
-  question, // Question du client (prioritaire)
-}
+enum MessageType { text, photo, question }
+
+enum ChatRoomType { projet, chantier }
 
 class Message {
   final String id;
@@ -12,11 +10,12 @@ class Message {
   final String senderName;
   final String text;
   final DateTime timestamp;
-  final String chantierId;
+  final String chatRoomId; // Remplace chantierId
+  final ChatRoomType chatRoomType;
   final MessageType type;
-  final String? photoUrl; // URL Firebase Storage
-  final String? photoPath; // Chemin local
-  final bool isRead; // Pour marquer les questions comme lues
+  final String? photoUrl;
+  final String? photoPath;
+  final bool isRead;
 
   Message({
     required this.id,
@@ -24,21 +23,30 @@ class Message {
     required this.senderName,
     required this.text,
     required this.timestamp,
-    required this.chantierId,
+    required this.chatRoomId, // Changé
+    required this.chatRoomType,
     this.type = MessageType.text,
     this.photoUrl,
     this.photoPath,
     this.isRead = false,
   });
 
-  // Conversion vers Map pour Firestore
+  // Pour compatibilité avec l'ancien code
+  String get chantierId {
+    if (chatRoomType == ChatRoomType.chantier) {
+      return chatRoomId;
+    }
+    return ''; // Retourne vide pour les salons projet
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'senderId': senderId,
       'senderName': senderName,
       'text': text,
       'timestamp': Timestamp.fromDate(timestamp),
-      'chantierId': chantierId,
+      'chatRoomId': chatRoomId,
+      'chatRoomType': chatRoomType.name,
       'type': type.name,
       'photoUrl': photoUrl,
       'photoPath': photoPath,
@@ -46,7 +54,6 @@ class Message {
     };
   }
 
-  // Création depuis Firestore
   factory Message.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
 
@@ -63,13 +70,29 @@ class Message {
       }
     }
 
+    // Résolution du type de salon
+    ChatRoomType roomType = ChatRoomType.chantier;
+    if (data['chatRoomType'] != null) {
+      try {
+        roomType = ChatRoomType.values.firstWhere(
+          (e) => e.name == data['chatRoomType'],
+          orElse: () => ChatRoomType.chantier,
+        );
+      } catch (e) {
+        roomType = ChatRoomType.chantier;
+      }
+    }
+
     return Message(
       id: doc.id,
       senderId: data['senderId'] ?? '',
       senderName: data['senderName'] ?? 'Inconnu',
       text: data['text'] ?? '',
       timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      chantierId: data['chantierId'] ?? '',
+      chatRoomId:
+          data['chatRoomId'] ??
+          (data['chantierId'] ?? ''), // Support ancien format
+      chatRoomType: roomType,
       type: messageType,
       photoUrl: data['photoUrl'],
       photoPath: data['photoPath'],
@@ -84,7 +107,8 @@ class Message {
     String? senderName,
     String? text,
     DateTime? timestamp,
-    String? chantierId,
+    String? chatRoomId,
+    ChatRoomType? chatRoomType,
     MessageType? type,
     String? photoUrl,
     String? photoPath,
@@ -96,7 +120,8 @@ class Message {
       senderName: senderName ?? this.senderName,
       text: text ?? this.text,
       timestamp: timestamp ?? this.timestamp,
-      chantierId: chantierId ?? this.chantierId,
+      chatRoomId: chatRoomId ?? this.chatRoomId,
+      chatRoomType: chatRoomType ?? this.chatRoomType,
       type: type ?? this.type,
       photoUrl: photoUrl ?? this.photoUrl,
       photoPath: photoPath ?? this.photoPath,

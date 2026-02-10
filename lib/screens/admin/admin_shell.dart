@@ -9,7 +9,7 @@ import 'materiel_screen.dart';
 import 'stats_screen.dart';
 import 'admin_profile_view.dart';
 import 'settings_screen.dart';
-import '../chat_screen.dart';
+import 'admin_chat_hub.dart';
 import '../../main.dart';
 import 'project_launcher_screen.dart';
 
@@ -44,7 +44,6 @@ class _AdminShellState extends State<AdminShell> {
     return AppBar(
       title: Row(
         children: [
-          // Logo ou icône du projet sur mobile
           if (!isLargeScreen)
             Padding(
               padding: const EdgeInsets.only(right: 12),
@@ -95,13 +94,11 @@ class _AdminShellState extends State<AdminShell> {
               onPressed: () => _scaffoldKey.currentState?.openDrawer(),
             ),
       actions: [
-        // Bouton de gestion des projets toujours visible
         IconButton(
           icon: const Icon(Icons.grid_view_rounded),
           tooltip: "Gérer les projets",
           onPressed: _navigateToProjectLauncher,
         ),
-        // Bouton de déconnexion ou profil
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert),
           onSelected: (value) {
@@ -150,10 +147,17 @@ class _AdminShellState extends State<AdminShell> {
       StatsScreen(projet: widget.currentProject),
       AdminProfileScreen(user: widget.user, projet: widget.currentProject),
       const SettingsScreen(),
-      ChatScreen(
-        chantierId: widget.currentProject.id,
-        currentUser: widget.user,
-      ),
+
+      // ✅ MODIFIÉ : Remplacer le ChatScreen direct par le AdminChatHub
+      // Ancien code (commenté) :
+      // ChatScreen(
+      //   chatRoomId: widget.currentProject.id,
+      //   chatRoomType: ChatRoomType.projet,
+      //   currentUser: widget.user,
+      // ),
+
+      // ✅ NOUVEAU : Hub de chat multi-rooms
+      AdminChatHub(user: widget.user, projet: widget.currentProject),
     ];
 
     return Scaffold(

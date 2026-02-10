@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
 import '../../models/projet_model.dart';
 import '../../models/chantier_model.dart';
+import '../../models/message_model.dart';
 import 'worker_sidebar.dart';
 import 'worker_profile_view.dart';
 import 'worker_chantier_view.dart';
@@ -23,7 +24,6 @@ class _WorkerShellState extends State<WorkerShell> {
 
   @override
   Widget build(BuildContext context) {
-    // Sécurité chantier
     Chantier? chantierActuel;
     if (widget.projet.chantiers.isNotEmpty) {
       chantierActuel = widget.projet.chantiers.firstWhere(
@@ -38,8 +38,13 @@ class _WorkerShellState extends State<WorkerShell> {
           ? WorkerChantierView(chantier: chantierActuel, projet: widget.projet)
           : const Center(child: Text("Aucun chantier assigné")),
       WorkerSettingsView(user: widget.user),
+      // ✅ OUVRIER voit le SALON CHANTIER (Admin + Chef Chantier + Ouvriers)
       chantierActuel != null
-          ? ChatScreen(chantierId: chantierActuel.id, currentUser: widget.user)
+          ? ChatScreen(
+              chatRoomId: chantierActuel.id,
+              chatRoomType: ChatRoomType.chantier,
+              currentUser: widget.user,
+            )
           : const Center(child: Text("Chat indisponible")),
     ];
 
@@ -52,7 +57,7 @@ class _WorkerShellState extends State<WorkerShell> {
               ? "Mon Chantier"
               : _selectedIndex == 2
               ? "Paramètres"
-              : "Chat Chantier",
+              : "Discussion Équipe", // ✅ Titre clair
         ),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,

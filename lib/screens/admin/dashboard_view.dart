@@ -17,6 +17,7 @@ import '../../widgets/incident_widget.dart';
 import '../../widgets/add_chantier_form.dart';
 import 'full_screen_map_view.dart';
 import '../chat_screen.dart';
+import '../../models/message_model.dart'; // IMPORT NÉCESSAIRE
 
 class ChecklistTask {
   final String title;
@@ -131,9 +132,9 @@ class _DashboardViewState extends State<DashboardView>
         setState(() {
           totalMainOeuvre = tempMO;
           totalMateriel = tempMat;
-          totalTasksDelayed = tempDelayed; // <--- Nouveau KPI
-          globalBudgetInitial = tempBudgetInitial; // <--- Nouveau KPI
-          globalBudgetConsomme = tempBudgetConsomme; // <--- Nouveau KPI
+          totalTasksDelayed = tempDelayed;
+          globalBudgetInitial = tempBudgetInitial;
+          globalBudgetConsomme = tempBudgetConsomme;
           _isLoadingFinances = false;
         });
       }
@@ -143,7 +144,6 @@ class _DashboardViewState extends State<DashboardView>
     }
   }
 
-  // --- LOGIQUE IDENTIQUE ---
   Future<void> _cloturerChantier(Chantier chantier) async {
     if (widget.user.role != UserRole.chefProjet) return;
     final confirm = await showDialog<bool>(
@@ -213,24 +213,25 @@ class _DashboardViewState extends State<DashboardView>
                       Expanded(
                         child: WeatherBanner(
                           city: actuel.lieu,
-                          lat: actuel.latitude, // On passe la latitude stockée
-                          lon:
-                              actuel.longitude, // On passe la longitude stockée
+                          lat: actuel.latitude,
+                          lon: actuel.longitude,
                         ),
                       ),
                       const SizedBox(width: 8),
-                      // BOUTON CHAT (NOUVEAU)
+                      // BOUTON CHAT
                       _buildHeaderButton(
                         icon: Icons.chat_bubble_outline,
                         label: "CHAT",
-                        color: Colors
-                            .orange, // Orange pour attirer l'oeil sur les nouveaux messages
+                        color: Colors.orange,
                         onTap: () {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) => ChatScreen(
-                                chantierId: actuel.id,
+                                // CORRECTION : Utilisation des nouveaux paramètres
+                                chatRoomId: widget.projet.id,
+                                chatRoomType: ChatRoomType
+                                    .projet, // Chat de projet pour admin
                                 currentUser: widget.user,
                               ),
                             ),
@@ -246,7 +247,7 @@ class _DashboardViewState extends State<DashboardView>
                         onTap: () => _navigateToPersonnel(actuel.id),
                       ),
                       const SizedBox(width: 8),
-                      // NOUVEAU : Bouton Ajouter Chantier (pour libérer le FAB)
+                      // Bouton Ajouter Chantier
                       _buildHeaderButton(
                         icon: Icons.add_location_alt,
                         label: "AJOUTER",
@@ -257,9 +258,7 @@ class _DashboardViewState extends State<DashboardView>
                             builder: (ctx) => AddChantierForm(
                               projet: widget.projet,
                               onAdd: (nouveau) async {
-                                widget.projet.chantiers.add(
-                                  nouveau,
-                                ); // Ajout local
+                                widget.projet.chantiers.add(nouveau);
                                 await DataStorage.saveSingleProject(
                                   widget.projet,
                                 );
@@ -301,9 +300,7 @@ class _DashboardViewState extends State<DashboardView>
               sliver: SliverGrid(
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: isMobile ? 1 : 2,
-                  childAspectRatio: isMobile
-                      ? 1.5
-                      : 1.8, // Augmenté pour plus d'espace
+                  childAspectRatio: isMobile ? 1.5 : 1.8,
                   crossAxisSpacing: 20,
                   mainAxisSpacing: 20,
                 ),
@@ -363,7 +360,7 @@ class _DashboardViewState extends State<DashboardView>
                       title: "ANALYSE DE PERFORMANCE",
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min, // Important !
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -409,12 +406,9 @@ class _DashboardViewState extends State<DashboardView>
                     InfoCard(
                       title: "TÂCHES",
                       child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxHeight: 150, // Limite la hauteur
-                        ),
+                        constraints: BoxConstraints(maxHeight: 150),
                         child: ListView.builder(
-                          physics:
-                              const NeverScrollableScrollPhysics(), // Désactive le scroll interne
+                          physics: const NeverScrollableScrollPhysics(),
                           shrinkWrap: true,
                           itemCount: _tasks.length,
                           itemBuilder: (context, index) {
@@ -443,9 +437,7 @@ class _DashboardViewState extends State<DashboardView>
                           ? const Center(child: CircularProgressIndicator())
                           : (actuel.id != "0")
                           ? ConstrainedBox(
-                              constraints: BoxConstraints(
-                                maxHeight: 180, // Limite la hauteur
-                              ),
+                              constraints: BoxConstraints(maxHeight: 180),
                               child: InkWell(
                                 onLongPress: () => _cloturerChantier(actuel),
                                 child: FinancialStatsCard(
@@ -464,7 +456,7 @@ class _DashboardViewState extends State<DashboardView>
                     InfoCard(
                       title: "RÉPARTITION GLOBALE",
                       child: SizedBox(
-                        height: 150, // Hauteur fixe
+                        height: 150,
                         child: FinancialPieChart(
                           montantMO: totalMainOeuvre,
                           montantMat: totalMateriel,
@@ -476,17 +468,13 @@ class _DashboardViewState extends State<DashboardView>
                   InfoCard(
                     title: "PROGRÈS",
                     child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxHeight: 150, // Limite la hauteur
-                      ),
+                      constraints: BoxConstraints(maxHeight: 150),
                       child: _chantiers.isEmpty
                           ? const Center(child: Text("Aucun chantier"))
                           : ListView.builder(
                               physics: const NeverScrollableScrollPhysics(),
                               shrinkWrap: true,
-                              itemCount: _chantiers
-                                  .take(3)
-                                  .length, // Limite à 3 chantiers
+                              itemCount: _chantiers.take(3).length,
                               itemBuilder: (context, index) {
                                 final c = _chantiers[index];
                                 return _progressionRow(c);
@@ -499,9 +487,7 @@ class _DashboardViewState extends State<DashboardView>
                   InfoCard(
                     title: "JOURNAL D'INCIDENTS",
                     child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxHeight: 150, // Limite la hauteur
-                      ),
+                      constraints: BoxConstraints(maxHeight: 150),
                       child: IncidentList(incidents: []),
                     ),
                   ),
@@ -621,7 +607,6 @@ class _DashboardViewState extends State<DashboardView>
     );
   }
 
-  // --- FORMULAIRE ET DUMMY IDENTIQUES ---
   void _showQuickReportForm(BuildContext context) {
     String? capturedImagePath;
     final commentController = TextEditingController();

@@ -7,13 +7,17 @@ import '../models/user_model.dart';
 import '../services/chat_service.dart';
 
 class ChatScreen extends StatefulWidget {
-  final String chantierId;
+  final String chatRoomId;
+  final ChatRoomType chatRoomType;
   final UserModel currentUser;
+  final String? customTitle; // ✅ NOUVEAU paramètre
 
   const ChatScreen({
     super.key,
-    required this.chantierId,
+    required this.chatRoomId,
+    required this.chatRoomType,
     required this.currentUser,
+    this.customTitle, // ✅ NOUVEAU
   });
 
   @override
@@ -32,7 +36,7 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       final XFile? pickedFile = await _picker.pickImage(
         source: source,
-        imageQuality: 70, // Compression pour économiser de l'espace
+        imageQuality: 70,
         maxWidth: 1024,
       );
 
@@ -51,13 +55,12 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// Uploader l'image vers Firebase Storage
   Future<String?> _uploadImage(File image) async {
     try {
       setState(() => _isUploading = true);
 
       final String fileName =
-          'chat_${widget.chantierId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          'chat_${widget.chatRoomId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final Reference storageRef = FirebaseStorage.instance.ref().child(
         'chat_images/$fileName',
       );
@@ -82,9 +85,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// Envoyer un message (texte ou photo)
   Future<void> _send({MessageType type = MessageType.text}) async {
-    // Validation
     if (type == MessageType.text && _controller.text.trim().isEmpty) {
       return;
     }
@@ -95,30 +96,27 @@ class _ChatScreenState extends State<ChatScreen> {
     String? photoUrl;
     String messageText = _controller.text.trim();
 
-    // Upload de l'image si présente
     if (_selectedImage != null) {
       photoUrl = await _uploadImage(_selectedImage!);
-      if (photoUrl == null) return; // Échec upload
+      if (photoUrl == null) return;
     }
 
-    // Créer le message
     final msg = Message(
-      id: '', // Firestore générera l'ID
+      id: '',
       senderId: widget.currentUser.id,
       senderName: widget.currentUser.nom,
       text: messageText.isEmpty ? '📷 Photo' : messageText,
       timestamp: DateTime.now(),
-      chantierId: widget.chantierId,
+      chatRoomId: widget.chatRoomId,
+      chatRoomType: widget.chatRoomType,
       type: type,
       photoUrl: photoUrl,
       photoPath: _selectedImage?.path,
       isRead: false,
     );
 
-    // Envoyer à Firestore
-    await _chatService.sendMessage(widget.chantierId, msg);
+    await _chatService.sendMessage(msg);
 
-    // Réinitialiser l'interface
     setState(() {
       _controller.clear();
       _selectedImage = null;
@@ -156,25 +154,31 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  @override
+  @override // CORRECTION: @override au lieu de @@override
   Widget build(BuildContext context) {
     final bool isClient = widget.currentUser.role == UserRole.client;
 
+    String roomTitle =
+        widget.customTitle ??
+        (widget.chatRoomType == ChatRoomType.projet
+            ? "Discussion Projet"
+            : "Discussion Chantier");
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Discussion Chantier"),
+        title: Text(roomTitle),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
       ),
       body: Column(
         children: [
-          // Prévisualisation de l'image sélectionnée
           if (_selectedImage != null) _buildImagePreview(),
 
-          // Liste des messages
           Expanded(
             child: StreamBuilder<List<Message>>(
-              stream: _chatService.getMessages(widget.chantierId),
+              stream: _chatService.getMessages(
+                widget.chatRoomId,
+                widget.chatRoomType,
+              ),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
@@ -205,7 +209,6 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
 
-          // Zone de saisie
           _buildInputArea(isClient),
         ],
       ),
