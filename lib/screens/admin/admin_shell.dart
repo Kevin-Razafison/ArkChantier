@@ -27,15 +27,52 @@ class AdminShell extends StatefulWidget {
   State<AdminShell> createState() => _AdminShellState();
 }
 
-class _AdminShellState extends State<AdminShell> {
+class _AdminShellState extends State<AdminShell> with TickerProviderStateMixin {
   int _selectedIndex = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  late AnimationController _fabAnimationController;
+  late Animation<double> _fabAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _fabAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _fabAnimation = CurvedAnimation(
+      parent: _fabAnimationController,
+      curve: Curves.easeInOut,
+    );
+    _fabAnimationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _fabAnimationController.dispose();
+    super.dispose();
+  }
 
   void _navigateToProjectLauncher() {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (context) => ProjectLauncherScreen(user: widget.user),
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            ProjectLauncherScreen(user: widget.user),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(0.0, 1.0);
+          const end = Offset.zero;
+          const curve = Curves.easeInOut;
+          var tween = Tween(
+            begin: begin,
+            end: end,
+          ).chain(CurveTween(curve: curve));
+          return SlideTransition(
+            position: animation.drive(tween),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 400),
       ),
     );
   }
@@ -47,13 +84,16 @@ class _AdminShellState extends State<AdminShell> {
           if (!isLargeScreen)
             Padding(
               padding: const EdgeInsets.only(right: 12),
-              child: CircleAvatar(
-                backgroundColor: Colors.orange,
-                child: Text(
-                  widget.currentProject.nom.substring(0, 1),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
+              child: Hero(
+                tag: 'project_avatar_${widget.currentProject.id}',
+                child: CircleAvatar(
+                  backgroundColor: Colors.orange,
+                  child: Text(
+                    widget.currentProject.nom.substring(0, 1).toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
@@ -68,11 +108,13 @@ class _AdminShellState extends State<AdminShell> {
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 Text(
                   widget.user.role == UserRole.chefProjet
                       ? 'Chef de Projet'
-                      : widget.user.role.name.toUpperCase(),
+                      : _getRoleName(widget.user.role),
                   style: const TextStyle(fontSize: 11, color: Colors.white70),
                 ),
               ],
@@ -82,6 +124,7 @@ class _AdminShellState extends State<AdminShell> {
       ),
       backgroundColor: const Color(0xFF1A334D),
       foregroundColor: Colors.white,
+      elevation: 2,
       leading: isLargeScreen
           ? IconButton(
               icon: const Icon(Icons.grid_view_rounded),
@@ -94,6 +137,36 @@ class _AdminShellState extends State<AdminShell> {
               onPressed: () => _scaffoldKey.currentState?.openDrawer(),
             ),
       actions: [
+        // Badge de notification (exemple)
+        Stack(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.notifications_outlined),
+              tooltip: "Notifications",
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Aucune nouvelle notification'),
+                    behavior: SnackBarBehavior.floating,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+            ),
+            Positioned(
+              right: 8,
+              top: 8,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+                constraints: const BoxConstraints(minWidth: 8, minHeight: 8),
+              ),
+            ),
+          ],
+        ),
         IconButton(
           icon: const Icon(Icons.grid_view_rounded),
           tooltip: "Gérer les projets",
@@ -101,11 +174,14 @@ class _AdminShellState extends State<AdminShell> {
         ),
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert),
+          tooltip: "Plus d'options",
           onSelected: (value) {
             if (value == 'deconnexion') {
-              ChantierApp.of(context).logout(context);
+              _showLogoutConfirmation();
             } else if (value == 'profil') {
               setState(() => _selectedIndex = 5);
+            } else if (value == 'aide') {
+              _showHelp();
             }
           },
           itemBuilder: (context) => [
@@ -113,18 +189,29 @@ class _AdminShellState extends State<AdminShell> {
               value: 'profil',
               child: Row(
                 children: [
-                  Icon(Icons.person, size: 18),
-                  SizedBox(width: 8),
+                  Icon(Icons.person, size: 20),
+                  SizedBox(width: 12),
                   Text('Mon profil'),
                 ],
               ),
             ),
             const PopupMenuItem(
+              value: 'aide',
+              child: Row(
+                children: [
+                  Icon(Icons.help_outline, size: 20, color: Colors.blue),
+                  SizedBox(width: 12),
+                  Text('Aide'),
+                ],
+              ),
+            ),
+            const PopupMenuDivider(),
+            const PopupMenuItem(
               value: 'deconnexion',
               child: Row(
                 children: [
-                  Icon(Icons.logout, size: 18, color: Colors.red),
-                  SizedBox(width: 8),
+                  Icon(Icons.logout, size: 20, color: Colors.red),
+                  SizedBox(width: 12),
                   Text('Déconnexion', style: TextStyle(color: Colors.red)),
                 ],
               ),
@@ -133,6 +220,98 @@ class _AdminShellState extends State<AdminShell> {
         ),
       ],
     );
+  }
+
+  void _showLogoutConfirmation() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.logout, color: Colors.red),
+            SizedBox(width: 10),
+            Text('Déconnexion'),
+          ],
+        ),
+        content: const Text(
+          'Êtes-vous sûr de vouloir vous déconnecter ?\n\nToutes les modifications non synchronisées seront conservées.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('ANNULER'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ChantierApp.of(context).logout(context);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text(
+              'DÉCONNECTER',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showHelp() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.help_outline, color: Colors.blue),
+            SizedBox(width: 10),
+            Text('Centre d\'aide'),
+          ],
+        ),
+        content: const SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Raccourcis clavier :',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text('• Ctrl + N : Nouveau chantier'),
+              Text('• Ctrl + S : Synchroniser'),
+              Text('• Ctrl + P : Profil'),
+              SizedBox(height: 16),
+              Text(
+                'Besoin d\'aide ?',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text('Contactez le support à support@chantier-pro.com'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('FERMER'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getRoleName(UserRole role) {
+    switch (role) {
+      case UserRole.chefProjet:
+        return 'Chef de Projet';
+      case UserRole.chefDeChantier:
+        return 'Chef de Chantier';
+      case UserRole.client:
+        return 'Client';
+      case UserRole.ouvrier:
+        return 'Ouvrier';
+    }
   }
 
   @override
@@ -147,48 +326,88 @@ class _AdminShellState extends State<AdminShell> {
       StatsScreen(projet: widget.currentProject),
       AdminProfileScreen(user: widget.user, projet: widget.currentProject),
       const SettingsScreen(),
-
-      // ✅ MODIFIÉ : Remplacer le ChatScreen direct par le AdminChatHub
-      // Ancien code (commenté) :
-      // ChatScreen(
-      //   chatRoomId: widget.currentProject.id,
-      //   chatRoomType: ChatRoomType.projet,
-      //   currentUser: widget.user,
-      // ),
-
-      // ✅ NOUVEAU : Hub de chat multi-rooms
       AdminChatHub(user: widget.user, projet: widget.currentProject),
     ];
 
-    return Scaffold(
-      key: _scaffoldKey,
-      appBar: _buildAppBar(isLargeScreen),
-      drawer: !isLargeScreen
-          ? SidebarDrawer(
-              role: widget.user.role,
-              currentIndex: _selectedIndex,
-              currentProject: widget.currentProject,
-              onDestinationSelected: (i) {
-                setState(() => _selectedIndex = i);
-                Navigator.pop(context);
-              },
-              parentContext: context,
-            )
-          : null,
-      body: Row(
-        children: [
-          if (isLargeScreen)
-            SidebarDrawer(
-              role: widget.user.role,
-              currentIndex: _selectedIndex,
-              currentProject: widget.currentProject,
-              onDestinationSelected: (i) => setState(() => _selectedIndex = i),
-              parentContext: context,
+    return WillPopScope(
+      onWillPop: () async {
+        if (_selectedIndex != 0) {
+          setState(() => _selectedIndex = 0);
+          return false;
+        }
+        return true;
+      },
+      child: Scaffold(
+        key: _scaffoldKey,
+        appBar: _buildAppBar(isLargeScreen),
+        drawer: !isLargeScreen
+            ? SidebarDrawer(
+                role: widget.user.role,
+                currentIndex: _selectedIndex,
+                currentProject: widget.currentProject,
+                onDestinationSelected: (i) {
+                  setState(() => _selectedIndex = i);
+                  Navigator.pop(context);
+                  _fabAnimationController.reset();
+                  _fabAnimationController.forward();
+                },
+                parentContext: context,
+              )
+            : null,
+        body: Row(
+          children: [
+            if (isLargeScreen)
+              SidebarDrawer(
+                role: widget.user.role,
+                currentIndex: _selectedIndex,
+                currentProject: widget.currentProject,
+                onDestinationSelected: (i) {
+                  setState(() => _selectedIndex = i);
+                  _fabAnimationController.reset();
+                  _fabAnimationController.forward();
+                },
+                parentContext: context,
+              ),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                switchInCurve: Curves.easeInOut,
+                switchOutCurve: Curves.easeInOut,
+                transitionBuilder: (child, animation) {
+                  return FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0.05, 0),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
+                    ),
+                  );
+                },
+                child: Container(
+                  key: ValueKey<int>(_selectedIndex),
+                  child: pages[_selectedIndex],
+                ),
+              ),
             ),
-          Expanded(
-            child: IndexedStack(index: _selectedIndex, children: pages),
-          ),
-        ],
+          ],
+        ),
+        floatingActionButton: _selectedIndex == 0
+            ? ScaleTransition(
+                scale: _fabAnimation,
+                child: FloatingActionButton.extended(
+                  onPressed: () {
+                    // Accès rapide à la création de chantier
+                    setState(() => _selectedIndex = 1);
+                  },
+                  backgroundColor: Colors.orange,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Nouveau'),
+                  heroTag: 'main_fab',
+                ),
+              )
+            : null,
       ),
     );
   }

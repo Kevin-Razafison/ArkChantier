@@ -13,6 +13,10 @@ class ClientSettingsView extends StatefulWidget {
 }
 
 class _ClientSettingsViewState extends State<ClientSettingsView> {
+  bool _notificationsEnabled = true;
+  bool _emailNotifications = true;
+  String _selectedLanguage = 'Français';
+
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -20,6 +24,8 @@ class _ClientSettingsViewState extends State<ClientSettingsView> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Paramètres'),
+        backgroundColor: const Color(0xFF1A334D),
+        foregroundColor: Colors.white,
         actions: [
           Padding(
             padding: const EdgeInsets.all(8.0),
@@ -29,68 +35,306 @@ class _ClientSettingsViewState extends State<ClientSettingsView> {
       ),
       body: ListView(
         children: [
+          // Section Profil
+          _buildSectionTitle("Mon Profil", isDark),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Colors.blue.withOpacity(0.1),
+                child: const Icon(Icons.person, color: Colors.blue),
+              ),
+              title: Text(
+                widget.user.nom,
+                style: TextStyle(
+                  color: isDark ? Colors.white : Colors.black87,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              subtitle: Text(
+                "Client - Propriétaire",
+                style: TextStyle(
+                  color: isDark ? Colors.white54 : Colors.black54,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: ListTile(
+              leading: const Icon(Icons.email, color: Colors.blue),
+              title: const Text('Email'),
+              subtitle: Text(
+                widget.user.email,
+                style: const TextStyle(fontSize: 13),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 10),
+          Divider(color: isDark ? Colors.white10 : Colors.black12),
+
           // Section Synchronisation
           _buildSectionTitle("Synchronisation", isDark),
           const SyncStatusWidget(),
 
+          const SizedBox(height: 10),
           Divider(color: isDark ? Colors.white10 : Colors.black12),
-          _buildSectionTitle("Mon Profil", isDark),
-          ListTile(
-            leading: const CircleAvatar(
-              backgroundColor: Colors.blue,
-              child: Icon(Icons.person, color: Colors.white),
+
+          // Section Notifications
+          _buildSectionTitle("Notifications", isDark),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: SwitchListTile(
+              secondary: const Icon(Icons.notifications, color: Colors.orange),
+              title: Text(
+                "Activer les notifications",
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              ),
+              subtitle: Text(
+                "Recevoir des alertes sur l'avancement",
+                style: TextStyle(
+                  color: isDark ? Colors.white54 : Colors.black54,
+                  fontSize: 12,
+                ),
+              ),
+              value: _notificationsEnabled,
+              onChanged: (val) {
+                setState(() => _notificationsEnabled = val);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      val
+                          ? '✅ Notifications activées'
+                          : '⚠️ Notifications désactivées',
+                    ),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
             ),
-            title: Text(
-              widget.user.nom,
-              style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-            ),
-            subtitle: Text(
-              "Client",
-              style: TextStyle(color: isDark ? Colors.white54 : Colors.black54),
+          ),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: SwitchListTile(
+              secondary: const Icon(Icons.email_outlined, color: Colors.blue),
+              title: Text(
+                "Notifications par email",
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              ),
+              subtitle: Text(
+                "Recevoir des emails de mise à jour",
+                style: TextStyle(
+                  color: isDark ? Colors.white54 : Colors.black54,
+                  fontSize: 12,
+                ),
+              ),
+              value: _emailNotifications,
+              onChanged: _notificationsEnabled
+                  ? (val) {
+                      setState(() => _emailNotifications = val);
+                    }
+                  : null,
             ),
           ),
 
+          const SizedBox(height: 10),
           Divider(color: isDark ? Colors.white10 : Colors.black12),
+
+          // Section Apparence
           _buildSectionTitle("Apparence", isDark),
-          SwitchListTile(
-            secondary: Icon(
-              Icons.dark_mode,
-              color: isDark ? Colors.blueAccent : Colors.blueGrey,
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: SwitchListTile(
+              secondary: Icon(
+                Icons.dark_mode,
+                color: isDark ? Colors.blueAccent : Colors.blueGrey,
+              ),
+              title: Text(
+                "Mode Sombre",
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              ),
+              subtitle: Text(
+                "Activer le thème sombre",
+                style: TextStyle(
+                  color: isDark ? Colors.white54 : Colors.black54,
+                  fontSize: 12,
+                ),
+              ),
+              value: isDark,
+              onChanged: (val) {
+                ChantierApp.of(context).toggleTheme(val);
+              },
             ),
-            title: Text(
-              "Mode Sombre",
-              style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+          ),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: ListTile(
+              leading: const Icon(Icons.language, color: Colors.green),
+              title: Text(
+                "Langue",
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              ),
+              subtitle: Text(
+                _selectedLanguage,
+                style: TextStyle(
+                  color: isDark ? Colors.white54 : Colors.black54,
+                  fontSize: 13,
+                ),
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              onTap: () {
+                _showLanguageDialog();
+              },
             ),
-            value: isDark,
-            onChanged: (val) {
-              ChantierApp.of(context).toggleTheme(val);
-            },
           ),
 
+          const SizedBox(height: 10),
           Divider(color: isDark ? Colors.white10 : Colors.black12),
-          _buildSectionTitle("Support & Système", isDark),
-          ListTile(
-            leading: const Icon(Icons.help_outline, color: Colors.blue),
-            title: Text(
-              "Aide & Support",
-              style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-            ),
-            subtitle: Text(
-              "Contacter le chef de projet",
-              style: TextStyle(color: isDark ? Colors.white54 : Colors.black54),
+
+          // Section Support
+          _buildSectionTitle("Support & Aide", isDark),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: ListTile(
+              leading: const Icon(Icons.help_outline, color: Colors.blue),
+              title: Text(
+                "Aide & Support",
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              ),
+              subtitle: Text(
+                "Contacter le chef de projet",
+                style: TextStyle(
+                  color: isDark ? Colors.white54 : Colors.black54,
+                  fontSize: 13,
+                ),
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              onTap: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Ouverture du chat...'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
             ),
           ),
-          ListTile(
-            leading: const Icon(Icons.info_outline, color: Colors.grey),
-            title: Text(
-              "Version",
-              style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-            ),
-            subtitle: Text(
-              "2.0.0 - Offline First (Build 2026)",
-              style: TextStyle(color: isDark ? Colors.white54 : Colors.black54),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: ListTile(
+              leading: const Icon(Icons.description, color: Colors.orange),
+              title: Text(
+                "Documentation",
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              ),
+              subtitle: Text(
+                "Guide d'utilisation",
+                style: TextStyle(
+                  color: isDark ? Colors.white54 : Colors.black54,
+                  fontSize: 13,
+                ),
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              onTap: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Fonctionnalité à venir'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
             ),
           ),
+
+          const SizedBox(height: 10),
+          Divider(color: isDark ? Colors.white10 : Colors.black12),
+
+          // Section Confidentialité
+          _buildSectionTitle("Confidentialité & Sécurité", isDark),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: ListTile(
+              leading: const Icon(Icons.privacy_tip, color: Colors.purple),
+              title: Text(
+                "Politique de confidentialité",
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              onTap: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Ouverture de la politique...'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+            ),
+          ),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: ListTile(
+              leading: const Icon(Icons.security, color: Colors.green),
+              title: Text(
+                "Conditions d'utilisation",
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              onTap: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Ouverture des CGU...'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+            ),
+          ),
+
+          const SizedBox(height: 10),
+          Divider(color: isDark ? Colors.white10 : Colors.black12),
+
+          // Section Système
+          _buildSectionTitle("Système", isDark),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: ListTile(
+              leading: const Icon(Icons.info_outline, color: Colors.grey),
+              title: Text(
+                "Version",
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              ),
+              subtitle: Text(
+                "2.0.0 - Offline First (Build 2026)",
+                style: TextStyle(
+                  color: isDark ? Colors.white54 : Colors.black54,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: ListTile(
+              leading: const Icon(Icons.bug_report, color: Colors.red),
+              title: Text(
+                "Signaler un problème",
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              onTap: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Ouverture du formulaire...'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+            ),
+          ),
+
+          const SizedBox(height: 30),
         ],
       ),
     );
@@ -99,14 +343,63 @@ class _ClientSettingsViewState extends State<ClientSettingsView> {
   Widget _buildSectionTitle(String title, bool isDark) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-      child: Text(
-        title.toUpperCase(),
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
-          color: isDark ? Colors.blueAccent : Colors.blue.shade800,
-          letterSpacing: 1.1,
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 16,
+            decoration: BoxDecoration(
+              color: Colors.blue,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            title.toUpperCase(),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.blueAccent : Colors.blue.shade800,
+              letterSpacing: 1.1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showLanguageDialog() {
+    final languages = ['Français', 'English', 'Español', 'العربية'];
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Choisir la langue"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: languages.map((lang) {
+            return RadioListTile<String>(
+              title: Text(lang),
+              value: lang,
+              groupValue: _selectedLanguage,
+              onChanged: (value) {
+                setState(() => _selectedLanguage = value!);
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Langue changée : $value'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+            );
+          }).toList(),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Fermer"),
+          ),
+        ],
       ),
     );
   }

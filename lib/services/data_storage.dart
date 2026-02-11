@@ -16,7 +16,9 @@ import 'firebase_sync_service.dart';
 class DataStorage {
   static final _syncService = FirebaseSyncService();
 
-  // ==================== PROJETS ====================
+  static Future<void> initialize() async {
+    await _syncService.initialize();
+  }
 
   static Future<void> saveAllProjects(List<Projet> projets) async {
     try {
@@ -26,7 +28,6 @@ class DataStorage {
         jsonEncode(projets.map((p) => p.toJson()).toList()),
       );
 
-      // Si l'admin est connecté à Firebase, synchroniser
       final adminId = FirebaseAuth.instance.currentUser?.uid;
       if (adminId != null) {
         for (var projet in projets) {
@@ -41,8 +42,10 @@ class DataStorage {
     }
   }
 
-  static Future<List<Projet>> loadAllProjects() async {
-    return await _syncService.loadProjets();
+  static Future<List<Projet>> loadAllProjects({
+    bool forceRefresh = false,
+  }) async {
+    return await _syncService.loadProjets(forceRefresh: forceRefresh);
   }
 
   static Future<void> saveSingleProject(Projet projet) async {
@@ -69,8 +72,6 @@ class DataStorage {
     final Map<String, dynamic> decoded = jsonDecode(content);
     return Projet.fromJson(decoded);
   }
-
-  // ==================== CHANTIERS ====================
 
   static Future<void> saveChantiersToProject(
     String projetId,
@@ -116,8 +117,6 @@ class DataStorage {
     }
   }
 
-  // ==================== JOURNAL ====================
-
   static Future<void> saveJournal(
     String chantierId,
     List<JournalEntry> entries,
@@ -129,8 +128,6 @@ class DataStorage {
     return await _syncService.loadJournal(chantierId);
   }
 
-  // ==================== ÉQUIPE ====================
-
   static Future<void> saveTeam(String chantierId, List<Ouvrier> equipe) async {
     await _syncService.saveTeam(chantierId, equipe);
   }
@@ -138,8 +135,6 @@ class DataStorage {
   static Future<List<Ouvrier>> loadTeam(String chantierId) async {
     return await _syncService.loadTeam(chantierId);
   }
-
-  // ==================== MATÉRIELS ====================
 
   static Future<void> saveMateriels(
     String chantierId,
@@ -165,8 +160,6 @@ class DataStorage {
     return allMat;
   }
 
-  // ==================== RAPPORTS ====================
-
   static Future<void> saveReports(
     String chantierId,
     List<Report> reports,
@@ -184,9 +177,23 @@ class DataStorage {
     await saveReports(chantierId, reports);
   }
 
-  // ==================== UTILISATEURS ====================
+  static Future<List<UserModel>> loadAllUsers({
+    bool forceRefresh = false,
+  }) async {
+    if (forceRefresh) {
+      debugPrint('🔄 Rechargement forcé des utilisateurs depuis Firebase...');
+    }
+    return await _syncService.loadUsers(forceRefresh: forceRefresh);
+  }
 
-  /// Sauvegarder tous les utilisateurs avec update local immédiat
+  static Future<List<UserModel>> loadUsersForProject(String projectId) async {
+    return await _syncService.loadUsersForProject(projectId);
+  }
+
+  static Future<UserModel?> loadCurrentUser(String firebaseUid) async {
+    return await _syncService.loadCurrentUser(firebaseUid);
+  }
+
   static Future<void> saveAllUsers(
     List<UserModel> users, {
     bool updateLocal = true,
@@ -194,11 +201,9 @@ class DataStorage {
     try {
       final adminUser = FirebaseAuth.instance.currentUser;
 
-      // 1. TOUJOURS sauvegarder en local d'abord (offline-first)
       if (updateLocal) {
         final prefs = await SharedPreferences.getInstance();
 
-        // Filtrer les utilisateurs valides
         final validUsers = users
             .where(
               (u) =>
@@ -218,19 +223,16 @@ class DataStorage {
         );
       }
 
-      // 2. Synchroniser sur Firebase si connecté
       if (adminUser != null) {
         final adminId = adminUser.uid;
         int savedCount = 0;
 
         for (var user in users) {
-          // Ignorer les utilisateurs sans firebaseUid
           if (user.firebaseUid == null) {
             debugPrint('⚠️ ${user.nom} ignoré (pas de firebaseUid)');
             continue;
           }
 
-          // Ignorer les comptes mock
           if (user.email == 'admin@ark.com' ||
               user.email == 'admin@chantier.com') {
             continue;
@@ -252,23 +254,12 @@ class DataStorage {
     }
   }
 
-  /// Charger tous les utilisateurs
-  static Future<List<UserModel>> loadAllUsers() async {
-    final users = await _syncService.loadUsers();
-    if (users.isEmpty) {
-      return [UserModel.mockAdmin()];
-    }
-    return users;
-  }
-
-  /// Rafraîchir les utilisateurs depuis Firebase
   static Future<List<UserModel>> refreshUsersFromFirebase() async {
     try {
-      debugPrint('🔄 Rafraîchissement utilisateurs depuis Firebase...');
-
-      final users = await _syncService.loadUsers();
-
-      // Sauvegarder en cache local
+      debugPrint(
+        '🔄 Rafraîchissement FORCÉ des utilisateurs depuis Firebase...',
+      );
+      final users = await _syncService.loadUsers(forceRefresh: true);
       final prefs = await SharedPreferences.getInstance();
       final validUsers = users
           .where(
@@ -288,32 +279,21 @@ class DataStorage {
       return users;
     } catch (e) {
       debugPrint('❌ Erreur refresh users: $e');
-      // Fallback sur cache local
       return await loadAllUsers();
     }
   }
 
-  /// Nettoyer le cache utilisateur au logout
   static Future<void> clearUserCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-
-      // Nettoyer uniquement les données de session
-      await prefs.remove('current_user_id');
+      await prefs.remove('current_user');
       await prefs.remove('auth_token');
-
-      // NE PAS supprimer:
-      // - 'projects_list' (pour mode offline)
-      // - 'users_list' (pour mode offline)
-      // - Les données des chantiers (pour mode offline)
-
       debugPrint('🧹 Cache utilisateur nettoyé (session terminée)');
     } catch (e) {
       debugPrint('❌ Erreur clearUserCache: $e');
     }
   }
 
-  /// Nettoyer TOUTES les données (pour reset complet)
   static Future<void> clearAllCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -324,8 +304,6 @@ class DataStorage {
     }
   }
 
-  // ==================== ANNUAIRE GLOBAL OUVRIERS ====================
-
   static Future<void> saveGlobalOuvriers(List<Ouvrier> ouvriers) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
@@ -333,7 +311,6 @@ class DataStorage {
       jsonEncode(ouvriers.map((o) => o.toJson()).toList()),
     );
 
-    // Synchroniser avec Firebase si connecté
     final adminId = FirebaseAuth.instance.currentUser?.uid;
     if (adminId != null) {
       try {
@@ -353,7 +330,6 @@ class DataStorage {
   }
 
   static Future<List<Ouvrier>> loadGlobalOuvriers() async {
-    // Essayer de charger depuis Firebase d'abord
     final adminId = FirebaseAuth.instance.currentUser?.uid;
     if (adminId != null) {
       try {
@@ -371,7 +347,6 @@ class DataStorage {
                 .map((o) => Ouvrier.fromJson(o))
                 .toList();
 
-            // Sauvegarder en cache local
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString(
               'team_annuaire_global',
@@ -386,7 +361,6 @@ class DataStorage {
       }
     }
 
-    // Fallback: charger depuis le cache local
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getString('team_annuaire_global');
 
@@ -400,8 +374,6 @@ class DataStorage {
       return [];
     }
   }
-
-  // ==================== STOCKS ====================
 
   static Future<void> saveStocks(
     String chantierId,
@@ -445,8 +417,6 @@ class DataStorage {
     return stocks;
   }
 
-  // ==================== DÉPENSES ====================
-
   static Future<void> saveDepenses(
     String chantierId,
     List<Depense> depenses,
@@ -458,8 +428,6 @@ class DataStorage {
     return await _syncService.loadDepenses(chantierId);
   }
 
-  // ==================== UTILITAIRES ====================
-
   static Future<void> syncPendingChanges() async {
     await _syncService.syncPendingChanges();
   }
@@ -468,11 +436,6 @@ class DataStorage {
     return await _syncService.getSyncStatus();
   }
 
-  static Future<void> initialize() async {
-    await _syncService.initialize();
-  }
-
-  /// Récupère un utilisateur par son UID Firebase
   static Future<UserModel?> getUserByFirebaseUid(String firebaseUid) async {
     try {
       final adminId = FirebaseAuth.instance.currentUser?.uid;
@@ -495,7 +458,6 @@ class DataStorage {
     return null;
   }
 
-  /// Récupère un utilisateur par son email
   static Future<UserModel?> getUserByEmail(String email) async {
     try {
       final users = await loadAllUsers();
@@ -516,7 +478,6 @@ class DataStorage {
     }
   }
 
-  /// Met à jour les assignations d'un utilisateur
   static Future<void> updateUserAssignments(
     UserModel user,
     List<String> newAssignments,

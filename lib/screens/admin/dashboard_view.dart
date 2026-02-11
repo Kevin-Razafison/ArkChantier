@@ -1,23 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:uuid/uuid.dart';
 import '../../models/user_model.dart';
 import '../../models/chantier_model.dart';
 import '../../models/projet_model.dart';
 import '../../services/data_storage.dart';
-import '../../widgets/info_card.dart';
 import '../../widgets/chantier_map_preview.dart';
-import '../../widgets/financial_stats_card.dart';
 import '../../widgets/financial_pie_chart.dart';
-import '../../widgets/photo_reporter.dart';
-import '../../models/report_model.dart';
 import '../../models/ouvrier_model.dart';
 import '../../models/materiel_model.dart';
 import '../../widgets/weather_banner.dart';
-import '../../widgets/incident_widget.dart';
-import '../../widgets/add_chantier_form.dart';
 import 'full_screen_map_view.dart';
 import '../chat_screen.dart';
-import '../../models/message_model.dart'; // IMPORT NÉCESSAIRE
+import '../../models/message_model.dart';
 
 class ChecklistTask {
   final String title;
@@ -36,7 +29,7 @@ class DashboardView extends StatefulWidget {
 }
 
 class _DashboardViewState extends State<DashboardView>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, SingleTickerProviderStateMixin {
   List<Chantier> _chantiers = [];
   bool _isLoadingFinances = false;
   double totalMainOeuvre = 0;
@@ -44,6 +37,9 @@ class _DashboardViewState extends State<DashboardView>
   int totalTasksDelayed = 0;
   double globalBudgetInitial = 0;
   double globalBudgetConsomme = 0;
+  List<Incident> _allIncidents = [];
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
 
   @override
   bool get wantKeepAlive => true;
@@ -58,19 +54,35 @@ class _DashboardViewState extends State<DashboardView>
   void initState() {
     super.initState();
     _chantiers = widget.projet.chantiers;
+    _loadIncidents();
+
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeIn,
+    );
+    _animationController.forward();
+
     if (widget.user.role != UserRole.client) {
       _loadDashboardData();
     }
   }
 
-  void _navigateToPersonnel(String chantierId) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          "Ouverture du module Personnel pour le chantier: $chantierId",
-        ),
-      ),
-    );
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  void _loadIncidents() {
+    _allIncidents = [];
+    for (var chantier in widget.projet.chantiers) {
+      _allIncidents.addAll(chantier.incidents);
+    }
+    _allIncidents.sort((a, b) => b.date.compareTo(a.date));
   }
 
   Future<void> _loadDashboardData() async {
@@ -84,12 +96,10 @@ class _DashboardViewState extends State<DashboardView>
     double tempBudgetConsomme = 0;
 
     try {
-      // 1. CALCULS SUR LES DONNÉES DÉJÀ EN MÉMOIRE (Chantiers & Planning)
       for (var c in widget.projet.chantiers) {
         tempBudgetInitial += c.budgetInitial;
         tempBudgetConsomme += c.depensesActuelles;
 
-        // Vérification des retards dans le planning de chaque chantier
         for (var task in c.tasks) {
           if (!task.isDone && DateTime.now().isAfter(task.endDate)) {
             tempDelayed++;
@@ -97,7 +107,6 @@ class _DashboardViewState extends State<DashboardView>
         }
       }
 
-      // 2. CHARGEMENT DES DONNÉES EXTERNES (Fichiers JSON/Local)
       List<Future<List<dynamic>>> futures = [];
       for (var c in widget.projet.chantiers) {
         futures.add(DataStorage.loadTeam(c.id));
@@ -106,28 +115,25 @@ class _DashboardViewState extends State<DashboardView>
 
       final results = await Future.wait(futures);
 
-      // 3. TRAITEMENT DES RÉSULTATS DES FICHIERS
       int resultIndex = 0;
       for (var c in widget.projet.chantiers) {
         final equipe = results[resultIndex++] as List<Ouvrier>;
         final inventaire = results[resultIndex++] as List<Materiel>;
 
-        // Coût de la Main d'œuvre (Pointages)
         for (var o in equipe) {
           tempMO += (o.joursPointes.length * o.salaireJournalier);
         }
-        // Coût du Matériel (Stock)
         for (var m in inventaire) {
           tempMat += (m.quantite * m.prixUnitaire);
         }
-        // Ajout des dépenses manuelles
         for (var d in c.depenses) {
           if (d.type == TypeDepense.mainOeuvre) tempMO += d.montant;
           if (d.type == TypeDepense.materiel) tempMat += d.montant;
         }
       }
 
-      // 4. MISE À JOUR FINALE DE L'ÉTAT
+      _loadIncidents();
+
       if (mounted) {
         setState(() {
           totalMainOeuvre = tempMO;
@@ -140,41 +146,16 @@ class _DashboardViewState extends State<DashboardView>
       }
     } catch (e) {
       debugPrint("Erreur chargement dashboard: $e");
-      if (mounted) setState(() => _isLoadingFinances = false);
-    }
-  }
-
-  Future<void> _cloturerChantier(Chantier chantier) async {
-    if (widget.user.role != UserRole.chefProjet) return;
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Clôturer le chantier ?"),
-        content: Text("Voulez-vous marquer '${chantier.nom}' comme terminé ?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text("ANNULER"),
+      if (mounted) {
+        setState(() => _isLoadingFinances = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Erreur de chargement: $e"),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text(
-              "CONFIRMER",
-              style: TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      setState(() {
-        chantier.statut = StatutChantier.termine;
-        chantier.progression = 1.0;
-      });
-      await DataStorage.saveSingleProject(widget.projet);
-      if (mounted) _loadDashboardData();
+        );
+      }
     }
   }
 
@@ -192,7 +173,6 @@ class _DashboardViewState extends State<DashboardView>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    bool isMobile = MediaQuery.of(context).size.width < 800;
     bool isClient = widget.user.role == UserRole.client;
 
     final actuel = _getChantierActuel();
@@ -200,306 +180,506 @@ class _DashboardViewState extends State<DashboardView>
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: _loadDashboardData,
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverPadding(
-              padding: const EdgeInsets.all(24.0),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  // --- HEADER AVEC MÉTÉO ET BOUTON POINTAGE ---
-                  Row(
-                    children: [
-                      Expanded(
-                        child: WeatherBanner(
-                          city: actuel.lieu,
-                          lat: actuel.latitude,
-                          lon: actuel.longitude,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // BOUTON CHAT
-                      _buildHeaderButton(
-                        icon: Icons.chat_bubble_outline,
-                        label: "CHAT",
-                        color: Colors.orange,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => ChatScreen(
-                                // CORRECTION : Utilisation des nouveaux paramètres
-                                chatRoomId: widget.projet.id,
-                                chatRoomType: ChatRoomType
-                                    .projet, // Chat de projet pour admin
-                                currentUser: widget.user,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      // Bouton Pointage
-                      _buildHeaderButton(
-                        icon: Icons.qr_code_scanner,
-                        label: "POINTAGE",
-                        color: const Color(0xFF1A334D),
-                        onTap: () => _navigateToPersonnel(actuel.id),
-                      ),
-                      const SizedBox(width: 8),
-                      // Bouton Ajouter Chantier
-                      _buildHeaderButton(
-                        icon: Icons.add_location_alt,
-                        label: "AJOUTER",
-                        color: Colors.blueGrey,
-                        onTap: () async {
-                          await showModalBottomSheet(
-                            context: context,
-                            builder: (ctx) => AddChantierForm(
-                              projet: widget.projet,
-                              onAdd: (nouveau) async {
-                                widget.projet.chantiers.add(nouveau);
-                                await DataStorage.saveSingleProject(
-                                  widget.projet,
-                                );
-                                _loadDashboardData();
-                              },
-                            ),
-                          );
-                          setState(() => _chantiers = widget.projet.chantiers);
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.all(16.0),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    // Header avec météo et boutons d'action
+                    _buildHeaderSection(actuel),
 
-                  // --- INFOS PROJET ---
-                  Text(
-                    "PROJET : ${widget.projet.nom.toUpperCase()}",
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Text(
-                    "ESPACE ${widget.user.role.name.toUpperCase()}",
-                    style: const TextStyle(
-                      fontSize: 18,
-                      color: Colors.orange,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                ]),
-              ),
-            ),
+                    const SizedBox(height: 16),
 
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              sliver: SliverGrid(
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: isMobile ? 1 : 2,
-                  childAspectRatio: isMobile ? 1.5 : 1.8,
-                  crossAxisSpacing: 20,
-                  mainAxisSpacing: 20,
-                ),
-                delegate: SliverChildListDelegate([
-                  // Carte LOCALISATION
-                  InfoCard(
-                    title: "LOCALISATION",
-                    padding: EdgeInsets.zero,
-                    child: SizedBox(
-                      height: 200,
-                      child: Stack(
-                        children: [
-                          Positioned.fill(
-                            child: Hero(
-                              tag: 'map_preview_hero',
-                              child: ChantierMapPreview(
-                                chantiers: _chantiers,
-                                chantierActuel: actuel,
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            top: 12,
-                            right: 12,
-                            child: FloatingActionButton.small(
-                              heroTag: "btn_map_fullscreen",
-                              backgroundColor: Colors.white.withValues(
-                                alpha: 0.9,
-                              ),
-                              elevation: 4,
-                              child: const Icon(
-                                Icons.fullscreen,
-                                color: Colors.black,
-                                size: 20,
-                              ),
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => FullScreenMapView(
-                                      chantiers: _chantiers,
-                                      chantierActuel: actuel,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                    // Section KPIs
+                    if (!isClient) _buildKPISection(),
 
-                  // Carte ANALYSE DE PERFORMANCE
-                  if (!isClient && actuel.id != "0")
-                    InfoCard(
-                      title: "ANALYSE DE PERFORMANCE",
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              _buildKpiItem(
-                                label: "RETARDS",
-                                value: "$totalTasksDelayed",
-                                color: totalTasksDelayed > 0
-                                    ? Colors.red
-                                    : Colors.green,
-                                icon: Icons.alarm,
-                              ),
-                              _buildKpiItem(
-                                label: "SANTÉ BUDGET",
-                                value: globalBudgetInitial > 0
-                                    ? "${((globalBudgetConsomme / globalBudgetInitial) * 100).toStringAsFixed(1)}%"
-                                    : "0.0%",
-                                color:
-                                    (globalBudgetConsomme > globalBudgetInitial)
-                                    ? Colors.red
-                                    : Colors.blue,
-                                icon: Icons.account_balance_wallet,
-                              ),
-                            ],
-                          ),
-                          const Divider(),
-                          Text(
-                            "Statut Global : ${totalTasksDelayed > 2 ? 'ALERTE CRITIQUE' : 'OPÉRATIONNEL'}",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: totalTasksDelayed > 2
-                                  ? Colors.red
-                                  : Colors.green,
-                              fontSize: 10,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    const SizedBox(height: 16),
 
-                  // Carte TÂCHES
-                  if (!isClient)
-                    InfoCard(
-                      title: "TÂCHES",
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(maxHeight: 150),
-                        child: ListView.builder(
-                          physics: const NeverScrollableScrollPhysics(),
-                          shrinkWrap: true,
-                          itemCount: _tasks.length,
-                          itemBuilder: (context, index) {
-                            final task = _tasks[index];
-                            return CheckboxListTile(
-                              value: task.isDone,
-                              title: Text(
-                                task.title,
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                              onChanged: (v) =>
-                                  setState(() => task.isDone = v!),
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-
-                  // Carte FINANCES
-                  if (!isClient)
-                    InfoCard(
-                      title: "FINANCES",
-                      child: _isLoadingFinances
-                          ? const Center(child: CircularProgressIndicator())
-                          : (actuel.id != "0")
-                          ? ConstrainedBox(
-                              constraints: BoxConstraints(maxHeight: 180),
-                              child: InkWell(
-                                onLongPress: () => _cloturerChantier(actuel),
-                                child: FinancialStatsCard(
-                                  chantier: actuel,
-                                  projet: widget.projet,
-                                ),
+                    // Carte financière - FIXED: Now passing correct parameters
+                    if (!isClient) ...[
+                      _isLoadingFinances
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(32.0),
+                                child: CircularProgressIndicator(),
                               ),
                             )
-                          : const Center(
-                              child: Text("Sélectionnez un chantier"),
+                          : Card(
+                              elevation: 2,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Row(
+                                      children: [
+                                        Icon(
+                                          Icons.account_balance_wallet,
+                                          size: 20,
+                                          color: Colors.grey,
+                                        ),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          "FINANCES GLOBALES",
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.blueGrey,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 16),
+                                    _buildFinancialSummary(),
+                                  ],
+                                ),
+                              ),
                             ),
-                    ),
+                      const SizedBox(height: 16),
+                    ],
 
-                  // Carte RÉPARTITION GLOBALE
-                  if (!isClient)
-                    InfoCard(
-                      title: "RÉPARTITION GLOBALE",
-                      child: SizedBox(
-                        height: 150,
-                        child: FinancialPieChart(
-                          montantMO: totalMainOeuvre,
-                          montantMat: totalMateriel,
+                    // Répartition globale des dépenses
+                    if (!isClient &&
+                        (totalMainOeuvre > 0 || totalMateriel > 0)) ...[
+                      Card(
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: SizedBox(
+                            height: 300,
+                            child: FinancialPieChart(
+                              montantMO: totalMainOeuvre,
+                              montantMat: totalMateriel,
+                              devise: widget.projet.devise,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 16),
+                    ],
 
-                  // Carte PROGRÈS
-                  InfoCard(
-                    title: "PROGRÈS",
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(maxHeight: 150),
-                      child: _chantiers.isEmpty
-                          ? const Center(child: Text("Aucun chantier"))
-                          : ListView.builder(
-                              physics: const NeverScrollableScrollPhysics(),
-                              shrinkWrap: true,
-                              itemCount: _chantiers.take(3).length,
-                              itemBuilder: (context, index) {
-                                final c = _chantiers[index];
-                                return _progressionRow(c);
-                              },
-                            ),
-                    ),
-                  ),
+                    // Carte Map
+                    _buildMapCard(actuel),
 
-                  // Carte JOURNAL D'INCIDENTS
-                  InfoCard(
-                    title: "JOURNAL D'INCIDENTS",
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(maxHeight: 150),
-                      child: IncidentList(incidents: []),
-                    ),
-                  ),
-                ]),
+                    const SizedBox(height: 16),
+
+                    // Progression des chantiers
+                    if (_chantiers.isNotEmpty) ...[
+                      _buildSectionHeader("Progression des chantiers"),
+                      Card(
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: _chantiers
+                                .map((c) => _progressionRow(c))
+                                .toList(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Checklist rapide
+                    if (!isClient) ...[
+                      _buildSectionHeader("Checklist du jour"),
+                      _buildChecklistCard(),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Incidents récents
+                    if (_allIncidents.isNotEmpty && !isClient) ...[
+                      _buildSectionHeader("Incidents récents"),
+                      _buildIncidentsCard(),
+                    ],
+                  ]),
+                ),
+              ),
+              const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFinancialSummary() {
+    final ratio = globalBudgetInitial > 0
+        ? (globalBudgetConsomme / globalBudgetInitial)
+        : 0.0;
+    final reste = globalBudgetInitial - globalBudgetConsomme;
+    final budgetColor = _getBudgetColor(ratio);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildStatRow(
+          "Budget Total",
+          "${globalBudgetInitial.toStringAsFixed(0)} ${widget.projet.devise}",
+          Colors.black87,
+        ),
+        const SizedBox(height: 8),
+        _buildStatRow(
+          "Dépenses Actuelles",
+          "${globalBudgetConsomme.toStringAsFixed(0)} ${widget.projet.devise}",
+          budgetColor,
+        ),
+        const SizedBox(height: 8),
+        _buildStatRow(
+          reste < 0 ? "Dépassement" : "Reste",
+          "${reste.abs().toStringAsFixed(0)} ${widget.projet.devise}",
+          reste < 0 ? Colors.red : Colors.green,
+        ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              "Consommation: ${(ratio * 100).toInt()}%",
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: budgetColor,
               ),
             ),
-            const SliverPadding(padding: EdgeInsets.only(bottom: 150)),
+            if (ratio >= 0.8)
+              Icon(
+                ratio >= 1.0
+                    ? Icons.error_outline
+                    : Icons.warning_amber_rounded,
+                color: budgetColor,
+                size: 18,
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: LinearProgressIndicator(
+            value: ratio.clamp(0.0, 1.0),
+            minHeight: 12,
+            backgroundColor: Colors.grey[200],
+            valueColor: AlwaysStoppedAnimation<Color>(budgetColor),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Color _getBudgetColor(double ratio) {
+    if (ratio >= 1.0) return Colors.red;
+    if (ratio >= 0.8) return Colors.orange;
+    return Colors.green;
+  }
+
+  Widget _buildStatRow(String label, String value, Color color) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeaderSection(Chantier actuel) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        WeatherBanner(
+          city: actuel.lieu,
+          lat: actuel.latitude,
+          lon: actuel.longitude,
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildHeaderButton(
+                icon: Icons.chat_bubble_outline,
+                label: "CHAT",
+                color: Colors.orange,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ChatScreen(
+                        chatRoomId: widget.projet.id,
+                        chatRoomType: ChatRoomType.projet,
+                        currentUser: widget.user,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildHeaderButton(
+                icon: Icons.access_time,
+                label: "POINTAGE",
+                color: Colors.blue,
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Module pointage à venir'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildKPISection() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _buildKpiItem(
+              label: "Chantiers",
+              value: "${_chantiers.length}",
+              color: Colors.blue,
+              icon: Icons.construction,
+            ),
+            Container(width: 1, height: 40, color: Colors.grey[300]),
+            _buildKpiItem(
+              label: "Actifs",
+              value:
+                  "${_chantiers.where((c) => c.statut == StatutChantier.enCours).length}",
+              color: Colors.green,
+              icon: Icons.play_circle,
+            ),
+            Container(width: 1, height: 40, color: Colors.grey[300]),
+            _buildKpiItem(
+              label: "Retards",
+              value: "$totalTasksDelayed",
+              color: totalTasksDelayed > 0 ? Colors.red : Colors.grey,
+              icon: Icons.warning,
+            ),
           ],
         ),
       ),
-      floatingActionButton: isClient ? null : _buildFAB(context),
     );
+  }
+
+  Widget _buildMapCard(Chantier actuel) {
+    return GestureDetector(
+      onTap: () {
+        if (_chantiers.isNotEmpty) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => FullScreenMapView(
+                chantiers: _chantiers,
+                chantierActuel: actuel,
+              ),
+            ),
+          );
+        }
+      },
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          children: [
+            SizedBox(
+              height: 200,
+              child: Hero(
+                tag: 'map_preview_hero',
+                child: ChantierMapPreview(
+                  chantiers: _chantiers,
+                  chantierActuel: actuel,
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 10,
+              right: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.7),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.fullscreen, color: Colors.white, size: 16),
+                    SizedBox(width: 4),
+                    Text(
+                      'Agrandir',
+                      style: TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChecklistCard() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: _tasks.map((task) {
+          return CheckboxListTile(
+            value: task.isDone,
+            onChanged: (val) => setState(() => task.isDone = val ?? false),
+            title: Text(
+              task.title,
+              style: TextStyle(
+                fontSize: 14,
+                decoration: task.isDone
+                    ? TextDecoration.lineThrough
+                    : TextDecoration.none,
+                color: task.isDone ? Colors.grey : Colors.black,
+              ),
+            ),
+            controlAffinity: ListTileControlAffinity.leading,
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildIncidentsCard() {
+    final recentIncidents = _allIncidents.take(5).toList();
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: recentIncidents.length,
+        separatorBuilder: (_, _) => const Divider(height: 1),
+        itemBuilder: (context, index) {
+          final incident = recentIncidents[index];
+          return ListTile(
+            dense: true,
+            leading: Icon(
+              Icons.warning,
+              size: 20,
+              color: _getPriorityColor(incident.priorite),
+            ),
+            title: Text(
+              incident.titre,
+              style: const TextStyle(fontSize: 13),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              "Chantier: ${_getChantierName(incident.chantierId)}",
+              style: const TextStyle(fontSize: 11),
+            ),
+            trailing: Text(
+              _formatDate(incident.date),
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12, top: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 20,
+            decoration: BoxDecoration(
+              color: Colors.orange,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getPriorityColor(Priorite priorite) {
+    switch (priorite) {
+      case Priorite.basse:
+        return Colors.green;
+      case Priorite.moyenne:
+        return Colors.orange;
+      case Priorite.haute:
+        return Colors.red;
+      case Priorite.critique:
+        return Colors.purple;
+    }
+  }
+
+  String _getChantierName(String chantierId) {
+    final chantier = widget.projet.chantiers.firstWhere(
+      (c) => c.id == chantierId,
+      orElse: () => _dummyChantier(),
+    );
+    return chantier.nom;
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays}j';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}h';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}min';
+    } else {
+      return 'À l\'instant';
+    }
   }
 
   Widget _buildKpiItem({
@@ -509,18 +689,19 @@ class _DashboardViewState extends State<DashboardView>
     required IconData icon,
   }) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, color: color, size: 20),
-        const SizedBox(height: 4),
+        Icon(icon, color: color, size: 24),
+        const SizedBox(height: 6),
         Text(
           value,
           style: TextStyle(
-            fontSize: 18,
+            fontSize: 20,
             fontWeight: FontWeight.bold,
             color: color,
           ),
         ),
-        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
       ],
     );
   }
@@ -532,24 +713,29 @@ class _DashboardViewState extends State<DashboardView>
     required VoidCallback onTap,
   }) {
     return SizedBox(
-      height: 80,
-      width: 80,
+      height: 70,
       child: ElevatedButton(
         onPressed: onTap,
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
-          padding: EdgeInsets.zero,
+          padding: const EdgeInsets.symmetric(vertical: 8),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, color: Colors.white, size: 24),
+            const SizedBox(height: 4),
             Text(
               label,
-              style: const TextStyle(color: Colors.white, fontSize: 9),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
         ),
@@ -559,8 +745,9 @@ class _DashboardViewState extends State<DashboardView>
 
   Widget _progressionRow(Chantier c) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 12),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -570,7 +757,7 @@ class _DashboardViewState extends State<DashboardView>
                 child: Text(
                   c.nom,
                   style: const TextStyle(
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -579,100 +766,26 @@ class _DashboardViewState extends State<DashboardView>
               ),
               Text(
                 "${(c.progression * 100).toInt()}%",
-                style: const TextStyle(fontSize: 12),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          LinearProgressIndicator(
-            value: c.progression.clamp(0.0, 1.0),
-            color: c.statut == StatutChantier.termine
-                ? Colors.green
-                : Colors.blue,
-            backgroundColor: Colors.grey[200],
-            minHeight: 6,
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+              value: c.progression.clamp(0.0, 1.0),
+              color: c.statut == StatutChantier.termine
+                  ? Colors.green
+                  : Colors.blue,
+              backgroundColor: Colors.grey[200],
+              minHeight: 8,
+            ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildFAB(BuildContext context) {
-    return FloatingActionButton.extended(
-      heroTag: "fab_dashboard",
-      onPressed: () => _showQuickReportForm(context),
-      label: const Text("RAPPORT PHOTO", style: TextStyle(color: Colors.white)),
-      icon: const Icon(Icons.add_a_photo, color: Colors.white),
-      backgroundColor: Colors.orange,
-    );
-  }
-
-  void _showQuickReportForm(BuildContext context) {
-    String? capturedImagePath;
-    final commentController = TextEditingController();
-    final actuel = _getChantierActuel();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-          left: 20,
-          right: 20,
-          top: 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              "NOUVEAU RAPPORT",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 20),
-            PhotoReporter(onImageSaved: (path) => capturedImagePath = path),
-            const SizedBox(height: 15),
-            TextField(
-              controller: commentController,
-              decoration: const InputDecoration(hintText: "Observations..."),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 50),
-                backgroundColor: Colors.orange,
-              ),
-              onPressed: () async {
-                if (capturedImagePath != null && actuel.id != "0") {
-                  final report = Report(
-                    id: const Uuid().v4(),
-                    chantierId: actuel.id,
-                    comment: commentController.text,
-                    imagePath: capturedImagePath!,
-                    date: DateTime.now(),
-                    isIncident: false,
-                  );
-
-                  await DataStorage.addSingleReport(actuel.id, report);
-
-                  if (!context.mounted) return;
-                  Navigator.pop(context);
-
-                  _loadDashboardData();
-                }
-              },
-              child: const Text(
-                "ENVOYER LE RAPPORT",
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

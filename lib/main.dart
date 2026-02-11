@@ -14,6 +14,7 @@ import 'screens/worker/worker_shell.dart';
 import 'screens/foreman_screen/foreman_shell.dart';
 import 'screens/Client/client_shell.dart';
 import 'models/projet_model.dart';
+import 'dart:convert';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -134,7 +135,6 @@ class ChantierAppState extends State<ChantierApp> {
     }
   }
 
-  /// 🔧 FONCTION CORRIGÉE : Recharge l'utilisateur et navigue vers la bonne destination
   Future<void> _reloadUserAndNavigate(String firebaseUid) async {
     if (_isNavigating) {
       debugPrint('⚠️ Navigation déjà en cours, abandon');
@@ -188,7 +188,7 @@ class ChantierAppState extends State<ChantierApp> {
       }
 
       // 2. Sauvegarder localement
-      await _saveUserLocally(user);
+      await _saveCurrentUserLocally(user);
 
       // 3. Attendre un peu pour éviter les conflits
       await Future.delayed(const Duration(milliseconds: 100));
@@ -198,7 +198,6 @@ class ChantierAppState extends State<ChantierApp> {
         return;
       }
 
-      // 4. 🎯 CORRECTION : Utiliser navigateByRole au lieu de _getDestinationForUser
       //    pour avoir une logique de navigation cohérente
       setState(() {
         currentUser = user!;
@@ -225,7 +224,19 @@ class ChantierAppState extends State<ChantierApp> {
     }
   }
 
-  /// 🔧 NOUVELLE FONCTION : Construit la destination correcte selon le rôle
+  Future<void> _saveCurrentUserLocally(UserModel user) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // Sauvegarder le profil de l'utilisateur connecté
+      await prefs.setString('current_user', jsonEncode(user.toJson()));
+
+      debugPrint('💾 Profil utilisateur sauvegardé localement');
+    } catch (e) {
+      debugPrint('⚠️ Erreur sauvegarde profil: $e');
+    }
+  }
+
   Future<Widget> _buildDestinationForUser(UserModel user) async {
     debugPrint(
       '🎯 Construction destination pour ${user.nom} (${user.role.name})',
@@ -239,9 +250,8 @@ class ChantierAppState extends State<ChantierApp> {
       case UserRole.chefDeChantier:
       case UserRole.ouvrier:
         // Charger tous les projets
-        final projets = await DataStorage.loadAllProjects();
+        final projets = await DataStorage.loadAllProjects(forceRefresh: false);
         debugPrint('📁 ${projets.length} projet(s) disponibles');
-
         if (projets.isEmpty) {
           return Scaffold(
             appBar: AppBar(title: const Text('Erreur')),
@@ -343,29 +353,6 @@ class ChantierAppState extends State<ChantierApp> {
               body: Center(child: Text('Rôle non reconnu')),
             );
         }
-    }
-  }
-
-  /// Sauvegarde l'utilisateur localement
-  Future<void> _saveUserLocally(UserModel user) async {
-    try {
-      final users = await DataStorage.loadAllUsers();
-
-      // Chercher si l'utilisateur existe déjà
-      final existingIndex = users.indexWhere(
-        (u) => u.firebaseUid == user.firebaseUid || u.id == user.id,
-      );
-
-      if (existingIndex != -1) {
-        users[existingIndex] = user;
-      } else {
-        users.add(user);
-      }
-
-      await DataStorage.saveAllUsers(users);
-      debugPrint('💾 Utilisateur sauvegardé localement');
-    } catch (e) {
-      debugPrint('⚠️ Erreur sauvegarde locale: $e');
     }
   }
 

@@ -8,10 +8,10 @@ import '../../widgets/weather_banner.dart';
 import '../../services/chat_service.dart';
 import '../chat_screen.dart';
 
-class ClientDashboardView extends StatelessWidget {
+class ClientDashboardView extends StatefulWidget {
   final UserModel user;
   final Projet projet;
-  final Function(int)? onNavigate; // Callback pour naviguer
+  final Function(int)? onNavigate;
 
   const ClientDashboardView({
     super.key,
@@ -21,18 +21,47 @@ class ClientDashboardView extends StatelessWidget {
   });
 
   @override
+  State<ClientDashboardView> createState() => _ClientDashboardViewState();
+}
+
+class _ClientDashboardViewState extends State<ClientDashboardView>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeIn,
+    );
+    _animationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     Chantier? chantier;
 
-    if (projet.chantiers.isNotEmpty) {
+    if (widget.projet.chantiers.isNotEmpty) {
       try {
-        chantier = projet.chantiers.firstWhere(
-          (c) => c.id == user.assignedId,
-          orElse: () => projet.chantiers.first,
+        chantier = widget.projet.chantiers.firstWhere(
+          (c) => c.id == widget.user.assignedId,
+          orElse: () => widget.projet.chantiers.first,
         );
       } catch (e) {
         debugPrint('⚠️ Erreur récupération chantier: $e');
-        chantier = projet.chantiers.first;
+        chantier = widget.projet.chantiers.first;
       }
     }
 
@@ -42,16 +71,32 @@ class ClientDashboardView extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.construction, size: 80, color: Colors.grey),
-              const SizedBox(height: 20),
+              Icon(Icons.construction, size: 100, color: Colors.grey[300]),
+              const SizedBox(height: 24),
               const Text(
                 "Aucun chantier assigné",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: 10),
-              const Text(
+              const SizedBox(height: 12),
+              Text(
                 "Contactez votre chef de projet",
-                style: TextStyle(color: Colors.grey),
+                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 32),
+              OutlinedButton.icon(
+                onPressed: () {
+                  if (widget.onNavigate != null) {
+                    widget.onNavigate!(1);
+                  }
+                },
+                icon: const Icon(Icons.chat_bubble_outline),
+                label: const Text('Contacter l\'admin'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                ),
               ),
             ],
           ),
@@ -60,83 +105,389 @@ class ClientDashboardView extends StatelessWidget {
     }
 
     return Scaffold(
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          // Météo
-          if (chantier.latitude != 0.0 && chantier.longitude != 0.0)
-            WeatherBanner(
-              city: chantier.lieu,
-              lat: chantier.latitude,
-              lon: chantier.longitude,
-            ),
-          if (chantier.latitude != 0.0 && chantier.longitude != 0.0)
-            const SizedBox(height: 25),
-
-          Text(
-            "Bonjour ${user.nom},",
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-          const Text("Voici l'état d'avancement de votre projet."),
-          const SizedBox(height: 25),
-
-          // Progression
-          _buildProgressCard(chantier),
-          const SizedBox(height: 20),
-
-          // Actions rapides - FONCTIONNELLES
-          Row(
+      body: FadeTransition(
+        opacity: _fadeAnimation,
+        child: RefreshIndicator(
+          onRefresh: () async {
+            await Future.delayed(const Duration(seconds: 1));
+            setState(() {});
+          },
+          child: ListView(
+            padding: const EdgeInsets.all(20),
+            physics: const AlwaysScrollableScrollPhysics(),
             children: [
-              Expanded(
-                child: _buildQuickAction(
-                  context,
-                  Icons.chat_bubble_outline,
-                  "Poser une\nquestion",
-                  Colors.blue,
-                  () => _askQuestion(context, chantier!),
+              // Météo
+              if (chantier.latitude != 0.0 && chantier.longitude != 0.0)
+                WeatherBanner(
+                  city: chantier.lieu,
+                  lat: chantier.latitude,
+                  lon: chantier.longitude,
+                ),
+              if (chantier.latitude != 0.0 && chantier.longitude != 0.0)
+                const SizedBox(height: 20),
+
+              // En-tête avec nom utilisateur
+              _buildHeader(),
+              const SizedBox(height: 24),
+
+              // Carte de progression
+              _buildProgressCard(chantier),
+              const SizedBox(height: 20),
+
+              // Actions rapides
+              _buildQuickActions(chantier),
+              const SizedBox(height: 20),
+
+              // Informations du projet
+              _buildProjectInfo(chantier),
+              const SizedBox(height: 20),
+
+              // Budget
+              _buildBudgetCard(chantier),
+              const SizedBox(height: 20),
+
+              // Statut du chantier
+              _buildStatusCard(chantier),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: Colors.blue.withValues(alpha: 0.1),
+              radius: 28,
+              child: const Icon(Icons.person, color: Colors.blue, size: 32),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Bonjour ${widget.user.nom} 👋",
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    "Voici l'état d'avancement de votre projet",
+                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProgressCard(Chantier c) {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [const Color(0xFF1A334D), const Color(0xFF2A4A6D)],
+          ),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          children: [
+            const Text(
+              "PROGRESSION DU CHANTIER",
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+                letterSpacing: 1.2,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  height: 140,
+                  width: 140,
+                  child: CircularProgressIndicator(
+                    value: c.progression.clamp(0.0, 1.0),
+                    strokeWidth: 12,
+                    color: _getProgressColor(c.progression),
+                    backgroundColor: Colors.white.withValues(alpha: 0.1),
+                  ),
+                ),
+                Column(
+                  children: [
+                    Text(
+                      "${(c.progression * 100).toInt()}%",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      "Réalisé",
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.7),
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: _getStatusColor(c.statut).withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: _getStatusColor(c.statut).withValues(alpha: 0.5),
                 ),
               ),
-              const SizedBox(width: 15),
-              Expanded(
-                child: _buildQuickAction(
-                  context,
-                  Icons.forum_outlined,
-                  "Voir la\ndiscussion",
-                  Colors.green,
-                  () => _openChat(context),
+              child: Text(
+                _getStatutLabel(c.statut),
+                style: TextStyle(
+                  color: _getStatusColor(c.statut),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickActions(Chantier chantier) {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildQuickAction(
+            context,
+            Icons.chat_bubble_outline,
+            "Poser une\nquestion",
+            Colors.blue,
+            () => _askQuestion(context, chantier),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildQuickAction(
+            context,
+            Icons.forum_outlined,
+            "Voir la\ndiscussion",
+            Colors.green,
+            () => _openChat(context),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildQuickAction(
+            context,
+            Icons.notifications_outlined,
+            "Notifications",
+            Colors.orange,
+            () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Aucune nouvelle notification'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProjectInfo(Chantier chantier) {
+    return InfoCard(
+      title: "INFORMATIONS DU PROJET",
+      child: Column(
+        children: [
+          _buildInfoRow(Icons.construction, "Chantier", chantier.nom),
+          const Divider(),
+          _buildInfoRow(Icons.location_on, "Localisation", chantier.lieu),
+          if (chantier.budgetInitial > 0) ...[
+            const Divider(),
+            _buildInfoRow(Icons.calendar_today, "Date de début", "En cours"),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBudgetCard(Chantier chantier) {
+    final budgetRatio = chantier.budgetInitial > 0
+        ? (chantier.depensesActuelles / chantier.budgetInitial).clamp(0.0, 1.0)
+        : 0.0;
+    final reste = chantier.budgetInitial - chantier.depensesActuelles;
+
+    return InfoCard(
+      title: "RÉSUMÉ FINANCIER",
+      child: Column(
+        children: [
+          _buildFinanceRow(
+            "Budget Total",
+            "${_formatMoney(chantier.budgetInitial)} ${widget.projet.devise}",
+            Colors.black,
+          ),
+          const SizedBox(height: 8),
+          _buildFinanceRow(
+            "Consommé",
+            "${_formatMoney(chantier.depensesActuelles)} ${widget.projet.devise}",
+            Colors.red,
+          ),
+          const SizedBox(height: 8),
+          _buildFinanceRow(
+            "Reste",
+            "${_formatMoney(reste)} ${widget.projet.devise}",
+            reste > 0 ? Colors.green : Colors.red,
+          ),
+          const SizedBox(height: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "Consommation",
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                  Text(
+                    "${(budgetRatio * 100).toInt()}%",
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: _getBudgetColor(budgetRatio),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: LinearProgressIndicator(
+                  value: budgetRatio,
+                  minHeight: 10,
+                  color: _getBudgetColor(budgetRatio),
+                  backgroundColor: Colors.grey[200],
                 ),
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
 
-          const SizedBox(height: 20),
+  Widget _buildStatusCard(Chantier chantier) {
+    return InfoCard(
+      title: "ÉTAT DU CHANTIER",
+      child: Column(
+        children: [
+          _buildStatusItem(
+            Icons.engineering,
+            "Équipe sur site",
+            "Active",
+            Colors.green,
+          ),
+          const Divider(),
+          _buildStatusItem(
+            Icons.inventory_2,
+            "Matériel",
+            "Disponible",
+            Colors.blue,
+          ),
+          const Divider(),
+          _buildStatusItem(
+            Icons.warning_amber_rounded,
+            "Incidents",
+            "${chantier.incidents.length} signalé(s)",
+            chantier.incidents.isEmpty ? Colors.green : Colors.orange,
+          ),
+        ],
+      ),
+    );
+  }
 
-          // Budget
-          InfoCard(
-            title: "RÉSUMÉ FINANCIER",
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Colors.grey[600]),
+          const SizedBox(width: 12),
+          Expanded(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildFinanceRow(
-                  "Budget Total",
-                  "${_formatMoney(chantier.budgetInitial)} ${projet.devise}",
-                  Colors.black,
+                Text(
+                  label,
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
-                const Divider(),
-                _buildFinanceRow(
-                  "Consommé",
-                  "${_formatMoney(chantier.depensesActuelles)} ${projet.devise}",
-                  Colors.red,
-                ),
-                const SizedBox(height: 10),
-                LinearProgressIndicator(
-                  value: chantier.budgetInitial > 0
-                      ? (chantier.depensesActuelles / chantier.budgetInitial)
-                            .clamp(0.0, 1.0)
-                      : 0.0,
-                  color: Colors.redAccent,
-                  backgroundColor: Colors.grey[200],
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusItem(
+    IconData icon,
+    String label,
+    String value,
+    Color color,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 20, color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 14))),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: color,
             ),
           ),
         ],
@@ -158,24 +509,26 @@ class ClientDashboardView extends StatelessWidget {
             Text('Question Urgente'),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Votre question sera marquée comme prioritaire et le chef de projet sera notifié.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            const SizedBox(height: 15),
-            TextField(
-              controller: questionController,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                hintText: 'Tapez votre question ici...',
-                border: OutlineInputBorder(),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Votre question sera marquée comme prioritaire et le chef de projet sera notifié.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
-            ),
-          ],
+              const SizedBox(height: 15),
+              TextField(
+                controller: questionController,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  hintText: 'Tapez votre question ici...',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -189,26 +542,25 @@ class ClientDashboardView extends StatelessWidget {
                   const SnackBar(
                     content: Text('Veuillez écrire une question'),
                     backgroundColor: Colors.red,
+                    behavior: SnackBarBehavior.floating,
                   ),
                 );
                 return;
               }
 
-              // CORRECTION : Créer le message avec les nouveaux paramètres
               final msg = Message(
                 id: '',
-                senderId: user.id,
-                senderName: user.nom,
+                senderId: widget.user.id,
+                senderName: widget.user.nom,
                 text: questionController.text.trim(),
                 timestamp: DateTime.now(),
-                chatRoomId: projet.id, // ID du projet pour le chat projet
-                chatRoomType: ChatRoomType.projet, // Type de salon projet
+                chatRoomId: widget.projet.id,
+                chatRoomType: ChatRoomType.projet,
                 type: MessageType.question,
                 isRead: false,
               );
 
               try {
-                // CORRECTION : Utiliser la nouvelle méthode sendMessage
                 final chatService = ChatService();
                 await chatService.sendMessage(msg);
 
@@ -218,6 +570,7 @@ class ClientDashboardView extends StatelessWidget {
                     const SnackBar(
                       content: Text('✅ Question envoyée au chef de projet'),
                       backgroundColor: Colors.green,
+                      behavior: SnackBarBehavior.floating,
                     ),
                   );
                 }
@@ -227,6 +580,7 @@ class ClientDashboardView extends StatelessWidget {
                     SnackBar(
                       content: Text('Erreur: $e'),
                       backgroundColor: Colors.red,
+                      behavior: SnackBarBehavior.floating,
                     ),
                   );
                 }
@@ -243,72 +597,20 @@ class ClientDashboardView extends StatelessWidget {
 
   /// ✅ FONCTION : Ouvrir le chat
   void _openChat(BuildContext context) {
-    // Si callback fourni, naviguer vers l'index du chat (1)
-    if (onNavigate != null) {
-      onNavigate!(1);
+    if (widget.onNavigate != null) {
+      widget.onNavigate!(1);
     } else {
-      // Sinon, ouvrir directement le chat
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => ChatScreen(
-            chatRoomId: projet.id,
+            chatRoomId: widget.projet.id,
             chatRoomType: ChatRoomType.projet,
-            currentUser: user,
+            currentUser: widget.user,
           ),
         ),
       );
     }
-  }
-
-  Widget _buildProgressCard(Chantier c) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A334D),
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Column(
-        children: [
-          const Text(
-            "PROGRESSION",
-            style: TextStyle(color: Colors.white70, fontSize: 12),
-          ),
-          const SizedBox(height: 10),
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              SizedBox(
-                height: 100,
-                width: 100,
-                child: CircularProgressIndicator(
-                  value: c.progression.clamp(0.0, 1.0),
-                  strokeWidth: 10,
-                  color: Colors.orange,
-                  backgroundColor: Colors.white10,
-                ),
-              ),
-              Text(
-                "${(c.progression * 100).toInt()}%",
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 15),
-          Text(
-            c.statut.name.toUpperCase(),
-            style: const TextStyle(
-              color: Colors.orangeAccent,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildQuickAction(
@@ -320,16 +622,17 @@ class ClientDashboardView extends StatelessWidget {
   ) {
     return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.all(15),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: color.withValues(alpha: 0.2)),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
         ),
         child: Column(
           children: [
-            Icon(icon, color: color, size: 30),
+            Icon(icon, color: color, size: 32),
             const SizedBox(height: 8),
             Text(
               label,
@@ -337,7 +640,7 @@ class ClientDashboardView extends StatelessWidget {
               style: TextStyle(
                 color: color,
                 fontWeight: FontWeight.bold,
-                fontSize: 12,
+                fontSize: 11,
               ),
             ),
           ],
@@ -352,10 +655,14 @@ class ClientDashboardView extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.grey)),
+          Text(label, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
           Text(
             value,
-            style: TextStyle(color: color, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 14,
+              color: color,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ],
       ),
@@ -369,5 +676,39 @@ class ClientDashboardView extends StatelessWidget {
       return "${(amount / 1000).toStringAsFixed(1)}K";
     }
     return amount.toStringAsFixed(0);
+  }
+
+  String _getStatutLabel(StatutChantier statut) {
+    switch (statut) {
+      case StatutChantier.enCours:
+        return "EN COURS";
+      case StatutChantier.termine:
+        return "TERMINÉ";
+      case StatutChantier.enRetard:
+        return "EN RETARD";
+    }
+  }
+
+  Color _getProgressColor(double progress) {
+    if (progress >= 0.8) return Colors.green;
+    if (progress >= 0.5) return Colors.orange;
+    return Colors.blue;
+  }
+
+  Color _getStatusColor(StatutChantier statut) {
+    switch (statut) {
+      case StatutChantier.enCours:
+        return Colors.green;
+      case StatutChantier.termine:
+        return Colors.blue;
+      case StatutChantier.enRetard:
+        return Colors.orange;
+    }
+  }
+
+  Color _getBudgetColor(double ratio) {
+    if (ratio >= 1.0) return Colors.red;
+    if (ratio >= 0.8) return Colors.orange;
+    return Colors.green;
   }
 }

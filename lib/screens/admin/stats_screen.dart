@@ -133,7 +133,7 @@ class _StatsScreenState extends State<StatsScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: Text("Dashboard : ${widget.projet.nom}"),
+        title: Text("Stats Dashboard : ${widget.projet.nom}"),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
         actions: [

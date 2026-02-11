@@ -6,7 +6,7 @@ import '../../models/message_model.dart';
 import '../../services/chat_service.dart';
 import '../chat_screen.dart';
 
-/// 🎯 HUB DE CHAT POUR L'ADMIN
+/// 🎯 HUB DE CHAT POUR L'ADMIN - VERSION AMÉLIORÉE
 /// Permet de choisir entre :
 /// - Room Projet (Admin ↔️ Client)
 /// - Rooms Chantier (Admin ↔️ Chef ↔️ Ouvriers) - une par chantier
@@ -24,6 +24,18 @@ class _AdminChatHubState extends State<AdminChatHub> {
   final ChatService _chatService = ChatService();
   String? _selectedRoomId;
   ChatRoomType? _selectedRoomType;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Simuler un chargement initial pour récupérer les compteurs
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,25 +50,37 @@ class _AdminChatHubState extends State<AdminChatHub> {
 
   /// 💬 Écran de chat avec bouton retour
   Widget _buildChatScreen() {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_getRoomTitle()),
-        backgroundColor: const Color(0xFF1A334D),
-        foregroundColor: Colors.white,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            setState(() {
-              _selectedRoomId = null;
-              _selectedRoomType = null;
-            });
-          },
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (bool didPop) {
+        if (!didPop) {
+          // L'utilisateur tente de quitter la page
+          setState(() {
+            _selectedRoomId = null;
+            _selectedRoomType = null;
+          });
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(_getRoomTitle()),
+          backgroundColor: const Color(0xFF1A334D),
+          foregroundColor: Colors.white,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              setState(() {
+                _selectedRoomId = null;
+                _selectedRoomType = null;
+              });
+            },
+          ),
         ),
-      ),
-      body: ChatScreen(
-        chatRoomId: _selectedRoomId!,
-        chatRoomType: _selectedRoomType!,
-        currentUser: widget.user,
+        body: ChatScreen(
+          chatRoomId: _selectedRoomId!,
+          chatRoomType: _selectedRoomType!,
+          currentUser: widget.user,
+        ),
       ),
     );
   }
@@ -68,77 +92,136 @@ class _AdminChatHubState extends State<AdminChatHub> {
         title: const Text('DISCUSSIONS'),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
+        elevation: 2,
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // En-tête
-          const Padding(
-            padding: EdgeInsets.only(bottom: 20),
-            child: Text(
-              'Sélectionnez une conversation',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-          ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: () async {
+                setState(() => _isLoading = true);
+                await Future.delayed(const Duration(milliseconds: 500));
+                if (mounted) {
+                  setState(() => _isLoading = false);
+                }
+              },
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  // En-tête
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      'Sélectionnez une conversation',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    'Projet: ${widget.projet.nom}',
+                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                  ),
+                  const SizedBox(height: 20),
 
-          // 🟢 ROOM PROJET - Admin ↔️ Client
-          _buildRoomCard(
-            title: '💼 Discussion Client',
-            subtitle: 'Communication avec le client du projet',
-            icon: Icons.business_center,
-            color: Colors.blue,
-            roomId: widget.projet.id,
-            roomType: ChatRoomType.projet,
-            participants: 'Vous ↔️ Client',
-          ),
+                  // 🟢 ROOM PROJET - Admin ↔️ Client
+                  _buildRoomCard(
+                    title: '💼 Discussion Client',
+                    subtitle: 'Communication avec le client du projet',
+                    icon: Icons.business_center,
+                    color: Colors.blue,
+                    roomId: widget.projet.id,
+                    roomType: ChatRoomType.projet,
+                    participants: 'Vous ↔️ Client',
+                  ),
 
-          const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
-          // 📌 Section Chantiers
-          if (widget.projet.chantiers.isNotEmpty) ...[
-            const Divider(),
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                '🏗️ DISCUSSIONS PAR CHANTIER',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
-                ),
+                  // 📌 Section Chantiers
+                  if (widget.projet.chantiers.isNotEmpty) ...[
+                    const Divider(),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.construction,
+                            size: 16,
+                            color: Colors.grey,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'DISCUSSIONS PAR CHANTIER',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // 🟠 ROOMS CHANTIER - Admin ↔️ Chef ↔️ Ouvriers
+                    ...widget.projet.chantiers.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final chantier = entry.value;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildRoomCard(
+                          title: chantier.nom,
+                          subtitle: chantier.lieu,
+                          icon: Icons.construction,
+                          color: _getChantierColor(index),
+                          roomId: chantier.id,
+                          roomType: ChatRoomType.chantier,
+                          participants: 'Vous ↔️ Chef de chantier ↔️ Ouvriers',
+                        ),
+                      );
+                    }),
+                  ],
+
+                  // Message si aucun chantier
+                  if (widget.projet.chantiers.isEmpty)
+                    Card(
+                      elevation: 0,
+                      color: Colors.grey[100],
+                      margin: const EdgeInsets.symmetric(vertical: 20),
+                      child: Padding(
+                        padding: const EdgeInsets.all(30),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 48,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Aucun chantier créé',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Créez un chantier pour activer les discussions d\'équipe',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[500],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
-
-            // 🟠 ROOMS CHANTIER - Admin ↔️ Chef ↔️ Ouvriers
-            ...widget.projet.chantiers.map((chantier) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _buildRoomCard(
-                  title: chantier.nom,
-                  subtitle: chantier.lieu,
-                  icon: Icons.construction,
-                  color: Colors.orange,
-                  roomId: chantier.id,
-                  roomType: ChatRoomType.chantier,
-                  participants: 'Vous ↔️ Chef de chantier ↔️ Ouvriers',
-                ),
-              );
-            }),
-          ],
-
-          // Message si aucun chantier
-          if (widget.projet.chantiers.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(20),
-              child: Center(
-                child: Text(
-                  'Aucun chantier créé pour ce projet',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-            ),
-        ],
-      ),
     );
   }
 
@@ -161,6 +244,12 @@ class _AdminChatHubState extends State<AdminChatHub> {
           elevation: 2,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
+            side: BorderSide(
+              color: unreadCount > 0
+                  ? Colors.red.withValues(alpha: 0.3)
+                  : Colors.transparent,
+              width: 1.5,
+            ),
           ),
           child: InkWell(
             onTap: () {
@@ -200,6 +289,8 @@ class _AdminChatHubState extends State<AdminChatHub> {
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                             // Badge non lus
@@ -278,7 +369,19 @@ class _AdminChatHubState extends State<AdminChatHub> {
           statut: StatutChantier.enCours,
         ),
       );
-      return '🏗️ ${chantier.nom}';
+      return '🗃️ ${chantier.nom}';
     }
+  }
+
+  /// Couleur alternée pour les chantiers
+  Color _getChantierColor(int index) {
+    final colors = [
+      Colors.orange,
+      Colors.teal,
+      Colors.purple,
+      Colors.indigo,
+      Colors.pink,
+    ];
+    return colors[index % colors.length];
   }
 }

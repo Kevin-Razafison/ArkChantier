@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/chantier_model.dart';
 import '../../models/projet_model.dart';
 import '../../services/data_storage.dart';
-import '../../widgets/photo_reporter.dart'; // Assure-toi du chemin correct
+import '../../widgets/photo_reporter.dart';
 
 class WorkerChantierView extends StatefulWidget {
   final Projet projet;
@@ -21,7 +21,8 @@ class WorkerChantierView extends StatefulWidget {
 class _WorkerChantierViewState extends State<WorkerChantierView> {
   void _showIncidentDialog(BuildContext context) {
     String tempTitre = "";
-    String tempImagePath = "";
+    String tempDescription = "";
+    String? tempImagePath;
     Priorite tempPriorite = Priorite.moyenne;
 
     showModalBottomSheet(
@@ -32,7 +33,6 @@ class _WorkerChantierViewState extends State<WorkerChantierView> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
       ),
       builder: (context) => StatefulBuilder(
-        // Pour gérer l'état interne du BottomSheet
         builder: (context, setModalState) => Padding(
           padding: EdgeInsets.only(
             bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -61,7 +61,24 @@ class _WorkerChantierViewState extends State<WorkerChantierView> {
                 ),
                 const SizedBox(height: 15),
 
-                // Sélection de priorité (visuel pour l'ouvrier)
+                // Champ Description
+                TextField(
+                  decoration: const InputDecoration(
+                    labelText: "Description détaillée",
+                    hintText: "Décrivez le problème...",
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 3,
+                  onChanged: (val) => tempDescription = val,
+                ),
+                const SizedBox(height: 15),
+
+                // Sélection de priorité
+                const Text(
+                  "Priorité :",
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
@@ -71,23 +88,31 @@ class _WorkerChantierViewState extends State<WorkerChantierView> {
                       Priorite.basse,
                       Colors.green,
                       tempPriorite,
-                      (p) => tempPriorite = p,
+                      (p) => setModalState(() => tempPriorite = p),
                     ),
                     _priorityChip(
                       setModalState,
-                      "URGENT",
-                      Priorite.haute,
+                      "Moyenne",
+                      Priorite.moyenne,
                       Colors.orange,
                       tempPriorite,
-                      (p) => tempPriorite = p,
+                      (p) => setModalState(() => tempPriorite = p),
                     ),
                     _priorityChip(
                       setModalState,
-                      "CRITIQUE",
-                      Priorite.critique,
+                      "Haute",
+                      Priorite.haute,
                       Colors.red,
                       tempPriorite,
-                      (p) => tempPriorite = p,
+                      (p) => setModalState(() => tempPriorite = p),
+                    ),
+                    _priorityChip(
+                      setModalState,
+                      "Critique",
+                      Priorite.critique,
+                      Colors.purple,
+                      tempPriorite,
+                      (p) => setModalState(() => tempPriorite = p),
                     ),
                   ],
                 ),
@@ -96,7 +121,7 @@ class _WorkerChantierViewState extends State<WorkerChantierView> {
                 // COMPOSANT PHOTO
                 PhotoReporter(
                   onImageSaved: (path) {
-                    tempImagePath = path;
+                    setModalState(() => tempImagePath = path);
                   },
                 ),
 
@@ -115,13 +140,22 @@ class _WorkerChantierViewState extends State<WorkerChantierView> {
                       ),
                     ),
                     onPressed: () async {
-                      if (tempTitre.isEmpty) return;
+                      if (tempTitre.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Veuillez saisir un titre"),
+                          ),
+                        );
+                        return;
+                      }
 
                       final newIncident = Incident(
                         id: DateTime.now().millisecondsSinceEpoch.toString(),
                         chantierId: widget.chantier.id,
                         titre: tempTitre,
-                        description: "Signalé par ouvrier",
+                        description: tempDescription.isNotEmpty
+                            ? tempDescription
+                            : "Signalé par ouvrier",
                         date: DateTime.now(),
                         priorite: tempPriorite,
                         imagePath: tempImagePath,
@@ -132,16 +166,48 @@ class _WorkerChantierViewState extends State<WorkerChantierView> {
                         widget.chantier.incidents.add(newIncident);
                       });
 
-                      // Sauvegarde globale du projet
-                      await DataStorage.saveSingleProject(widget.projet);
+                      // Mettre à jour le projet dans la liste
+                      final projetIndex = widget.projet.chantiers.indexWhere(
+                        (c) => c.id == widget.chantier.id,
+                      );
+                      if (projetIndex != -1) {
+                        widget.projet.chantiers[projetIndex] = widget.chantier;
+                      }
 
-                      if (context.mounted) {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("Alerte envoyée au Chef de Projet"),
-                          ),
+                      try {
+                        // Sauvegarde locale uniquement (évite l'erreur Firebase)
+                        await DataStorage.saveSingleProject(widget.projet);
+
+                        debugPrint(
+                          "✅ Incident sauvegardé localement: ${newIncident.titre}",
                         );
+
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                "Alerte envoyée au Chef de Projet",
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              backgroundColor: Colors.green,
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        debugPrint("❌ Erreur sauvegarde incident: $e");
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                "Incident enregistré localement mais erreur de synchronisation: $e",
+                              ),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                        }
                       }
                     },
                     child: const Text("ENVOYER L'ALERTE"),
@@ -166,9 +232,16 @@ class _WorkerChantierViewState extends State<WorkerChantierView> {
   ) {
     bool isSelected = current == p;
     return ChoiceChip(
-      label: Text(label),
+      label: Text(
+        label,
+        style: TextStyle(
+          color: isSelected ? Colors.white : color,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
       selected: isSelected,
-      selectedColor: color.withValues(alpha: 0.2),
+      selectedColor: color,
+      backgroundColor: color.withValues(alpha: 0.1),
       onSelected: (bool selected) {
         setState(() => onSelect(p));
       },
@@ -185,18 +258,6 @@ class _WorkerChantierViewState extends State<WorkerChantierView> {
           _buildInfoCard(),
           const SizedBox(height: 20),
 
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: const Text(
-              "VOTRE SÉCURITÉ",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.blueGrey,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-
           // BOUTON SIGNALEMENT
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -208,7 +269,7 @@ class _WorkerChantierViewState extends State<WorkerChantierView> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: Colors.redAccent.withValues(alpha: 0.3),
+                    color: Colors.redAccent.withValues(alpha: .3),
                   ),
                   boxShadow: [
                     BoxShadow(
@@ -233,18 +294,110 @@ class _WorkerChantierViewState extends State<WorkerChantierView> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+                    const SizedBox(height: 5),
                     const Text(
                       "Une photo vaut mieux que mille mots.",
                       style: TextStyle(color: Colors.grey, fontSize: 12),
                     ),
+                    const SizedBox(height: 10),
+                    // Afficher les incidents récents
+                    if (widget.chantier.incidents.isNotEmpty)
+                      Column(
+                        children: [
+                          const Divider(),
+                          Text(
+                            "${widget.chantier.incidents.length} incident(s) signalé(s)",
+                            style: const TextStyle(
+                              color: Colors.blueGrey,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
               ),
             ),
           ),
+          const SizedBox(height: 20),
+
+          // Liste des incidents du chantier
+          if (widget.chantier.incidents.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "INCIDENTS SIGNALÉS",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blueGrey,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  ...widget.chantier.incidents
+                      .take(3)
+                      .map(
+                        (incident) => Card(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          child: ListTile(
+                            leading: Icon(
+                              Icons.warning,
+                              color: _getPriorityColor(incident.priorite),
+                            ),
+                            title: Text(
+                              incident.titre,
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                            subtitle: Text(
+                              incident.description,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            trailing: Text(
+                              _formatDate(incident.date),
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                          ),
+                        ),
+                      ),
+                ],
+              ),
+            ),
         ],
       ),
     );
+  }
+
+  Color _getPriorityColor(Priorite priorite) {
+    switch (priorite) {
+      case Priorite.basse:
+        return Colors.green;
+      case Priorite.moyenne:
+        return Colors.orange;
+      case Priorite.haute:
+        return Colors.red;
+      case Priorite.critique:
+        return Colors.purple;
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays}j';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}h';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}min';
+    } else {
+      return 'À l\'instant';
+    }
   }
 
   Widget _buildInfoCard() {
@@ -279,13 +432,18 @@ class _WorkerChantierViewState extends State<WorkerChantierView> {
             ),
           ),
           const SizedBox(height: 5),
-          const Row(
+          Row(
             children: [
-              Icon(Icons.location_on, color: Colors.white54, size: 16),
-              SizedBox(width: 5),
+              const Icon(Icons.location_on, color: Colors.white54, size: 16),
+              const SizedBox(width: 5),
               Text(
-                "Antananarivo, Madagascar",
-                style: TextStyle(color: Colors.white54),
+                widget.chantier.lieu,
+                style: const TextStyle(color: Colors.white54),
+              ),
+              const Spacer(),
+              Text(
+                "Progression: ${(widget.chantier.progression * 100).toInt()}%",
+                style: const TextStyle(color: Colors.white54),
               ),
             ],
           ),

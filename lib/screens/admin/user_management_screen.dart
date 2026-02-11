@@ -2,16 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/user_model.dart';
+import '../../models/projet_model.dart';
 import '../../services/data_storage.dart';
 import '../../services/encryption_service.dart';
-import '../../models/projet_model.dart';
 import '../../models/ouvrier_model.dart';
 import '../../main.dart';
 import '../../services/firebase_sync_service.dart';
 import '../../models/chantier_model.dart';
 
 class UserManagementScreen extends StatefulWidget {
-  const UserManagementScreen({super.key});
+  final Projet? projet;
+
+  const UserManagementScreen({super.key, this.projet});
 
   @override
   State<UserManagementScreen> createState() => _UserManagementScreenState();
@@ -24,6 +26,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
   String _searchQuery = "";
   UserRole? _selectedFilter;
   bool _isLoading = true;
+  bool _isCreatingUser = false;
 
   @override
   void initState() {
@@ -31,7 +34,6 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     _loadInitialData();
   }
 
-  /// Rafraîchir les données depuis Firebase
   Future<void> _refreshFromFirebase() async {
     setState(() => _isLoading = true);
 
@@ -72,7 +74,9 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
 
     try {
       final results = await Future.wait([
-        DataStorage.loadAllUsers(),
+        widget.projet != null
+            ? DataStorage.loadUsersForProject(widget.projet!.id)
+            : DataStorage.loadAllUsers(),
         DataStorage.loadAllProjects(),
       ]);
 
@@ -92,6 +96,22 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     }
   }
 
+  bool _isUserInCurrentProject(UserModel user) {
+    if (widget.projet == null) return true;
+
+    if (user.isAssignedToProject(widget.projet!.id)) {
+      return true;
+    }
+
+    for (var chantier in widget.projet!.chantiers) {
+      if (user.isAssignedToChantier(chantier.id)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   void _applyFilters() {
     setState(() {
       _filteredUsers = _allUsers.where((user) {
@@ -100,7 +120,9 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
             user.email.toLowerCase().contains(_searchQuery.toLowerCase());
         final matchesRole =
             _selectedFilter == null || user.role == _selectedFilter;
-        return matchesSearch && matchesRole;
+        final matchesProject = _isUserInCurrentProject(user);
+
+        return matchesSearch && matchesRole && matchesProject;
       }).toList();
     });
   }
@@ -157,7 +179,6 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     return projet.chantiers;
   }
 
-  // Fonction pour obtenir la devise d'un projet
   String? _getDeviseForProject(String projectId) {
     try {
       final projet = _availableProjects.firstWhere((p) => p.id == projectId);
@@ -167,7 +188,6 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     }
   }
 
-  // Fonction pour obtenir l'icône selon le rôle
   IconData _getRoleIcon(UserRole role) {
     switch (role) {
       case UserRole.chefProjet:
@@ -185,10 +205,26 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Annuaire des Utilisateurs"),
+        title: widget.projet != null
+            ? Text("Utilisateurs - ${widget.projet!.nom}")
+            : const Text("Annuaire des Utilisateurs"),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
         actions: [
+          if (widget.projet != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              margin: const EdgeInsets.only(right: 8),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.orange),
+              ),
+              child: Text(
+                "Projet: ${widget.projet!.nom}",
+                style: const TextStyle(fontSize: 12, color: Colors.white),
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Rafraîchir depuis Firebase',
@@ -203,7 +239,25 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                 _buildSearchAndFilters(),
                 Expanded(
                   child: _filteredUsers.isEmpty
-                      ? const Center(child: Text("Aucun utilisateur trouvé"))
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.people_outline,
+                                size: 80,
+                                color: Colors.grey.withValues(alpha: 0.5),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                widget.projet != null
+                                    ? "Aucun utilisateur dans ce projet"
+                                    : "Aucun utilisateur trouvé",
+                                style: const TextStyle(color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        )
                       : ListView.builder(
                           itemCount: _filteredUsers.length,
                           itemBuilder: (context, index) {
@@ -231,22 +285,10 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                                     Text(
                                       "${user.role.name.toUpperCase()} • ${user.email}",
                                     ),
-                                    if (user.role == UserRole.chefDeChantier)
-                                      const Text(
-                                        "Salaire mensuel fixe",
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.green,
-                                        ),
-                                      ),
-                                    if (user.role == UserRole.ouvrier)
-                                      const Text(
-                                        "Salaire journalier",
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.orange,
-                                        ),
-                                      ),
+                                    if (widget.projet != null) ...[
+                                      const SizedBox(height: 4),
+                                      _buildUserAssignmentInfo(user),
+                                    ],
                                   ],
                                 ),
                                 trailing: IconButton(
@@ -271,6 +313,30 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     );
   }
 
+  Widget _buildUserAssignmentInfo(UserModel user) {
+    String assignment = "Non assigné";
+
+    if (user.isAssignedToProject(widget.projet!.id)) {
+      assignment = "Projet: ${widget.projet!.nom}";
+    } else {
+      for (var chantier in widget.projet!.chantiers) {
+        if (user.isAssignedToChantier(chantier.id)) {
+          assignment = "Chantier: ${chantier.nom}";
+          break;
+        }
+      }
+    }
+
+    return Text(
+      assignment,
+      style: const TextStyle(
+        fontSize: 11,
+        color: Colors.orange,
+        fontWeight: FontWeight.bold,
+      ),
+    );
+  }
+
   void _showAddUserDialog(BuildContext pageContext) {
     final nomController = TextEditingController();
     final emailController = TextEditingController();
@@ -290,621 +356,648 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
           return AlertDialog(
             title: const Text("Nouvel Utilisateur"),
             content: SingleChildScrollView(
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Section informations de base
-                    const Text(
-                      "Informations de base",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: Color(0xFF1A334D),
-                      ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    "Informations de base",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Color(0xFF1A334D),
                     ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: nomController,
-                      decoration: const InputDecoration(
-                        labelText: "Nom complet",
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.person),
-                      ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: nomController,
+                    decoration: const InputDecoration(
+                      labelText: "Nom complet",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.person),
                     ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: emailController,
-                      decoration: const InputDecoration(
-                        labelText: "Email",
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.email),
-                      ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: emailController,
+                    decoration: const InputDecoration(
+                      labelText: "Email",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.email),
                     ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: passwordController,
-                      decoration: const InputDecoration(
-                        labelText: "Mot de passe",
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.lock),
-                      ),
-                      obscureText: true,
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: passwordController,
+                    decoration: const InputDecoration(
+                      labelText: "Mot de passe",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.lock),
                     ),
-                    const SizedBox(height: 20),
+                    obscureText: true,
+                  ),
+                  const SizedBox(height: 20),
 
-                    // Section rôle
-                    const Text(
-                      "Rôle de l'utilisateur",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: Color(0xFF1A334D),
-                      ),
+                  const Text(
+                    "Rôle de l'utilisateur",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Color(0xFF1A334D),
                     ),
-                    const SizedBox(height: 10),
-                    DropdownButtonFormField<UserRole>(
-                      initialValue: selectedRole,
-                      decoration: const InputDecoration(
-                        labelText: "Sélectionner un rôle",
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.assignment_ind),
-                      ),
-                      items: UserRole.values
-                          .where((role) => role != UserRole.chefProjet)
-                          .map(
-                            (role) => DropdownMenuItem(
-                              value: role,
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    _getRoleIcon(role),
-                                    color: _getRoleColor(role),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        role.name.toUpperCase(),
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                        ),
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<UserRole>(
+                    initialValue: selectedRole,
+                    decoration: const InputDecoration(
+                      labelText: "Sélectionner un rôle",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.assignment_ind),
+                    ),
+                    items: UserRole.values
+                        .where((role) => role != UserRole.chefProjet)
+                        .map(
+                          (role) => DropdownMenuItem(
+                            value: role,
+                            child: Row(
+                              children: [
+                                Icon(
+                                  _getRoleIcon(role),
+                                  color: _getRoleColor(role),
+                                ),
+                                const SizedBox(width: 10),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      role.name.toUpperCase(),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
                                       ),
-                                      Text(
-                                        _getRoleDescription(role),
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey,
-                                        ),
+                                    ),
+                                    Text(
+                                      _getRoleDescription(role),
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
                                       ),
-                                    ],
-                                  ),
-                                ],
-                              ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
-                          )
-                          .toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setDialogState(() {
-                            selectedRole = val;
-                            selectedChantierId = null;
-                            selectedProjectForChantier = null;
-                            selectedProjectId = null;
-                            selectedProjectDevise = null;
-                          });
-                        }
-                      },
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setDialogState(() {
+                          selectedRole = val;
+                          selectedChantierId = null;
+                          selectedProjectForChantier = null;
+                          selectedProjectId = null;
+                          selectedProjectDevise = null;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 20),
+
+                  if (selectedRole == UserRole.ouvrier) ...[
+                    const Text(
+                      "Informations salariales (ouvrier)",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Color(0xFF1A334D),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: salaryController,
+                      decoration: InputDecoration(
+                        labelText: "Salaire journalier",
+                        border: const OutlineInputBorder(),
+                        prefixIcon: const Icon(
+                          Icons.payments_outlined,
+                          color: Colors.orange,
+                        ),
+                        helperText:
+                            "Montant payé par jour de présence effective",
+                        suffixText: selectedProjectDevise,
+                        suffixStyle: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange,
+                        ),
+                      ),
+                      keyboardType: TextInputType.number,
                     ),
                     const SizedBox(height: 20),
+                  ],
 
-                    // Section salaire pour ouvrier
-                    if (selectedRole == UserRole.ouvrier) ...[
-                      const Text(
-                        "Informations salariales (ouvrier)",
-                        style: TextStyle(
+                  if (selectedRole == UserRole.chefDeChantier) ...[
+                    const Text(
+                      "Informations salariales (chef de chantier)",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Color(0xFF1A334D),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: salaryController,
+                      decoration: InputDecoration(
+                        labelText: "Salaire mensuel fixe",
+                        border: const OutlineInputBorder(),
+                        prefixIcon: const Icon(
+                          Icons.account_balance_wallet,
+                          color: Colors.teal,
+                        ),
+                        helperText:
+                            "Salaire fixe mensuel, indépendant des présences",
+                        suffixText: selectedProjectDevise,
+                        suffixStyle: const TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: Color(0xFF1A334D),
+                          color: Colors.teal,
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: salaryController,
-                        decoration: InputDecoration(
-                          labelText: "Salaire journalier",
-                          border: const OutlineInputBorder(),
-                          prefixIcon: const Icon(
-                            Icons.payments_outlined,
-                            color: Colors.orange,
-                          ),
-                          helperText:
-                              "Montant payé par jour de présence effective",
-                          suffixText: selectedProjectDevise,
-                          suffixStyle: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orange,
-                          ),
-                        ),
-                        keyboardType: TextInputType.number,
-                      ),
-                      const SizedBox(height: 20),
-                    ],
+                      keyboardType: TextInputType.number,
+                    ),
+                    const SizedBox(height: 20),
+                  ],
 
-                    // Section salaire pour chef de chantier
-                    if (selectedRole == UserRole.chefDeChantier) ...[
-                      const Text(
-                        "Informations salariales (chef de chantier)",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: Color(0xFF1A334D),
-                        ),
+                  if (selectedRole == UserRole.ouvrier ||
+                      selectedRole == UserRole.chefDeChantier) ...[
+                    const Text(
+                      "Affectation au chantier",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Color(0xFF1A334D),
                       ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: salaryController,
-                        decoration: InputDecoration(
-                          labelText:
-                              "Salaire mensuel fixe", // Retirez la devise du labelText
-                          border: const OutlineInputBorder(),
-                          prefixIcon: const Icon(
-                            Icons.account_balance_wallet,
-                            color: Colors.teal,
-                          ), // Icône neutre
-                          helperText:
-                              "Salaire fixe mensuel, indépendant des présences",
-                          suffixText:
-                              selectedProjectDevise, // La devise s'affichera ici
-                          suffixStyle: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.teal,
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blueGrey[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey[300]!),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "Étape 1 : Sélectionnez un projet",
+                            style: TextStyle(fontWeight: FontWeight.bold),
                           ),
-                        ),
-                        keyboardType: TextInputType.number,
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-
-                    // Section affectation pour ouvrier et chef de chantier
-                    if (selectedRole == UserRole.ouvrier ||
-                        selectedRole == UserRole.chefDeChantier) ...[
-                      const Text(
-                        "Affectation au chantier",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: Color(0xFF1A334D),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.blueGrey[50],
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey[300]!),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<String>(
+                            decoration: InputDecoration(
+                              labelText: "Projet",
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              filled: true,
+                              fillColor: Colors.white,
+                            ),
+                            items: _availableProjects.map((p) {
+                              return DropdownMenuItem(
+                                value: p.id,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(p.nom),
+                                    Text(
+                                      "Devise: ${p.devise}",
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              setDialogState(() {
+                                selectedProjectForChantier = val;
+                                selectedChantierId = null;
+                                if (val != null) {
+                                  selectedProjectDevise = _getDeviseForProject(
+                                    val,
+                                  );
+                                } else {
+                                  selectedProjectDevise = null;
+                                }
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 15),
+                          if (selectedProjectForChantier != null) ...[
                             const Text(
-                              "Étape 1 : Sélectionnez un projet",
+                              "Étape 2 : Sélectionnez un chantier",
                               style: TextStyle(fontWeight: FontWeight.bold),
                             ),
                             const SizedBox(height: 8),
                             DropdownButtonFormField<String>(
                               decoration: InputDecoration(
-                                labelText: "Projet",
+                                labelText: "Chantier d'affectation",
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 filled: true,
                                 fillColor: Colors.white,
                               ),
-                              items: _availableProjects.map((p) {
-                                return DropdownMenuItem(
-                                  value: p.id,
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(p.nom),
-                                      Text(
-                                        "Devise: ${p.devise}",
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }).toList(),
-                              onChanged: (val) {
-                                setDialogState(() {
-                                  selectedProjectForChantier = val;
-                                  selectedChantierId = null;
-                                  if (val != null) {
-                                    selectedProjectDevise =
-                                        _getDeviseForProject(val);
-                                  } else {
-                                    selectedProjectDevise = null;
-                                  }
-                                });
-                              },
-                            ),
-                            const SizedBox(height: 15),
-                            if (selectedProjectForChantier != null) ...[
-                              const Text(
-                                "Étape 2 : Sélectionnez un chantier",
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 8),
-                              DropdownButtonFormField<String>(
-                                decoration: InputDecoration(
-                                  labelText: "Chantier d'affectation",
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  filled: true,
-                                  fillColor: Colors.white,
-                                ),
-                                items:
-                                    _getChantiersForProject(
-                                          selectedProjectForChantier!,
-                                        )
-                                        .map(
-                                          (c) => DropdownMenuItem(
-                                            value: c.id,
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(c.nom),
-                                                Text(
-                                                  c.lieu,
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.grey,
-                                                  ),
+                              items:
+                                  _getChantiersForProject(
+                                        selectedProjectForChantier!,
+                                      )
+                                      .map(
+                                        (c) => DropdownMenuItem(
+                                          value: c.id,
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(c.nom),
+                                              Text(
+                                                c.lieu,
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey,
                                                 ),
-                                              ],
-                                            ),
+                                              ),
+                                            ],
                                           ),
-                                        )
-                                        .toList(),
-                                onChanged: (val) {
-                                  setDialogState(
-                                    () => selectedChantierId = val,
-                                  );
-                                },
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-
-                    // Section affectation pour client
-                    if (selectedRole == UserRole.client) ...[
-                      const Text(
-                        "Affectation du client",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: Color(0xFF1A334D),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.blue[50],
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.blue[100]!),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              "Un client doit être associé à un projet spécifique",
-                              style: TextStyle(fontSize: 14),
-                            ),
-                            const SizedBox(height: 10),
-                            DropdownButtonFormField<String>(
-                              decoration: InputDecoration(
-                                labelText: "Projet du client",
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                filled: true,
-                                fillColor: Colors.white,
-                              ),
-                              items: _availableProjects.map((p) {
-                                return DropdownMenuItem(
-                                  value: p.id,
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(p.nom),
-                                      Text(
-                                        "Devise: ${p.devise}",
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey,
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }).toList(),
+                                      )
+                                      .toList(),
                               onChanged: (val) {
-                                setDialogState(() {
-                                  selectedProjectId = val;
-                                  if (val != null) {
-                                    selectedProjectDevise =
-                                        _getDeviseForProject(val);
-                                  } else {
-                                    selectedProjectDevise = null;
-                                  }
-                                });
+                                setDialogState(() => selectedChantierId = val);
                               },
                             ),
                           ],
-                        ),
+                        ],
                       ),
-                    ],
+                    ),
+                    const SizedBox(height: 20),
                   ],
-                ),
+
+                  if (selectedRole == UserRole.client) ...[
+                    const Text(
+                      "Affectation du client",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Color(0xFF1A334D),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue[100]!),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "Un client doit être associé à un projet spécifique",
+                            style: TextStyle(fontSize: 14),
+                          ),
+                          const SizedBox(height: 10),
+                          DropdownButtonFormField<String>(
+                            decoration: InputDecoration(
+                              labelText: "Projet du client",
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              filled: true,
+                              fillColor: Colors.white,
+                            ),
+                            items: _availableProjects.map((p) {
+                              return DropdownMenuItem(
+                                value: p.id,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(p.nom),
+                                    Text(
+                                      "Devise: ${p.devise}",
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              setDialogState(() {
+                                selectedProjectId = val;
+                                if (val != null) {
+                                  selectedProjectDevise = _getDeviseForProject(
+                                    val,
+                                  );
+                                } else {
+                                  selectedProjectDevise = null;
+                                }
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
+                onPressed: _isCreatingUser
+                    ? null
+                    : () => Navigator.pop(dialogContext),
                 child: const Text("Annuler"),
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF1A334D),
                 ),
-                onPressed: () async {
-                  if (nomController.text.isEmpty ||
-                      emailController.text.isEmpty ||
-                      passwordController.text.isEmpty) {
-                    ScaffoldMessenger.of(pageContext).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          "Veuillez remplir tous les champs obligatoires",
-                        ),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                    return;
-                  }
+                onPressed: _isCreatingUser
+                    ? null
+                    : () async {
+                        setState(() => _isCreatingUser = true);
 
-                  // Validation selon le rôle
-                  if (selectedRole == UserRole.client &&
-                      selectedProjectId == null) {
-                    ScaffoldMessenger.of(pageContext).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          "Un client doit être assigné à un projet",
-                        ),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                    return;
-                  }
+                        try {
+                          if (nomController.text.isEmpty ||
+                              emailController.text.isEmpty ||
+                              passwordController.text.isEmpty) {
+                            ScaffoldMessenger.of(pageContext).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  "Veuillez remplir tous les champs obligatoires",
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                            setState(() => _isCreatingUser = false);
+                            return;
+                          }
 
-                  if ((selectedRole == UserRole.ouvrier ||
-                          selectedRole == UserRole.chefDeChantier) &&
-                      selectedChantierId == null) {
-                    ScaffoldMessenger.of(pageContext).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          "Veuillez sélectionner un chantier d'affectation",
-                        ),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                    return;
-                  }
+                          if (selectedRole == UserRole.client &&
+                              selectedProjectId == null) {
+                            ScaffoldMessenger.of(pageContext).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  "Un client doit être assigné à un projet",
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                            setState(() => _isCreatingUser = false);
+                            return;
+                          }
 
-                  String generatedId;
-                  String? firebaseUid;
-                  List<String> assignedIds = [];
+                          if ((selectedRole == UserRole.ouvrier ||
+                                  selectedRole == UserRole.chefDeChantier) &&
+                              selectedChantierId == null) {
+                            ScaffoldMessenger.of(pageContext).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  "Veuillez sélectionner un chantier d'affectation",
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                            setState(() => _isCreatingUser = false);
+                            return;
+                          }
 
-                  // Gestion des assignations selon le rôle
-                  if (selectedRole == UserRole.client) {
-                    assignedIds = [selectedProjectId!];
-                  } else if (selectedRole == UserRole.ouvrier ||
-                      selectedRole == UserRole.chefDeChantier) {
-                    assignedIds = [selectedChantierId!];
-                  } else if (selectedRole == UserRole.chefProjet) {
-                    // Ne devrait jamais arriver car filtré dans le dropdown
-                    assignedIds = [];
-                  }
+                          String generatedId;
+                          String? firebaseUid;
+                          List<String> assignedIds = [];
 
-                  final bool firebaseEnabled = ChantierApp.of(
-                    pageContext,
-                  ).isFirebaseEnabled;
-                  final admin = ChantierApp.of(pageContext).currentUser;
-                  if (firebaseEnabled && admin.firebaseUid == null) {
-                    ScaffoldMessenger.of(pageContext).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          "L'admin n'est pas connecté à Firebase. Impossible de créer un utilisateur Firebase.",
-                        ),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                    return;
-                  }
+                          if (selectedRole == UserRole.client) {
+                            assignedIds = [selectedProjectId!];
+                          } else if (selectedRole == UserRole.ouvrier ||
+                              selectedRole == UserRole.chefDeChantier) {
+                            assignedIds = [selectedChantierId!];
+                          }
 
-                  // 1. Création du compte Firebase si activé
-                  if (firebaseEnabled) {
-                    try {
-                      UserCredential userCredential = await FirebaseAuth
-                          .instance
-                          .createUserWithEmailAndPassword(
+                          final bool firebaseEnabled = ChantierApp.of(
+                            pageContext,
+                          ).isFirebaseEnabled;
+                          final admin = ChantierApp.of(pageContext).currentUser;
+
+                          if (firebaseEnabled && admin.firebaseUid == null) {
+                            ScaffoldMessenger.of(pageContext).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  "L'admin n'est pas connecté à Firebase. Impossible de créer un utilisateur Firebase.",
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                            setState(() => _isCreatingUser = false);
+                            return;
+                          }
+
+                          if (firebaseEnabled) {
+                            try {
+                              UserCredential userCredential = await FirebaseAuth
+                                  .instance
+                                  .createUserWithEmailAndPassword(
+                                    email: emailController.text,
+                                    password: passwordController.text,
+                                  );
+
+                              firebaseUid = userCredential.user!.uid;
+                              generatedId = firebaseUid;
+
+                              if (admin.firebaseUid != null) {
+                                await FirebaseFirestore.instance
+                                    .collection('admins')
+                                    .doc(admin.firebaseUid)
+                                    .collection('users')
+                                    .doc(firebaseUid)
+                                    .set({
+                                      'id': firebaseUid,
+                                      'nom': nomController.text,
+                                      'email': emailController.text,
+                                      'role': selectedRole.name,
+                                      'assignedIds': assignedIds,
+                                      'adminId': admin.firebaseUid,
+                                      'disabled': false,
+                                      'firebaseUid': firebaseUid,
+                                      'createdAt': FieldValue.serverTimestamp(),
+                                    });
+
+                                debugPrint(
+                                  '✅ Compte Firebase créé pour ${nomController.text}',
+                                );
+                              } else {
+                                debugPrint(
+                                  '⚠️ Admin sans UID Firebase - Sauvegarde locale uniquement',
+                                );
+                              }
+                            } catch (e) {
+                              debugPrint(
+                                '⚠️ Erreur création Firebase Auth: $e',
+                              );
+                              generatedId = DateTime.now()
+                                  .millisecondsSinceEpoch
+                                  .toString();
+                              if (!context.mounted) {
+                                setState(() => _isCreatingUser = false);
+                                return;
+                              }
+                              ScaffoldMessenger.of(pageContext).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    "Erreur Firebase: ${e.toString()}",
+                                  ),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          } else {
+                            generatedId = DateTime.now().millisecondsSinceEpoch
+                                .toString();
+                          }
+
+                          final newUser = UserModel(
+                            id: generatedId,
+                            nom: nomController.text,
                             email: emailController.text,
-                            password: passwordController.text,
+                            role: selectedRole,
+                            assignedIds: assignedIds,
+                            passwordHash: EncryptionService.hashPassword(
+                              passwordController.text,
+                            ),
+                            firebaseUid: firebaseUid,
+                            assignedProjectId: selectedRole == UserRole.client
+                                ? selectedProjectId
+                                : (selectedProjectForChantier ??
+                                      widget.projet?.id),
                           );
 
-                      firebaseUid = userCredential.user!.uid;
-                      generatedId = firebaseUid;
+                          if (selectedRole == UserRole.ouvrier) {
+                            final double salary =
+                                double.tryParse(salaryController.text) ??
+                                25000.0;
 
-                      // Sauvegarder dans Firestore
-                      if (admin.firebaseUid != null) {
-                        await FirebaseFirestore.instance
-                            .collection('admins')
-                            .doc(admin.firebaseUid)
-                            .collection('users')
-                            .doc(firebaseUid)
-                            .set({
-                              'id': firebaseUid,
-                              'nom': nomController.text,
-                              'email': emailController.text,
-                              'role': selectedRole.name,
-                              'assignedIds': assignedIds,
-                              'adminId': admin.firebaseUid,
-                              'disabled': false,
-                              'firebaseUid': firebaseUid,
-                              'createdAt': FieldValue.serverTimestamp(),
+                            List<Ouvrier> globalOuvriers =
+                                await DataStorage.loadGlobalOuvriers();
+
+                            debugPrint(
+                              '📋 Avant ajout: ${globalOuvriers.length} ouvriers dans l\'annuaire',
+                            );
+
+                            final nouvelOuvrier = Ouvrier(
+                              id: generatedId,
+                              nom: nomController.text,
+                              specialite: "Ouvrier",
+                              telephone: "",
+                              salaireJournalier: salary,
+                              joursPointes: [],
+                            );
+
+                            globalOuvriers.add(nouvelOuvrier);
+
+                            await DataStorage.saveGlobalOuvriers(
+                              globalOuvriers,
+                            );
+
+                            debugPrint(
+                              '✅ Après ajout: ${globalOuvriers.length} ouvriers dans l\'annuaire',
+                            );
+                            debugPrint(
+                              '✅ Ouvrier créé: ${nomController.text} (ID: $generatedId) - Salaire: $salary${selectedProjectDevise ?? ''}/jour',
+                            );
+
+                            if (selectedChantierId != null) {
+                              final equipeChantier = await DataStorage.loadTeam(
+                                selectedChantierId!,
+                              );
+                              equipeChantier.add(nouvelOuvrier);
+                              await DataStorage.saveTeam(
+                                selectedChantierId!,
+                                equipeChantier,
+                              );
+                              debugPrint(
+                                '✅ Ouvrier ajouté au chantier $selectedChantierId',
+                              );
+                            }
+                          } else if (selectedRole == UserRole.chefDeChantier) {
+                            final double salary =
+                                double.tryParse(salaryController.text) ??
+                                150000.0;
+
+                            debugPrint(
+                              '✅ Chef de chantier créé: ${nomController.text} - Salaire mensuel: $salary${selectedProjectDevise ?? ''}',
+                            );
+                          }
+
+                          final updatedUsers = [..._allUsers, newUser];
+
+                          await DataStorage.saveAllUsers(updatedUsers);
+
+                          if (mounted) {
+                            setState(() {
+                              _allUsers = updatedUsers;
+                              _isCreatingUser = false;
                             });
+                            _applyFilters();
+                          }
 
-                        debugPrint(
-                          '✅ Compte Firebase créé pour ${nomController.text}',
-                        );
-                      } else {
-                        debugPrint(
-                          '⚠️ Admin sans UID Firebase - Sauvegarde locale uniquement',
-                        );
-                      }
-                    } catch (e) {
-                      debugPrint('⚠️ Erreur création Firebase Auth: $e');
-                      generatedId = DateTime.now().millisecondsSinceEpoch
-                          .toString();
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(pageContext).showSnackBar(
-                        SnackBar(
-                          content: Text("Erreur Firebase: ${e.toString()}"),
-                          backgroundColor: Colors.red,
+                          debugPrint('✅ Utilisateur ajouté et UI mise à jour');
+
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+                          if (!pageContext.mounted) {
+                            setState(() => _isCreatingUser = false);
+                            return;
+                          }
+                          ScaffoldMessenger.of(pageContext).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                "${nomController.text} a été créé avec succès en tant que ${selectedRole.name}",
+                              ),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        } catch (e) {
+                          debugPrint('❌ Erreur création utilisateur: $e');
+                          if (mounted) {
+                            setState(() => _isCreatingUser = false);
+                          }
+                          if (pageContext.mounted) {
+                            ScaffoldMessenger.of(pageContext).showSnackBar(
+                              SnackBar(
+                                content: Text('Erreur: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                child: _isCreatingUser
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         ),
-                      );
-                    }
-                  } else {
-                    generatedId = DateTime.now().millisecondsSinceEpoch
-                        .toString();
-                  }
-
-                  // 2. Création de l'utilisateur local
-                  final newUser = UserModel(
-                    id: generatedId,
-                    nom: nomController.text,
-                    email: emailController.text,
-                    role: selectedRole,
-                    assignedIds: assignedIds,
-                    passwordHash: EncryptionService.hashPassword(
-                      passwordController.text,
-                    ),
-                    firebaseUid: firebaseUid,
-                  );
-
-                  // 3. Gestion spécifique selon le rôle
-                  if (selectedRole == UserRole.ouvrier) {
-                    final double salary =
-                        double.tryParse(salaryController.text) ?? 25000.0;
-
-                    List<Ouvrier> globalOuvriers =
-                        await DataStorage.loadGlobalOuvriers();
-
-                    debugPrint(
-                      '📋 Avant ajout: ${globalOuvriers.length} ouvriers dans l\'annuaire',
-                    );
-
-                    final nouvelOuvrier = Ouvrier(
-                      id: generatedId,
-                      nom: nomController.text,
-                      specialite: "Ouvrier",
-                      telephone: "",
-                      salaireJournalier: salary,
-                      joursPointes: [],
-                    );
-
-                    globalOuvriers.add(nouvelOuvrier);
-
-                    // Sauvegarder dans l'annuaire global
-                    await DataStorage.saveGlobalOuvriers(globalOuvriers);
-
-                    debugPrint(
-                      '✅ Après ajout: ${globalOuvriers.length} ouvriers dans l\'annuaire',
-                    );
-                    debugPrint(
-                      '✅ Ouvrier créé: ${nomController.text} (ID: $generatedId) - Salaire: $salary${selectedProjectDevise ?? ''}/jour',
-                    );
-
-                    // Ajouter aussi à l'équipe du chantier
-                    if (selectedChantierId != null) {
-                      final equipeChantier = await DataStorage.loadTeam(
-                        selectedChantierId!,
-                      );
-                      equipeChantier.add(nouvelOuvrier);
-                      await DataStorage.saveTeam(
-                        selectedChantierId!,
-                        equipeChantier,
-                      );
-                      debugPrint(
-                        '✅ Ouvrier ajouté au chantier $selectedChantierId',
-                      );
-                    }
-                  } else if (selectedRole == UserRole.chefDeChantier) {
-                    final double salary =
-                        double.tryParse(salaryController.text) ?? 150000.0;
-
-                    debugPrint(
-                      '✅ Chef de chantier créé: ${nomController.text} - Salaire mensuel: $salary${selectedProjectDevise ?? ''}',
-                    );
-
-                    // Vous pouvez ajouter un champ dans UserModel ou créer un système séparé
-                  }
-
-                  // 4. Ajouter à la liste locale IMMÉDIATEMENT
-                  final updatedUsers = [..._allUsers, newUser];
-
-                  // 5. Sauvegarder
-                  await DataStorage.saveAllUsers(updatedUsers);
-
-                  // 6. Mettre à jour l'UI IMMÉDIATEMENT
-                  if (mounted) {
-                    setState(() {
-                      _allUsers = updatedUsers;
-                    });
-                    _applyFilters();
-                  }
-
-                  debugPrint('✅ Utilisateur ajouté et UI mise à jour');
-
-                  await DataStorage.saveAllUsers(_allUsers);
-
-                  if (dialogContext.mounted) Navigator.pop(dialogContext);
-
-                  if (!pageContext.mounted) return;
-                  ScaffoldMessenger.of(pageContext).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        "${nomController.text} a été créé avec succès en tant que ${selectedRole.name}",
-                      ),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                },
-                child: const Text("Créer l'utilisateur"),
+                      )
+                    : const Text("Créer l'utilisateur"),
               ),
             ],
           );

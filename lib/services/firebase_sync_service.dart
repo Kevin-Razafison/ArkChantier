@@ -20,7 +20,9 @@ class FirebaseSyncService {
   bool _isInitialized = false;
   bool _isSyncing = false;
 
-  // Queue pour les opérations en attente de synchronisation
+  final Map<String, dynamic> _memoryCache = {};
+  final Map<String, DateTime> _cacheTimestamps = {};
+  static const _defaultCacheDuration = Duration(minutes: 5);
   final List<Map<String, dynamic>> _pendingOperations = [];
 
   Future<void> initialize() async {
@@ -28,17 +30,12 @@ class FirebaseSyncService {
 
     await _checkConnectivity();
 
-    // Écouter les changements de connectivité
-    // ✅ CORRECTION: Ancienne API de connectivity_plus qui retourne un seul ConnectivityResult
     Connectivity().onConnectivityChanged.listen((
       ConnectivityResult result,
     ) async {
       final wasOffline = !_isOnline;
-
-      // Vérifier si on est hors ligne (ancienne API)
       _isOnline = result != ConnectivityResult.none;
 
-      // Si on vient de se reconnecter, synchroniser
       if (wasOffline && _isOnline) {
         debugPrint('🌐 Connexion rétablie - Synchronisation...');
         await syncPendingChanges();
@@ -46,38 +43,62 @@ class FirebaseSyncService {
     });
 
     _isInitialized = true;
-    debugPrint('✅ FirebaseSyncService initialisé');
+    debugPrint('✅ FirebaseSyncService initialisé (mode lazy loading)');
   }
 
   Future<void> _checkConnectivity() async {
     try {
-      // ✅ CORRECTION: Ancienne API qui retourne un ConnectivityResult, pas une liste
       final ConnectivityResult connectivityResult = await Connectivity()
           .checkConnectivity();
-
       _isOnline = connectivityResult != ConnectivityResult.none;
-
       debugPrint(
-        '📡 État de connexion: ${_isOnline ? 'En ligne' : 'Hors ligne'} - $connectivityResult',
+        '📡 État de connexion: ${_isOnline ? 'En ligne' : 'Hors ligne'}',
       );
     } catch (e) {
       debugPrint('⚠️ Erreur vérification connectivité: $e');
-      _isOnline = false; // Par sécurité, considérer hors ligne
+      _isOnline = false;
     }
   }
 
   String? get _currentAdminId => _auth.currentUser?.uid;
-
   bool get isUserAuthenticated => _auth.currentUser != null;
 
-  // ==================== PROJETS ====================
+  T? _getFromCache<T>(String key, {Duration? maxAge}) {
+    final timestamp = _cacheTimestamps[key];
+    if (timestamp == null) return null;
 
-  /// Sauvegarde un projet (online ET offline)
+    final age = DateTime.now().difference(timestamp);
+    final maxCacheAge = maxAge ?? _defaultCacheDuration;
+
+    if (age > maxCacheAge) {
+      _memoryCache.remove(key);
+      _cacheTimestamps.remove(key);
+      return null;
+    }
+
+    return _memoryCache[key] as T?;
+  }
+
+  void _setCache(String key, dynamic value) {
+    _memoryCache[key] = value;
+    _cacheTimestamps[key] = DateTime.now();
+  }
+
+  void _clearCache([String? key]) {
+    if (key != null) {
+      _memoryCache.remove(key);
+      _cacheTimestamps.remove(key);
+      debugPrint('🗑️ Cache invalidé: $key');
+    } else {
+      _memoryCache.clear();
+      _cacheTimestamps.clear();
+      debugPrint('🗑️ Tout le cache invalidé');
+    }
+  }
+
   Future<void> saveProjet(Projet projet) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-
-      // 1. TOUJOURS sauvegarder en local d'abord (offline-first)
       final projets = await _loadProjetsFromLocal();
       final index = projets.indexWhere((p) => p.id == projet.id);
 
@@ -91,36 +112,34 @@ class FirebaseSyncService {
         'projects_list',
         jsonEncode(projets.map((p) => p.toJson()).toList()),
       );
-
       debugPrint('💾 Projet "${projet.nom}" sauvegardé localement');
+      _clearCache('projects');
 
-      // 2. Si online ET connecté, sauvegarder sur Firebase
       if (_isOnline && isUserAuthenticated) {
         try {
           final projetData = projet.toJson();
-
-          // Ajouter l'adminId si disponible
-          if (_currentAdminId != null) {
-            projetData['adminId'] = _currentAdminId;
-          }
-
           projetData['lastModified'] = FieldValue.serverTimestamp();
 
-          // Sauvegarder dans la collection globale 'projets'
           await _firestore
-              .collection('projets') // Collection globale
+              .collection('projets')
               .doc(projet.id)
               .set(projetData, SetOptions(merge: true));
 
-          debugPrint(
-            '☁️ Projet "${projet.nom}" synchronisé sur Firebase (collection globale)',
-          );
+          if (_currentAdminId != null) {
+            await _firestore
+                .collection('admins')
+                .doc(_currentAdminId)
+                .collection('projets')
+                .doc(projet.id)
+                .set(projetData, SetOptions(merge: true));
+          }
+
+          debugPrint('☁️ Projet "${projet.nom}" synchronisé sur Firebase');
         } catch (e) {
-          debugPrint('⚠️ Erreur sync Firebase (sera réessayé) : $e');
+          debugPrint('⚠️ Erreur sync Firebase: $e');
           _addPendingOperation('saveProjet', projet.toJson());
         }
       } else {
-        debugPrint('📴 Mode offline - Projet en attente de sync');
         _addPendingOperation('saveProjet', projet.toJson());
       }
     } catch (e) {
@@ -129,27 +148,44 @@ class FirebaseSyncService {
     }
   }
 
-  /// Charge les projets (Firebase PUIS local)
-
-  Future<List<Projet>> loadProjets() async {
+  Future<List<Projet>> loadProjets({bool forceRefresh = false}) async {
     try {
+      if (!forceRefresh) {
+        final cached = _getFromCache<List<Projet>>('projects');
+        if (cached != null && cached.isNotEmpty) {
+          debugPrint(
+            '💾 ${cached.length} projet(s) chargé(s) depuis le cache mémoire',
+          );
+          return cached;
+        }
+      }
+
       List<Projet> projets = [];
 
-      // 1. Si online ET connecté, charger depuis Firebase
       if (_isOnline && isUserAuthenticated) {
         try {
           debugPrint('🔍 Chargement des projets depuis Firebase...');
+          QuerySnapshot snapshot;
 
-          // Pour tous les utilisateurs, charger depuis la collection globale 'projets'
-          final snapshot = await _firestore
-              .collection('projets') // Collection globale
-              .get();
+          if (_currentAdminId != null) {
+            snapshot = await _firestore
+                .collection('admins')
+                .doc(_currentAdminId)
+                .collection('projets')
+                .get();
+            if (snapshot.docs.isEmpty) {
+              snapshot = await _firestore.collection('projets').get();
+            }
+          } else {
+            snapshot = await _firestore.collection('projets').get();
+          }
 
           if (snapshot.docs.isNotEmpty) {
             projets = snapshot.docs
                 .map((doc) {
                   try {
-                    return Projet.fromJson(doc.data());
+                    final data = doc.data() as Map<String, dynamic>;
+                    return Projet.fromJson(data);
                   } catch (e) {
                     debugPrint('⚠️ Erreur parsing projet ${doc.id}: $e');
                     return null;
@@ -158,31 +194,29 @@ class FirebaseSyncService {
                 .whereType<Projet>()
                 .toList();
 
-            // Sauvegarder en cache local
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString(
               'projects_list',
               jsonEncode(projets.map((p) => p.toJson()).toList()),
             );
-
+            _setCache('projects', projets);
             debugPrint(
-              '☁️ ${projets.length} projet(s) chargé(s) depuis Firebase et mis en cache',
+              '☁️ ${projets.length} projet(s) chargé(s) depuis Firebase',
             );
             return projets;
-          } else {
-            debugPrint('📭 Aucun projet trouvé sur Firebase');
           }
         } catch (e) {
           debugPrint('⚠️ Erreur Firebase, utilisation du cache local: $e');
         }
       }
 
-      // 2. Sinon, charger depuis le cache local
       projets = await _loadProjetsFromLocal();
+      if (projets.isNotEmpty) {
+        _setCache('projects', projets);
+      }
       debugPrint(
         '💾 ${projets.length} projet(s) chargé(s) depuis le cache local',
       );
-
       return projets;
     } catch (e) {
       debugPrint('❌ Erreur loadProjets: $e');
@@ -190,20 +224,19 @@ class FirebaseSyncService {
     }
   }
 
-  /// Charge les projets depuis SharedPreferences
   Future<List<Projet>> _loadProjetsFromLocal() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final data = prefs.getString('projects_list');
-
-      if (data == null || data.isEmpty) {
-        debugPrint('📭 Aucun projet en cache local');
+      if (data == null || data.isEmpty || data == '[]') {
+        debugPrint('📭 Aucun projet dans le cache local');
         return [];
       }
-
       final List<dynamic> decoded = jsonDecode(data);
       final projets = decoded.map((item) => Projet.fromJson(item)).toList();
-      debugPrint('✅ ${projets.length} projet(s) récupéré(s) du cache local');
+      debugPrint(
+        '📂 ${projets.length} projet(s) trouvé(s) dans le cache local',
+      );
       return projets;
     } catch (e) {
       debugPrint('❌ Erreur _loadProjetsFromLocal: $e');
@@ -211,31 +244,29 @@ class FirebaseSyncService {
     }
   }
 
-  /// Supprime un projet
   Future<void> deleteProjet(String projetId) async {
     try {
-      // 1. Supprimer localement
       final prefs = await SharedPreferences.getInstance();
       final projets = await _loadProjetsFromLocal();
       projets.removeWhere((p) => p.id == projetId);
-
       await prefs.setString(
         'projects_list',
         jsonEncode(projets.map((p) => p.toJson()).toList()),
       );
-
+      _clearCache('projects');
       debugPrint('💾 Projet $projetId supprimé localement');
 
-      // 2. Supprimer sur Firebase si connecté
-      if (_isOnline && isUserAuthenticated && _currentAdminId != null) {
+      if (_isOnline && isUserAuthenticated) {
         try {
-          await _firestore
-              .collection('admins')
-              .doc(_currentAdminId)
-              .collection('projets')
-              .doc(projetId)
-              .delete();
-
+          await _firestore.collection('projets').doc(projetId).delete();
+          if (_currentAdminId != null) {
+            await _firestore
+                .collection('admins')
+                .doc(_currentAdminId)
+                .collection('projets')
+                .doc(projetId)
+                .delete();
+          }
           debugPrint('☁️ Projet $projetId supprimé de Firebase');
         } catch (e) {
           debugPrint('⚠️ Erreur suppression Firebase: $e');
@@ -247,7 +278,307 @@ class FirebaseSyncService {
     }
   }
 
-  // ==================== JOURNAL ====================
+  Future<UserModel?> loadCurrentUser(String firebaseUid) async {
+    try {
+      debugPrint('👤 Chargement du profil utilisateur: $firebaseUid');
+      final cacheKey = 'user_$firebaseUid';
+      final cached = _getFromCache<UserModel>(
+        cacheKey,
+        maxAge: Duration(hours: 1),
+      );
+      if (cached != null) {
+        debugPrint('💾 Profil chargé depuis le cache');
+        return cached;
+      }
+
+      UserModel? user;
+      if (_isOnline) {
+        try {
+          final userDoc = await _firestore
+              .collection('users')
+              .doc(firebaseUid)
+              .get();
+          if (userDoc.exists) {
+            user = UserModel.fromJson({
+              ...userDoc.data()!,
+              'id': firebaseUid,
+              'firebaseUid': firebaseUid,
+            });
+            debugPrint('☁️ Profil chargé depuis Firebase');
+          } else {
+            final adminDoc = await _firestore
+                .collection('admins')
+                .doc(firebaseUid)
+                .get();
+            if (adminDoc.exists) {
+              final data = adminDoc.data()!;
+              user = UserModel(
+                id: firebaseUid,
+                nom: data['nom'] ?? 'Admin',
+                email: data['email'] ?? '',
+                role: UserRole.chefProjet,
+                assignedIds: List<String>.from(data['assignedIds'] ?? []),
+                passwordHash: '',
+                firebaseUid: firebaseUid,
+              );
+              debugPrint('☁️ Profil admin chargé depuis Firebase');
+            }
+          }
+
+          if (user != null) {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('current_user', jsonEncode(user.toJson()));
+            _setCache(cacheKey, user);
+          }
+          return user;
+        } catch (e) {
+          debugPrint('⚠️ Erreur Firebase, tentative cache local: $e');
+        }
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final localData = prefs.getString('current_user');
+      if (localData != null) {
+        user = UserModel.fromJson(jsonDecode(localData));
+        _setCache(cacheKey, user);
+        debugPrint('💾 Profil chargé depuis le cache local');
+        return user;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('❌ Erreur loadCurrentUser: $e');
+      return null;
+    }
+  }
+
+  Future<List<UserModel>> loadUsers({bool forceRefresh = false}) async {
+    try {
+      final cacheKey = 'all_users';
+      if (!forceRefresh) {
+        final cached = _getFromCache<List<UserModel>>(cacheKey);
+        if (cached != null) {
+          debugPrint(
+            '💾 ${cached.length} utilisateur(s) chargé(s) depuis le cache mémoire',
+          );
+          return cached;
+        }
+      }
+
+      List<UserModel> allUsers = [];
+      final prefs = await SharedPreferences.getInstance();
+      final localData = prefs.getString('users_list');
+
+      if (localData != null && localData.isNotEmpty && !forceRefresh) {
+        try {
+          final List<dynamic> decoded = jsonDecode(localData);
+          allUsers = decoded.map((item) => UserModel.fromJson(item)).toList();
+          _setCache(cacheKey, allUsers);
+          debugPrint(
+            '💾 ${allUsers.length} utilisateur(s) chargé(s) du cache local',
+          );
+          return allUsers;
+        } catch (e) {
+          debugPrint('⚠️ Erreur lecture cache local users: $e');
+        }
+      }
+
+      if (_isOnline &&
+          isUserAuthenticated &&
+          (forceRefresh || allUsers.isEmpty)) {
+        try {
+          debugPrint('🔍 Chargement des utilisateurs depuis Firebase...');
+          final snapshot = await _firestore.collection('users').get();
+
+          if (snapshot.docs.isNotEmpty) {
+            final firebaseUsers = snapshot.docs
+                .map((doc) {
+                  try {
+                    final data = doc.data();
+                    return UserModel.fromJson({
+                      ...data,
+                      'id': doc.id,
+                      'firebaseUid': doc.id,
+                    });
+                  } catch (e) {
+                    debugPrint('⚠️ Erreur parsing user ${doc.id}: $e');
+                    return null;
+                  }
+                })
+                .whereType<UserModel>()
+                .toList();
+
+            allUsers = firebaseUsers;
+            final validUsers = allUsers
+                .where(
+                  (u) =>
+                      u.firebaseUid != null &&
+                      u.email != 'admin@ark.com' &&
+                      u.email != 'admin@chantier.com',
+                )
+                .toList();
+            await prefs.setString(
+              'users_list',
+              jsonEncode(validUsers.map((u) => u.toJson()).toList()),
+            );
+            _setCache(cacheKey, allUsers);
+            debugPrint(
+              '☁️ ${firebaseUsers.length} utilisateur(s) chargé(s) depuis Firebase',
+            );
+          }
+        } catch (e) {
+          debugPrint('⚠️ Erreur chargement users Firebase: $e');
+        }
+      }
+      return allUsers;
+    } catch (e) {
+      debugPrint('❌ Erreur loadUsers: $e');
+      return [];
+    }
+  }
+
+  Future<List<UserModel>> loadUsersForProject(String projectId) async {
+    try {
+      final cacheKey = 'users_project_$projectId';
+      final cached = _getFromCache<List<UserModel>>(cacheKey);
+      if (cached != null) return cached;
+
+      final allUsers = await loadUsers();
+      final projets = await loadProjets();
+      final projet = projets.firstWhere(
+        (p) => p.id == projectId,
+        orElse: () => Projet.empty(),
+      );
+
+      final filteredUsers = allUsers.where((user) {
+        if (user.isAssignedToProject(projectId)) return true;
+        for (var chantier in projet.chantiers) {
+          if (user.isAssignedToChantier(chantier.id)) return true;
+        }
+        return false;
+      }).toList();
+
+      _setCache(cacheKey, filteredUsers);
+      return filteredUsers;
+    } catch (e) {
+      debugPrint('❌ Erreur loadUsersForProject: $e');
+      return [];
+    }
+  }
+
+  Future<void> saveUser(UserModel user, {required String adminId}) async {
+    try {
+      if (user.firebaseUid == null || user.firebaseUid!.isEmpty) {
+        debugPrint('⚠️ ${user.nom} ignoré (pas de firebaseUid)');
+        return;
+      }
+
+      final userData = user.toJson();
+      userData['adminId'] = adminId;
+      userData['updatedAt'] = FieldValue.serverTimestamp();
+
+      await _firestore
+          .collection('users')
+          .doc(user.firebaseUid)
+          .set(userData, SetOptions(merge: true));
+      await _firestore
+          .collection('admins')
+          .doc(adminId)
+          .collection('users')
+          .doc(user.firebaseUid)
+          .set(userData, SetOptions(merge: true));
+      debugPrint('✅ Utilisateur ${user.nom} sauvegardé dans Firebase');
+
+      _clearCache('all_users');
+      _clearCache('user_${user.firebaseUid}');
+      if (user.assignedProjectId != null) {
+        _clearCache('users_project_${user.assignedProjectId}');
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur saveUser Firebase: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updateUser(UserModel user, {required String adminId}) async {
+    if (user.firebaseUid == null) {
+      debugPrint('⚠️ firebaseUid null pour ${user.nom}');
+      return;
+    }
+
+    try {
+      final Map<String, dynamic> firebaseData = {
+        'id': user.id,
+        'nom': user.nom,
+        'email': user.email,
+        'role': user.role.name,
+        'passwordHash': user.passwordHash,
+        'firebaseUid': user.firebaseUid,
+        'adminId': adminId,
+        'disabled': user.disabled,
+        'assignedIds': user.assignedIds,
+        'assignedProjectId': user.assignedProjectId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      await _firestore
+          .collection('admins')
+          .doc(adminId)
+          .collection('users')
+          .doc(user.firebaseUid)
+          .update(firebaseData);
+      debugPrint('✅ Utilisateur ${user.nom} mis à jour dans Firebase');
+
+      _clearCache('all_users');
+      _clearCache('user_${user.firebaseUid}');
+      if (user.assignedProjectId != null) {
+        _clearCache('users_project_${user.assignedProjectId}');
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur mise à jour Firebase: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteUser(UserModel user) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final users = await loadUsers();
+      users.removeWhere((u) => u.id == user.id);
+      await prefs.setString(
+        'users_list',
+        jsonEncode(users.map((u) => u.toJson()).toList()),
+      );
+      debugPrint('💾 Utilisateur ${user.nom} supprimé localement');
+
+      if (_isOnline && isUserAuthenticated && _currentAdminId != null) {
+        try {
+          if (user.firebaseUid != null) {
+            await _firestore
+                .collection('admins')
+                .doc(_currentAdminId)
+                .collection('users')
+                .doc(user.id)
+                .update({
+                  'disabled': true,
+                  'disabledAt': FieldValue.serverTimestamp(),
+                });
+            debugPrint('☁️ Utilisateur ${user.nom} désactivé sur Firebase');
+          }
+        } catch (e) {
+          debugPrint('⚠️ Erreur suppression Firebase: $e');
+          _addPendingOperation('deleteUser', {'userId': user.id});
+        }
+      }
+
+      _clearCache('all_users');
+      _clearCache('user_${user.firebaseUid}');
+      if (user.assignedProjectId != null) {
+        _clearCache('users_project_${user.assignedProjectId}');
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur deleteUser: $e');
+    }
+  }
 
   Future<void> saveJournal(
     String chantierId,
@@ -286,20 +617,17 @@ class FirebaseSyncService {
             .collection('journals')
             .doc(chantierId)
             .get();
-
         if (doc.exists && doc.data() != null) {
           final data = doc.data()!;
           if (data['entries'] != null) {
             final entries = (data['entries'] as List)
                 .map((e) => JournalEntry.fromJson(e))
                 .toList();
-
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString(
               'journal_$chantierId',
               jsonEncode(entries.map((e) => e.toJson()).toList()),
             );
-
             return entries;
           }
         }
@@ -311,17 +639,13 @@ class FirebaseSyncService {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getString('journal_$chantierId');
     if (data == null || data.isEmpty) return [];
-
     try {
       final List<dynamic> decoded = jsonDecode(data);
       return decoded.map((item) => JournalEntry.fromJson(item)).toList();
     } catch (e) {
-      debugPrint('❌ Erreur parsing journal: $e');
       return [];
     }
   }
-
-  // ==================== ÉQUIPE ====================
 
   Future<void> saveTeam(String chantierId, List<Ouvrier> equipe) async {
     final prefs = await SharedPreferences.getInstance();
@@ -357,20 +681,17 @@ class FirebaseSyncService {
             .collection('teams')
             .doc(chantierId)
             .get();
-
         if (doc.exists && doc.data() != null) {
           final data = doc.data()!;
           if (data['members'] != null) {
             final members = (data['members'] as List)
-                .map((e) => Ouvrier.fromJson(e))
+                .map((m) => Ouvrier.fromJson(m))
                 .toList();
-
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString(
               'team_$chantierId',
               jsonEncode(members.map((o) => o.toJson()).toList()),
             );
-
             return members;
           }
         }
@@ -382,7 +703,6 @@ class FirebaseSyncService {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getString('team_$chantierId');
     if (data == null || data.isEmpty) return [];
-
     try {
       final List<dynamic> decoded = jsonDecode(data);
       return decoded.map((item) => Ouvrier.fromJson(item)).toList();
@@ -390,8 +710,6 @@ class FirebaseSyncService {
       return [];
     }
   }
-
-  // ==================== MATÉRIELS ====================
 
   Future<void> saveMateriels(
     String chantierId,
@@ -430,20 +748,17 @@ class FirebaseSyncService {
             .collection('materiels')
             .doc(chantierId)
             .get();
-
         if (doc.exists && doc.data() != null) {
           final data = doc.data()!;
           if (data['items'] != null) {
             final items = (data['items'] as List)
-                .map((e) => Materiel.fromJson(e))
+                .map((m) => Materiel.fromJson(m))
                 .toList();
-
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString(
               'materiels_$chantierId',
               jsonEncode(items.map((m) => m.toJson()).toList()),
             );
-
             return items;
           }
         }
@@ -455,7 +770,6 @@ class FirebaseSyncService {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getString('materiels_$chantierId');
     if (data == null || data.isEmpty) return [];
-
     try {
       final List<dynamic> decoded = jsonDecode(data);
       return decoded.map((item) => Materiel.fromJson(item)).toList();
@@ -463,8 +777,6 @@ class FirebaseSyncService {
       return [];
     }
   }
-
-  // ==================== RAPPORTS ====================
 
   Future<void> saveReports(String chantierId, List<Report> reports) async {
     final prefs = await SharedPreferences.getInstance();
@@ -500,20 +812,17 @@ class FirebaseSyncService {
             .collection('reports')
             .doc(chantierId)
             .get();
-
         if (doc.exists && doc.data() != null) {
           final data = doc.data()!;
           if (data['items'] != null) {
             final items = (data['items'] as List)
-                .map((e) => Report.fromJson(e))
+                .map((r) => Report.fromJson(r))
                 .toList();
-
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString(
               'reports_$chantierId',
               jsonEncode(items.map((r) => r.toJson()).toList()),
             );
-
             return items;
           }
         }
@@ -525,7 +834,6 @@ class FirebaseSyncService {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getString('reports_$chantierId');
     if (data == null || data.isEmpty) return [];
-
     try {
       final List<dynamic> decoded = jsonDecode(data);
       return decoded.map((item) => Report.fromJson(item)).toList();
@@ -533,213 +841,6 @@ class FirebaseSyncService {
       return [];
     }
   }
-
-  // ==================== UTILISATEURS ====================
-
-  Future<void> saveUser(UserModel user, {required String adminId}) async {
-    if (user.firebaseUid == null) {
-      debugPrint('⚠️ firebaseUid null, impossible de sauvegarder');
-      return;
-    }
-
-    try {
-      final Map<String, dynamic> userData = {
-        'id': user.id,
-        'nom': user.nom,
-        'email': user.email,
-        'role': user.role.name,
-        'passwordHash': user.passwordHash,
-        'firebaseUid': user.firebaseUid,
-        'adminId': adminId, // ✅ Doit être l'UID de l'admin
-        'disabled': user.disabled,
-        'assignedIds': user.assignedIds,
-        'createdAt': FieldValue.serverTimestamp(),
-      };
-
-      // 🔥 CORRECTION IMPORTANTE :
-      // Écrire uniquement dans la collection 'users' globale
-      // NE PAS écrire dans 'admins/{adminId}/users' (car non autorisé par les règles)
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.firebaseUid)
-          .set(userData, SetOptions(merge: true));
-
-      debugPrint(
-        '✅ Utilisateur ${user.nom} sauvegardé dans Firebase (admin: $adminId)',
-      );
-    } catch (e) {
-      debugPrint('❌ Erreur saveUser: $e');
-      rethrow;
-    }
-  }
-
-  Future<List<UserModel>> loadUsers() async {
-    try {
-      List<UserModel> allUsers = [];
-
-      // D'abord charger depuis le cache local
-      final prefs = await SharedPreferences.getInstance();
-      final localData = prefs.getString('users_list');
-
-      if (localData != null && localData.isNotEmpty) {
-        final List<dynamic> decoded = jsonDecode(localData);
-        allUsers = decoded.map((item) => UserModel.fromJson(item)).toList();
-        debugPrint(
-          '💾 ${allUsers.length} utilisateur(s) chargé(s) du cache local',
-        );
-      }
-
-      // Si online et connecté, charger depuis Firebase
-      if (_isOnline && isUserAuthenticated && _currentAdminId != null) {
-        try {
-          debugPrint('🔍 Chargement des utilisateurs depuis Firebase...');
-
-          // CORRECTION : Charger depuis admins/{adminId}/users
-          final snapshot = await _firestore
-              .collection('admins')
-              .doc(_currentAdminId)
-              .collection('users')
-              .where('disabled', isNotEqualTo: true)
-              .get();
-
-          if (snapshot.docs.isNotEmpty) {
-            final firebaseUsers = snapshot.docs
-                .map((doc) => UserModel.fromJson(doc.data()))
-                .toList();
-
-            // Fusionner : Firebase prioritaire sur local
-            for (var firebaseUser in firebaseUsers) {
-              final localIndex = allUsers.indexWhere(
-                (u) => u.id == firebaseUser.id,
-              );
-              if (localIndex != -1) {
-                allUsers[localIndex] = firebaseUser;
-              } else {
-                allUsers.add(firebaseUser);
-              }
-            }
-
-            // Sauvegarder dans le cache local
-            await prefs.setString(
-              'users_list',
-              jsonEncode(allUsers.map((u) => u.toJson()).toList()),
-            );
-
-            debugPrint(
-              '☁️ ${firebaseUsers.length} utilisateur(s) chargé(s) depuis Firebase',
-            );
-          }
-        } catch (e) {
-          debugPrint('⚠️ Erreur chargement users Firebase: $e');
-        }
-      }
-
-      debugPrint('✅ Total users chargés: ${allUsers.length}');
-      return allUsers;
-    } catch (e) {
-      debugPrint('❌ Erreur loadUsers: $e');
-      return [];
-    }
-  }
-
-  // Dans firebase_sync_service.dart
-  Future<void> updateUser(UserModel user, {required String adminId}) async {
-    // Vérifie si firebaseUid existe
-    if (user.firebaseUid == null) {
-      debugPrint('⚠️ firebaseUid null pour ${user.nom}');
-      return;
-    }
-
-    try {
-      // Vérifier si Firebase est disponible
-      await FirebaseFirestore.instance.collection('users').limit(1).get();
-    } catch (e) {
-      debugPrint('⚠️ Firebase non disponible: $e');
-      return;
-    }
-
-    try {
-      // Convertir la liste assignedProjectIds en JSON compatible Firebase
-      final Map<String, dynamic> firebaseData = {
-        'id': user.id,
-        'nom': user.nom,
-        'email': user.email,
-        'role': user.role.name,
-        'passwordHash': user.passwordHash,
-        'firebaseUid': user.firebaseUid,
-        'adminId': adminId,
-        'disabled': user.disabled,
-        'assignedIds': user.assignedIds,
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-
-      await FirebaseFirestore.instance
-          .collection('admins')
-          .doc(adminId)
-          .collection('users')
-          .doc(user.firebaseUid)
-          .update(firebaseData);
-
-      debugPrint('✅ Utilisateur ${user.nom} mis à jour dans Firebase');
-    } catch (e) {
-      debugPrint('❌ Erreur mise à jour Firebase: $e');
-      rethrow;
-    }
-  }
-
-  /// Supprime un utilisateur (marque comme désactivé sur Firebase)
-  Future<void> deleteUser(UserModel user) async {
-    try {
-      // 1. Supprimer localement
-      final prefs = await SharedPreferences.getInstance();
-      final users = await loadUsers();
-      users.removeWhere((u) => u.id == user.id);
-
-      await prefs.setString(
-        'users_list',
-        jsonEncode(users.map((u) => u.toJson()).toList()),
-      );
-
-      debugPrint('💾 Utilisateur ${user.nom} supprimé localement');
-
-      // 2. Sur Firebase : marquer comme désactivé au lieu de supprimer
-      if (_isOnline && isUserAuthenticated && _currentAdminId != null) {
-        try {
-          if (user.firebaseUid != null) {
-            await _firestore
-                .collection('admins')
-                .doc(_currentAdminId)
-                .collection('users')
-                .doc(user.id)
-                .update({
-                  'disabled': true,
-                  'disabledAt': FieldValue.serverTimestamp(),
-                });
-            debugPrint('☁️ Utilisateur ${user.nom} désactivé sur Firebase');
-          } else {
-            await _firestore
-                .collection('admins')
-                .doc(_currentAdminId)
-                .collection('users')
-                .doc(user.id)
-                .delete();
-            debugPrint('☁️ Utilisateur ${user.nom} supprimé de Firebase');
-          }
-        } catch (e) {
-          debugPrint('⚠️ Erreur suppression Firebase: $e');
-          _addPendingOperation('deleteUser', {'userId': user.id});
-        }
-      } else {
-        debugPrint('📴 Mode offline - Suppression en attente de sync');
-        _addPendingOperation('deleteUser', {'userId': user.id});
-      }
-    } catch (e) {
-      debugPrint('❌ Erreur deleteUser: $e');
-      rethrow;
-    }
-  }
-
-  // ==================== DÉPENSES ====================
 
   Future<void> saveDepenses(String chantierId, List<Depense> depenses) async {
     final prefs = await SharedPreferences.getInstance();
@@ -775,20 +876,17 @@ class FirebaseSyncService {
             .collection('depenses')
             .doc(chantierId)
             .get();
-
         if (doc.exists && doc.data() != null) {
           final data = doc.data()!;
           if (data['items'] != null) {
             final items = (data['items'] as List)
                 .map((e) => Depense.fromJson(e))
                 .toList();
-
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString(
               'depenses_$chantierId',
               jsonEncode(items.map((d) => d.toJson()).toList()),
             );
-
             return items;
           }
         }
@@ -800,7 +898,6 @@ class FirebaseSyncService {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getString('depenses_$chantierId');
     if (data == null || data.isEmpty) return [];
-
     try {
       final List<dynamic> decoded = jsonDecode(data);
       return decoded.map((item) => Depense.fromJson(item)).toList();
@@ -808,8 +905,6 @@ class FirebaseSyncService {
       return [];
     }
   }
-
-  // ==================== SYNCHRONISATION ====================
 
   void _addPendingOperation(String operation, Map<String, dynamic> data) {
     _pendingOperations.add({
@@ -835,7 +930,6 @@ class FirebaseSyncService {
     debugPrint(
       '🔄 Synchronisation de ${_pendingOperations.length} opération(s)...',
     );
-
     final operations = List<Map<String, dynamic>>.from(_pendingOperations);
     _pendingOperations.clear();
 

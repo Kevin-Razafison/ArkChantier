@@ -1,30 +1,32 @@
-// lib/models/depense_model.dart
 import 'chantier_model.dart'; // Pour TypeDepense
 
 class Depense {
   final String id;
-  final String titre; // Changé de libelle à titre
+  final String titre;
   final double montant;
   final DateTime date;
-  final TypeDepense type; // Changé de categorie à type (et TypeDepense)
+  final TypeDepense type;
   final String? imageTicket;
+  final String? chantierId;
 
   Depense({
     required this.id,
-    required this.titre, // Changé
+    required this.titre,
     required this.montant,
     required this.date,
-    required this.type, // Changé
+    required this.type,
     this.imageTicket,
+    this.chantierId,
   });
 
   Map<String, dynamic> toJson() => {
     'id': id,
-    'titre': titre, // Changé
+    'titre': titre,
     'montant': montant,
     'date': date.toIso8601String(),
     'type': type.index, // Changé
     'imageTicket': imageTicket,
+    'chantierId': chantierId,
   };
 
   factory Depense.fromJson(Map<String, dynamic> json) => Depense(
@@ -32,7 +34,8 @@ class Depense {
     titre: json['titre'], // Changé
     montant: (json['montant'] as num).toDouble(),
     date: DateTime.parse(json['date']),
-    type: TypeDepense.values[json['type'] as int], // Changé
+    type: TypeDepense.values[json['type'] as int],
     imageTicket: json['imageTicket'],
+    chantierId: json['chantierId'],
   );
 }

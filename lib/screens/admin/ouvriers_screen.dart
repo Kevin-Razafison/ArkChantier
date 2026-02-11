@@ -7,8 +7,6 @@ import 'ouvrier_detail_screen.dart';
 import '../../models/chantier_model.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../models/depense_model.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 class OuvriersScreen extends StatefulWidget {
   final Projet projet;
@@ -34,7 +32,6 @@ class _OuvriersScreenState extends State<OuvriersScreen>
   final String _today = DateTime.now().toIso8601String().split('T')[0];
   bool _isLoading = true;
 
-  // Ce getter remplace avantageusement le filtrage manuel
   List<Ouvrier> get _ouvriersAffiches {
     return _allOuvriers.where((o) {
       final query = _searchController.text.toLowerCase();
@@ -46,52 +43,177 @@ class _OuvriersScreenState extends State<OuvriersScreen>
   @override
   void initState() {
     super.initState();
+    _initializeChantierSelection();
     _loadData();
   }
 
+  void _initializeChantierSelection() {
+    if (widget.projet.chantiers.isNotEmpty) {
+      _selectedChantierId = widget.projet.chantiers.first.id;
+    }
+  }
+
+  /// 🆕 CORRECTION : Charge les ouvriers du chantier sélectionné
   Future<void> _loadData() async {
+    if (_selectedChantierId == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
     try {
-      final savedOuvriers = await DataStorage.loadGlobalOuvriers();
+      // 1. Charger l'équipe du chantier sélectionné
+      final equipeChantier = await DataStorage.loadTeam(_selectedChantierId!);
+
+      // 2. Charger tous les utilisateurs du projet
+      final projectUsers = await DataStorage.loadUsersForProject(
+        widget.projet.id,
+      );
+
+      // 3. Filtrer pour ne garder que les ouvriers
+      final ouvrierUsers = projectUsers
+          .where((u) => u.role == UserRole.ouvrier)
+          .toList();
+
+      debugPrint('=== DEBUG OuvriersScreen ===');
+      debugPrint('Chantier sélectionné: $_selectedChantierId');
+      debugPrint(
+        'Ouvriers dans l\'équipe du chantier: ${equipeChantier.length}',
+      );
+      debugPrint(
+        'Utilisateurs ouvriers dans le projet: ${ouvrierUsers.length}',
+      );
+
+      // 4. Fusionner : si un ouvrier existe dans l'équipe du chantier, le garder
+      // Sinon, créer un nouvel ouvrier à partir de l'utilisateur
+      List<Ouvrier> ouvriersDuChantier = [];
+
+      for (var user in ouvrierUsers) {
+        // Vérifier si cet ouvrier est assigné au chantier sélectionné
+        final bool isAssignedToSelectedChantier = user.isAssignedToChantier(
+          _selectedChantierId!,
+        );
+
+        // Vérifier si c'est assigné au projet global (au cas où)
+        final bool isAssignedToProject = user.isAssignedToProject(
+          widget.projet.id,
+        );
+
+        if (isAssignedToSelectedChantier || isAssignedToProject) {
+          final existingOuvrier = equipeChantier.firstWhere(
+            (o) => o.id == user.id,
+            orElse: () => Ouvrier(
+              id: user.id,
+              nom: user.nom,
+              specialite: "Ouvrier",
+              telephone: "",
+              salaireJournalier: 25000.0,
+              joursPointes: [],
+            ),
+          );
+
+          ouvriersDuChantier.add(existingOuvrier);
+          debugPrint('✓ ${user.nom} ajouté à la liste du chantier');
+        }
+      }
+
       if (mounted) {
         setState(() {
-          _allOuvriers = savedOuvriers;
+          _allOuvriers = ouvriersDuChantier;
           _isLoading = false;
         });
       }
     } catch (e) {
-      debugPrint("Erreur de chargement : $e");
+      debugPrint("❌ Erreur de chargement : $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // --- ACTIONS DE GROUPE ---
+  /// 🆕 CORRECTION : Recharge les données quand le chantier change
+  void _onChantierChanged(String? newChantierId) {
+    if (newChantierId != null && newChantierId != _selectedChantierId) {
+      setState(() {
+        _selectedChantierId = newChantierId;
+        _selectedIds.clear();
+        _isLoading = true;
+      });
+      _loadData();
+    }
+  }
+
+  /// 🆕 CORRECTION : Vérifie si un ouvrier peut être pointé sur ce chantier
+  bool _canWorkerBePointedInChantier(Ouvrier worker) {
+    if (_selectedChantierId == null) return false;
+
+    // Vérifier si l'ouvrier est assigné à ce chantier via UserModel
+    // Pour cela, on doit charger les utilisateurs et vérifier
+    // Pour l'instant, on considère que tous les ouvriers de la liste peuvent être pointés
+    return true;
+  }
 
   Future<void> _batchPointage() async {
-    if (_selectedChantierId == null) return;
+    if (_selectedChantierId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez sélectionner un chantier')),
+      );
+      return;
+    }
+
     int count = 0;
+    int errors = 0;
+
     for (String id in _selectedIds) {
-      final worker = _allOuvriers.firstWhere((o) => o.id == id);
-      if (!worker.joursPointes.contains(_today)) {
-        await _togglePointage(worker, _selectedChantierId!);
-        count++;
+      try {
+        final worker = _allOuvriers.firstWhere((o) => o.id == id);
+
+        // Vérifier si l'ouvrier peut être pointé sur ce chantier
+        if (!_canWorkerBePointedInChantier(worker)) {
+          errors++;
+          continue;
+        }
+
+        if (!worker.joursPointes.contains(_today)) {
+          await _togglePointage(worker, _selectedChantierId!);
+          count++;
+        }
+      } catch (e) {
+        debugPrint('❌ Erreur pointage ouvrier $id: $e');
+        errors++;
       }
     }
+
     setState(() => _selectedIds.clear());
+
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("$count ouvrier(s) pointé(s).")));
+      String message = "$count ouvrier(s) pointé(s)";
+      if (errors > 0) {
+        message += ", $errors erreur(s)";
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: errors > 0 ? Colors.orange : Colors.green,
+        ),
+      );
     }
   }
 
   Future<void> _batchDelete() async {
+    if (_selectedChantierId == null) return;
+
     final confirm = await _showDeleteConfirmSelection();
     if (confirm == true) {
+      // Retirer de l'équipe du chantier
+      final updatedTeam = _allOuvriers
+          .where((o) => !_selectedIds.contains(o.id))
+          .toList();
+
+      await DataStorage.saveTeam(_selectedChantierId!, updatedTeam);
+
       setState(() {
-        _allOuvriers.removeWhere((o) => _selectedIds.contains(o.id));
+        _allOuvriers = updatedTeam;
         _selectedIds.clear();
       });
-      await DataStorage.saveGlobalOuvriers(_allOuvriers);
     }
   }
 
@@ -99,8 +221,10 @@ class _OuvriersScreenState extends State<OuvriersScreen>
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Supprimer la sélection ?"),
-        content: Text("Retirer ces ${_selectedIds.length} ouvriers ?"),
+        title: const Text("Retirer de l'équipe ?"),
+        content: Text(
+          "Retirer ces ${_selectedIds.length} ouvriers de l'équipe du chantier ?",
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -108,55 +232,83 @@ class _OuvriersScreenState extends State<OuvriersScreen>
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("SUPPRIMER", style: TextStyle(color: Colors.red)),
+            child: const Text("RETIRER", style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
     );
   }
 
+  /// 🆕 AMÉLIORÉ : Toggle pointage avec meilleure gestion
   Future<void> _togglePointage(Ouvrier worker, String chantierId) async {
-    setState(() {
-      final indexChantier = widget.projet.chantiers.indexWhere(
+    try {
+      final chantierIndex = widget.projet.chantiers.indexWhere(
         (c) => c.id == chantierId,
       );
-      if (worker.joursPointes.contains(_today)) {
-        worker.joursPointes.remove(_today);
-        if (indexChantier != -1) {
-          widget.projet.chantiers[indexChantier].depensesActuelles -=
+      if (chantierIndex == -1) {
+        debugPrint('❌ Chantier $chantierId non trouvé');
+        return;
+      }
+
+      setState(() {
+        final workerIndex = _allOuvriers.indexWhere((o) => o.id == worker.id);
+        if (workerIndex == -1) return;
+
+        if (worker.joursPointes.contains(_today)) {
+          // Retirer le pointage
+          _allOuvriers[workerIndex] = worker.copyWith(
+            joursPointes: worker.joursPointes
+                .where((j) => j != _today)
+                .toList(),
+          );
+
+          // Retirer la dépense
+          widget.projet.chantiers[chantierIndex].depensesActuelles -=
               worker.salaireJournalier;
-          widget.projet.chantiers[indexChantier].depenses.removeWhere(
+          widget.projet.chantiers[chantierIndex].depenses.removeWhere(
             (d) => d.id == "pay_${worker.id}_$_today",
           );
-        }
-      } else {
-        worker.joursPointes.add(_today);
-        if (indexChantier != -1) {
-          widget.projet.chantiers[indexChantier].depensesActuelles +=
+        } else {
+          // Ajouter le pointage
+          _allOuvriers[workerIndex] = worker.copyWith(
+            joursPointes: [...worker.joursPointes, _today],
+          );
+
+          // Ajouter la dépense
+          widget.projet.chantiers[chantierIndex].depensesActuelles +=
               worker.salaireJournalier;
-          widget.projet.chantiers[indexChantier].depenses.add(
+          widget.projet.chantiers[chantierIndex].depenses.add(
             Depense(
               id: "pay_${worker.id}_$_today",
               titre: "Salaire : ${worker.nom}",
               montant: worker.salaireJournalier,
               date: DateTime.now(),
               type: TypeDepense.mainOeuvre,
+              chantierId: chantierId,
             ),
           );
         }
+      });
+
+      // Sauvegarder l'équipe mise à jour
+      await DataStorage.saveTeam(chantierId, _allOuvriers);
+
+      // Sauvegarder le projet avec les dépenses mises à jour
+      await DataStorage.saveSingleProject(widget.projet);
+    } catch (e) {
+      debugPrint('❌ Erreur toggle pointage: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+        );
       }
-    });
-    await DataStorage.saveGlobalOuvriers(_allOuvriers);
-    await DataStorage.saveSingleProject(widget.projet);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
     final bool canEdit = widget.user.role != UserRole.client;
-    if (_selectedChantierId == null && widget.projet.chantiers.isNotEmpty) {
-      _selectedChantierId = widget.projet.chantiers.first.id;
-    }
 
     final listToDisplay = _ouvriersAffiches;
 
@@ -183,14 +335,25 @@ class _OuvriersScreenState extends State<OuvriersScreen>
                     initialValue: _selectedChantierId,
                     items: widget.projet.chantiers
                         .map(
-                          (c) =>
-                              DropdownMenuItem(value: c.id, child: Text(c.nom)),
+                          (c) => DropdownMenuItem(
+                            value: c.id,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(c.nom),
+                                Text(
+                                  '${c.lieu} • ${widget.projet.devise}',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         )
                         .toList(),
-                    onChanged: (val) => setState(() {
-                      _selectedChantierId = val;
-                      _selectedIds.clear();
-                    }),
+                    onChanged: _onChantierChanged,
                   ),
                 ),
                 _buildHeaderInfo(),
@@ -206,13 +369,16 @@ class _OuvriersScreenState extends State<OuvriersScreen>
                         borderRadius: BorderRadius.circular(12),
                       ),
                       filled: true,
-                      contentPadding: EdgeInsets.zero,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                     ),
                   ),
                 ),
                 Expanded(
                   child: listToDisplay.isEmpty
-                      ? const Center(child: Text("Aucun ouvrier trouvé"))
+                      ? _buildEmptyState()
                       : ListView.builder(
                           itemCount: listToDisplay.length,
                           itemBuilder: (context, index) =>
@@ -232,7 +398,47 @@ class _OuvriersScreenState extends State<OuvriersScreen>
     );
   }
 
-  // ... (Garder les méthodes _buildNormalAppBar, _buildSelectionAppBar, _buildHeaderInfo, _buildWorkerCard, _showAddWorkerDialog, _loadProjectTeamAndShowDialog, _openScanner, _handleQRScan identiques à ton code précédent)
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.engineering,
+            size: 80,
+            color: Colors.grey.withValues(alpha: 0.3),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            "Aucun ouvrier dans ce chantier",
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Ajoutez des ouvriers à l'équipe",
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.withValues(alpha: 0.6),
+            ),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: _showAddWorkerDialog,
+            icon: const Icon(Icons.person_add),
+            label: const Text("Ajouter un ouvrier"),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   AppBar _buildNormalAppBar() {
     return AppBar(
@@ -241,42 +447,12 @@ class _OuvriersScreenState extends State<OuvriersScreen>
       foregroundColor: Colors.white,
       actions: [
         IconButton(
-          icon: const Icon(Icons.bug_report),
-          onPressed: _debugFirebaseData,
-        ),
-        IconButton(
           icon: const Icon(Icons.qr_code_scanner),
           onPressed: _openScanner,
+          tooltip: "Scanner QR Code",
         ),
       ],
     );
-  }
-
-  void _debugFirebaseData() async {
-    try {
-      debugPrint("=== DEBUG Firebase Data ===");
-
-      final adminId = FirebaseAuth.instance.currentUser?.uid;
-      if (adminId != null) {
-        // Récupérer tous les utilisateurs
-        final snapshot = await FirebaseFirestore.instance
-            .collection('admins')
-            .doc(adminId)
-            .collection('users')
-            .get();
-
-        debugPrint("Utilisateurs dans Firebase: ${snapshot.docs.length}");
-
-        for (var doc in snapshot.docs) {
-          final data = doc.data();
-          debugPrint("  - ${data['nom']} (${data['role']})");
-          debugPrint("    assignedIds: ${data['assignedIds'] ?? 'aucun'}");
-          debugPrint("    firebaseUid: ${data['firebaseUid']}");
-        }
-      }
-    } catch (e) {
-      debugPrint("Erreur debug Firebase: $e");
-    }
   }
 
   AppBar _buildSelectionAppBar() {
@@ -289,42 +465,92 @@ class _OuvriersScreenState extends State<OuvriersScreen>
       backgroundColor: Colors.orange,
       foregroundColor: Colors.white,
       actions: [
-        IconButton(icon: const Icon(Icons.done_all), onPressed: _batchPointage),
-        IconButton(icon: const Icon(Icons.delete), onPressed: _batchDelete),
+        IconButton(
+          icon: const Icon(Icons.check_circle),
+          onPressed: _batchPointage,
+          tooltip: "Pointer la sélection",
+        ),
+        IconButton(
+          icon: const Icon(Icons.delete_outline),
+          onPressed: _batchDelete,
+          tooltip: "Retirer la sélection",
+        ),
       ],
     );
   }
 
   Widget _buildHeaderInfo() {
+    final chantier = _selectedChantierId != null
+        ? widget.projet.chantiers.firstWhere(
+            (c) => c.id == _selectedChantierId,
+            orElse: () => widget.projet.chantiers.first,
+          )
+        : null;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       color: Colors.orange.withValues(alpha: 0.1),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.calendar_today, size: 16, color: Colors.orange),
-          const SizedBox(width: 8),
-          Text(
-            "Pointage du jour : $_today",
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.orange,
-            ),
+          Row(
+            children: [
+              const Icon(Icons.calendar_today, size: 16, color: Colors.orange),
+              const SizedBox(width: 8),
+              Text(
+                "Pointage du jour : $_today",
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange,
+                ),
+              ),
+            ],
           ),
+          if (chantier != null) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Icon(Icons.location_on, size: 14, color: Colors.blueGrey),
+                const SizedBox(width: 4),
+                Text(
+                  chantier.nom,
+                  style: const TextStyle(fontSize: 13, color: Colors.blueGrey),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  "• ${_allOuvriers.length} ouvrier(s)",
+                  style: const TextStyle(fontSize: 13, color: Colors.blueGrey),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 
   Widget _buildWorkerCard(Ouvrier worker, bool canEdit) {
-    bool isPresent = worker.joursPointes.contains(_today);
-    bool isSelected = _selectedIds.contains(worker.id);
+    final bool isPresent = worker.joursPointes.contains(_today);
+    final bool isSelected = _selectedIds.contains(worker.id);
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       color: isSelected ? Colors.orange.withValues(alpha: 0.1) : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: isPresent
+              ? Colors.green.withValues(alpha: 0.3)
+              : Colors.transparent,
+          width: 2,
+        ),
+      ),
       child: ListTile(
         onLongPress: () {
-          if (canEdit) setState(() => _selectedIds.add(worker.id));
+          if (canEdit) {
+            setState(() => _selectedIds.add(worker.id));
+          }
         },
         onTap: () {
           if (_isSelectionMode) {
@@ -347,196 +573,316 @@ class _OuvriersScreenState extends State<OuvriersScreen>
             ? Checkbox(
                 value: isSelected,
                 activeColor: Colors.orange,
-                onChanged: (val) => setState(
-                  () => val!
-                      ? _selectedIds.add(worker.id)
-                      : _selectedIds.remove(worker.id),
-                ),
+                onChanged: canEdit
+                    ? (val) => setState(
+                        () => val!
+                            ? _selectedIds.add(worker.id)
+                            : _selectedIds.remove(worker.id),
+                      )
+                    : null,
               )
             : CircleAvatar(
-                backgroundColor: Colors.blueGrey.shade100,
+                backgroundColor: isPresent
+                    ? Colors.green.withValues(alpha: 0.2)
+                    : Colors.blueGrey.withValues(alpha: 0.1),
                 child: isPresent
-                    ? const Icon(Icons.check, color: Colors.green)
+                    ? const Icon(Icons.check, color: Colors.green, size: 20)
                     : Text(
                         worker.nom.isNotEmpty
                             ? worker.nom[0].toUpperCase()
                             : "?",
+                        style: TextStyle(
+                          color: Colors.blueGrey,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
               ),
         title: Text(
           worker.nom,
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
-        subtitle: Text(worker.specialite),
-        trailing: const Icon(Icons.chevron_right, size: 16),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(worker.specialite, style: const TextStyle(fontSize: 14)),
+            const SizedBox(height: 4),
+            Text(
+              "${worker.salaireJournalier} ${widget.projet.devise}/jour",
+              style: const TextStyle(
+                fontSize: 13,
+                color: Colors.orange,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isPresent)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.green.withValues(alpha: .3)),
+                ),
+                child: const Text(
+                  "Pointé",
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.green,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            const SizedBox(width: 8),
+            const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
+          ],
+        ),
       ),
     );
   }
 
-  void _showAddWorkerDialog() => _loadProjectTeamAndShowDialog();
-
-  Future<void> _loadProjectTeamAndShowDialog() async {
-    final allUsers = await DataStorage.loadAllUsers();
-
-    // DEBUG : Vérifier ce qui est chargé
-    debugPrint("=== DEBUG OuvriersScreen ===");
-    debugPrint("Projet: ${widget.projet.nom} (ID: ${widget.projet.id})");
-    debugPrint("Total users: ${allUsers.length}");
-
-    for (var user in allUsers) {
-      debugPrint(
-        "  - ${user.nom} (${user.role.name}) - assignedIds: ${user.assignedIds}",
+  void _showAddWorkerDialog() {
+    if (_selectedChantierId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Veuillez sélectionner un chantier'),
+          backgroundColor: Colors.orange,
+        ),
       );
+      return;
     }
 
-    // CORRECTION : Filtrez correctement les ouvriers
-    final projectWorkers = allUsers.where((u) {
-      // 1. Doit être un ouvrier
-      if (u.role != UserRole.ouvrier) {
-        return false;
-      }
+    _loadAvailableWorkersAndShowDialog();
+  }
 
-      // 2. Doit être assigné soit au projet, soit à un chantier du projet
-      final isAssignedToProject = u.assignedIds.contains(widget.projet.id);
-      final isAssignedToChantier = widget.projet.chantiers.any(
-        (chantier) => u.assignedIds.contains(chantier.id),
+  Future<void> _loadAvailableWorkersAndShowDialog() async {
+    try {
+      // 1. Charger tous les utilisateurs du projet
+      final projectUsers = await DataStorage.loadUsersForProject(
+        widget.projet.id,
       );
 
-      if (isAssignedToProject) {
-        debugPrint("✓ ${u.nom} est assigné au projet");
-      } else if (isAssignedToChantier) {
-        debugPrint("✓ ${u.nom} est assigné à un chantier du projet");
-      } else {
-        debugPrint("✗ ${u.nom} n'est pas assigné à ce projet");
-      }
+      // 2. Filtrer pour ne garder que les ouvriers
+      final ouvrierUsers = projectUsers
+          .where((u) => u.role == UserRole.ouvrier)
+          .toList();
 
-      return isAssignedToProject || isAssignedToChantier;
-    }).toList();
+      // 3. Filtrer ceux qui ne sont pas déjà dans l'équipe du chantier
+      final availableToAdd = ouvrierUsers
+          .where((u) => !_allOuvriers.any((o) => o.id == u.id))
+          .toList();
 
-    debugPrint("Ouvriers trouvés: ${projectWorkers.length}");
+      debugPrint('=== DEBUG Ajout ouvrier ===');
+      debugPrint('Ouvriers dans le projet: ${ouvrierUsers.length}');
+      debugPrint('Déjà dans l\'équipe: ${_allOuvriers.length}');
+      debugPrint('Disponibles à ajouter: ${availableToAdd.length}');
 
-    final availableToAdd = projectWorkers
-        .where((u) => !_allOuvriers.any((o) => o.id == u.id))
-        .toList();
+      if (!mounted) return;
 
-    debugPrint("Disponibles à ajouter: ${availableToAdd.length}");
+      showDialog(
+        context: context,
+        builder: (ctx) {
+          final salaryController = TextEditingController(text: "25000");
 
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        final salaryController = TextEditingController(text: "25000");
-        return AlertDialog(
-          title: const Text("Ajouter un membre"),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: availableToAdd.isEmpty
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.people_outline,
-                        size: 50,
-                        color: Colors.grey,
-                      ),
-                      const SizedBox(height: 10),
-                      const Text(
-                        "Aucun ouvrier disponible",
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        "Les ouvriers doivent être assignés à ce projet dans 'Gestion de l'équipe'",
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  )
-                : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextField(
-                        controller: salaryController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: "Salaire Journalier (Ar)",
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 15),
-                      const Text(
-                        "Sélectionnez un ouvrier à ajouter:",
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 10),
-                      Flexible(
-                        child: ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: availableToAdd.length,
-                          itemBuilder: (c, i) => ListTile(
-                            leading: CircleAvatar(
-                              child: Text(availableToAdd[i].nom[0]),
-                            ),
-                            title: Text(availableToAdd[i].nom),
-                            subtitle: Text(availableToAdd[i].email),
-                            onTap: () async {
-                              final worker = Ouvrier(
-                                id: availableToAdd[i].id,
-                                nom: availableToAdd[i].nom,
-                                specialite: "Ouvrier",
-                                telephone:
-                                    "", // CORRECTION : pas de telephone dans UserModel
-                                salaireJournalier:
-                                    double.tryParse(salaryController.text) ??
-                                    25000,
-                                joursPointes: [],
-                              );
-                              setState(() => _allOuvriers.add(worker));
-                              await DataStorage.saveGlobalOuvriers(
-                                _allOuvriers,
-                              );
-                              if (!ctx.mounted) return;
-                              Navigator.pop(ctx);
-
-                              if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    "${worker.nom} ajouté à l'équipe",
-                                  ),
-                                  backgroundColor: Colors.green,
-                                ),
-                              );
-                            },
+          return AlertDialog(
+            title: const Text("Ajouter un ouvrier à l'équipe"),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: availableToAdd.isEmpty
+                  ? _buildNoAvailableWorkers()
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextField(
+                          controller: salaryController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText:
+                                "Salaire Journalier (${widget.projet.devise})",
+                            border: const OutlineInputBorder(),
+                            prefixIcon: const Icon(Icons.attach_money),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text("Annuler"),
+                        const SizedBox(height: 16),
+                        const Text(
+                          "Sélectionnez un ouvrier à ajouter:",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Flexible(
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: availableToAdd.length,
+                            itemBuilder: (c, i) => Card(
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              child: ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: Colors.orange.withValues(
+                                    alpha: 0.1,
+                                  ),
+                                  child: Text(
+                                    availableToAdd[i].nom[0].toUpperCase(),
+                                    style: const TextStyle(
+                                      color: Colors.orange,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                title: Text(
+                                  availableToAdd[i].nom,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                subtitle: Text(availableToAdd[i].email),
+                                trailing: const Icon(
+                                  Icons.add_circle,
+                                  color: Colors.orange,
+                                ),
+                                onTap: () async {
+                                  final newWorker = Ouvrier(
+                                    id: availableToAdd[i].id,
+                                    nom: availableToAdd[i].nom,
+                                    specialite: "Ouvrier",
+                                    telephone: "",
+                                    salaireJournalier:
+                                        double.tryParse(
+                                          salaryController.text,
+                                        ) ??
+                                        25000,
+                                    joursPointes: [],
+                                  );
+
+                                  // Ajouter à l'équipe du chantier
+                                  final updatedTeam = [
+                                    ..._allOuvriers,
+                                    newWorker,
+                                  ];
+                                  await DataStorage.saveTeam(
+                                    _selectedChantierId!,
+                                    updatedTeam,
+                                  );
+
+                                  if (!ctx.mounted) return;
+                                  Navigator.pop(ctx);
+
+                                  if (!mounted) return;
+                                  setState(() {
+                                    _allOuvriers = updatedTeam;
+                                  });
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        "${newWorker.nom} ajouté à l'équipe",
+                                      ),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
             ),
-          ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text("Annuler"),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      debugPrint('❌ Erreur chargement ouvriers disponibles: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
         );
-      },
+      }
+    }
+  }
+
+  Widget _buildNoAvailableWorkers() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.people_outline, size: 60, color: Colors.grey),
+        const SizedBox(height: 16),
+        const Text(
+          "Aucun ouvrier disponible",
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          "Tous les ouvriers assignés à ce projet sont déjà dans l'équipe.",
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.grey),
+        ),
+        const SizedBox(height: 16),
+        ElevatedButton.icon(
+          onPressed: () {
+            Navigator.pop(context); // Fermer le dialog
+            // Option: Naviguer vers la gestion des utilisateurs
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Ajoutez d\'abord des ouvriers au projet'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          },
+          icon: const Icon(Icons.group_add),
+          label: const Text("Gérer les utilisateurs"),
+        ),
+      ],
     );
   }
 
   void _openScanner() {
+    if (_selectedChantierId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Veuillez sélectionner un chantier'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
-      builder: (context) => MobileScanner(
-        onDetect: (capture) {
-          final barcode = capture.barcodes.first;
-          if (barcode.rawValue != null) {
-            _handleQRScan(barcode.rawValue!);
-            Navigator.pop(context);
-          }
-        },
+      builder: (context) => SizedBox(
+        height: 400,
+        child: Column(
+          children: [
+            AppBar(title: const Text("Scanner QR Code"), centerTitle: true),
+            Expanded(
+              child: MobileScanner(
+                onDetect: (capture) {
+                  final barcode = capture.barcodes.first;
+                  if (barcode.rawValue != null) {
+                    _handleQRScan(barcode.rawValue!);
+                    Navigator.pop(context);
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -546,9 +892,12 @@ class _OuvriersScreenState extends State<OuvriersScreen>
       final worker = _allOuvriers.firstWhere((o) => o.id == workerId);
       _togglePointage(worker, _selectedChantierId!);
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Ouvrier inconnu")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Ouvrier non trouvé dans ce chantier"),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 }

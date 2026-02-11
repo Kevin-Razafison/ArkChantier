@@ -15,6 +15,7 @@ class ProjectTeamScreen extends StatefulWidget {
 }
 
 class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
+  bool _isAssigning = false;
   List<UserModel> _assignedUsers = [];
   List<UserModel> _allUsers = [];
   bool _isLoading = true;
@@ -29,11 +30,10 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
 
   Future<void> _loadAdminId() async {
     try {
-      // Récupérer l'admin connecté depuis le contexte ou SharedPreferences
       final users = await DataStorage.loadAllUsers();
       final admin = users.firstWhere(
         (u) => u.role == UserRole.chefProjet,
-        orElse: () => users.first,
+        orElse: () => users.isNotEmpty ? users.first : UserModel.mockAdmin(),
       );
       setState(() {
         _adminId = admin.firebaseUid ?? admin.id;
@@ -50,153 +50,202 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
     setState(() => _isLoading = true);
 
     try {
-      _allUsers = await DataStorage.loadAllUsers();
+      _allUsers = await DataStorage.loadUsersForProject(widget.projet.id);
 
       debugPrint('=== DEBUG ProjectTeamScreen ===');
       debugPrint('Projet: ${widget.projet.nom} (ID: ${widget.projet.id})');
-      debugPrint('Nombre total d\'utilisateurs: ${_allUsers.length}');
+      debugPrint('Nombre d\'utilisateurs dans ce projet: ${_allUsers.length}');
 
       for (var user in _allUsers) {
         debugPrint('  - ${user.nom} (${user.role.name})');
         debugPrint('    ID: ${user.id}, AssignedIds: ${user.assignedIds}');
       }
 
-      debugPrint('Chantiers de ce projet: ${widget.projet.chantiers.length}');
-      for (var chantier in widget.projet.chantiers) {
-        debugPrint('  - ${chantier.nom} (ID: ${chantier.id})');
-      }
-
       if (!mounted) return;
 
       setState(() {
-        _assignedUsers = _allUsers.where((u) {
-          // Utilisateurs sans assignation
-          if (u.assignedIds.isEmpty) {
-            debugPrint('✗ ${u.nom} n\'est pas assigné (assignedIds vide)');
-            return false;
-          }
-
-          // Vérifier si assigné au projet global
-          if (u.isAssignedToProject(widget.projet.id)) {
-            debugPrint('✓ ${u.nom} assigné au projet global');
-            return true;
-          }
-
-          // Vérifier si assigné à un chantier de ce projet
-          final isAssignedToChantier = widget.projet.chantiers.any((c) {
-            if (u.isAssignedToChantier(c.id)) {
-              debugPrint('✓ ${u.nom} assigné au chantier: ${c.nom}');
-              return true;
-            }
-            return false;
-          });
-
-          if (!isAssignedToChantier) {
-            debugPrint(
-              '✗ ${u.nom} assigné à autre chose (assignedIds: ${u.assignedIds})',
-            );
-          }
-
-          return isAssignedToChantier;
+        _assignedUsers = _allUsers.where((user) {
+          return _isUserAssignedToProject(user, widget.projet);
         }).toList();
 
-        debugPrint(
-          'Nombre d\'utilisateurs assignés à ce projet: ${_assignedUsers.length}',
-        );
         _isLoading = false;
       });
+
+      debugPrint(
+        '✅ ${_assignedUsers.length} utilisateur(s) assigné(s) à ce projet',
+      );
     } catch (e) {
       debugPrint('❌ Erreur dans _refreshData: $e');
       setState(() => _isLoading = false);
     }
   }
 
+  bool _isUserAssignedToProject(UserModel user, Projet projet) {
+    if (user.isAssignedToProject(projet.id)) {
+      return true;
+    }
+
+    for (var chantier in projet.chantiers) {
+      if (user.isAssignedToChantier(chantier.id)) {
+        return true;
+      }
+    }
+
+    if (user.assignedProjectId == projet.id) {
+      return true;
+    }
+
+    return false;
+  }
+
+  String? _getAssignedChantierName(UserModel user) {
+    for (var chantier in widget.projet.chantiers) {
+      if (user.isAssignedToChantier(chantier.id)) {
+        return chantier.nom;
+      }
+    }
+    return null;
+  }
+
   Future<void> _assignUserToProject(UserModel user) async {
-    final index = _allUsers.indexWhere((u) => u.id == user.id);
+    setState(() => _isAssigning = true);
 
-    if (index != -1) {
-      // Utiliser la méthode assignTo pour ajouter le projet
-      _allUsers[index] = user.assignTo(widget.projet.id);
+    try {
+      if (_isUserAssignedToProject(user, widget.projet)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⚠️ ${user.nom} est déjà dans ce projet'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        setState(() => _isAssigning = false);
+        return;
+      }
 
-      await DataStorage.saveAllUsers(_allUsers);
-      if (mounted) _refreshData();
+      final index = _allUsers.indexWhere((u) => u.id == user.id);
+
+      if (index != -1) {
+        _allUsers[index] = user.assignTo(widget.projet.id);
+
+        await DataStorage.saveAllUsers(_allUsers);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ ${user.nom} ajouté au projet'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+          await _refreshData();
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur assignation utilisateur: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isAssigning = false);
+      }
     }
   }
 
   Future<void> _removeUserFromProject(UserModel user) async {
-    final index = _allUsers.indexWhere((u) => u.id == user.id);
+    setState(() => _isAssigning = true);
 
-    if (index != -1) {
-      // Retirer toutes les assignations liées à ce projet
-      UserModel updatedUser = user;
+    try {
+      final index = _allUsers.indexWhere((u) => u.id == user.id);
 
-      // Retirer le projet lui-même
-      updatedUser = updatedUser.unassignFrom(widget.projet.id);
+      if (index != -1) {
+        UserModel updatedUser = user;
 
-      // Retirer tous les chantiers de ce projet
-      for (var chantier in widget.projet.chantiers) {
-        updatedUser = updatedUser.unassignFrom(chantier.id);
+        updatedUser = updatedUser.unassignFrom(widget.projet.id);
+
+        for (var chantier in widget.projet.chantiers) {
+          updatedUser = updatedUser.unassignFrom(chantier.id);
+        }
+
+        _allUsers[index] = updatedUser;
+
+        await DataStorage.saveAllUsers(_allUsers);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ ${user.nom} retiré du projet'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+          await _refreshData();
+        }
       }
-
-      _allUsers[index] = updatedUser;
-
-      await DataStorage.saveAllUsers(_allUsers);
-      if (mounted) _refreshData();
+    } catch (e) {
+      debugPrint('❌ Erreur retrait utilisateur: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isAssigning = false);
+      }
     }
   }
 
   void _showAddExistingUserDialog() {
-    final availableUsers = _allUsers
-        .where(
-          (u) =>
-              u.assignedIds.isEmpty || // Utilisateurs non assignés
-              (!u.isAssignedToProject(widget.projet.id) &&
-                  !widget.projet.chantiers.any(
-                    (c) => u.isAssignedToChantier(c.id),
-                  )),
-        )
-        .toList();
+    DataStorage.loadAllUsers().then((allUsers) {
+      final availableUsers = allUsers
+          .where((u) => !_isUserAssignedToProject(u, widget.projet))
+          .toList();
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Ajouter à l'équipe"),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: availableUsers.isEmpty
-              ? const Text("Aucun utilisateur disponible.")
-              : ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: availableUsers.length,
-                  separatorBuilder: (context, index) => const Divider(),
-                  itemBuilder: (context, index) {
-                    final user = availableUsers[index];
-                    return ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: _getRoleColor(user.role),
-                        child: user.nom.isNotEmpty
-                            ? Text(
-                                user.nom[0],
-                                style: const TextStyle(color: Colors.white),
-                              )
-                            : const Icon(Icons.person, color: Colors.white),
-                      ),
-                      title: Text(user.nom.isNotEmpty ? user.nom : "Sans nom"),
-                      subtitle: Text(user.role.name.toUpperCase()),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _assignUserToProject(user);
-                      },
-                    );
-                  },
-                ),
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("Ajouter à l'équipe"),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: availableUsers.isEmpty
+                ? const Text("Aucun utilisateur disponible.")
+                : ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: availableUsers.length,
+                    separatorBuilder: (context, index) => const Divider(),
+                    itemBuilder: (context, index) {
+                      final user = availableUsers[index];
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: _getRoleColor(user.role),
+                          child: user.nom.isNotEmpty
+                              ? Text(
+                                  user.nom[0],
+                                  style: const TextStyle(color: Colors.white),
+                                )
+                              : const Icon(Icons.person, color: Colors.white),
+                        ),
+                        title: Text(
+                          user.nom.isNotEmpty ? user.nom : "Sans nom",
+                        ),
+                        subtitle: Text(user.role.name.toUpperCase()),
+                        onTap: () {
+                          Navigator.pop(context);
+                          _assignUserToProject(user);
+                        },
+                      );
+                    },
+                  ),
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   void _showAssignToSpecificChantierDialog(UserModel user) {
-    // Si c'est un chef de projet, on ne permet PAS de l'assigner à un chantier
     if (user.role == UserRole.chefProjet) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -246,23 +295,19 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
                     (u) => u.id == user.id,
                   );
                   if (indexUser != -1) {
-                    // Retirer l'ancienne assignation et ajouter la nouvelle
                     UserModel updatedUser = user;
 
-                    // Retirer l'ancien chantier si existant
                     if (user.assignedChantierId != null) {
                       updatedUser = updatedUser.unassignFrom(
                         user.assignedChantierId!,
                       );
                     }
 
-                    // Ajouter le nouveau chantier
                     updatedUser = updatedUser.assignTo(c.id);
 
                     _allUsers[indexUser] = updatedUser;
                     await DataStorage.saveAllUsers(_allUsers);
 
-                    // Sync Firebase si nécessaire
                     if (user.firebaseUid != null && _adminId != null) {
                       final syncService = FirebaseSyncService();
                       await syncService.updateUser(
@@ -272,7 +317,7 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
                     }
 
                     if (mounted) {
-                      _refreshData();
+                      await _refreshData();
                       if (!context.mounted) return;
                       Navigator.pop(context);
                     }
@@ -332,74 +377,121 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _assignedUsers.isEmpty
-          ? const Center(child: Text("Aucun utilisateur assigné."))
-          : ListView.builder(
-              padding: const EdgeInsets.only(bottom: 80),
-              itemCount: _assignedUsers.length,
-              itemBuilder: (context, index) {
-                final user = _assignedUsers[index];
-
-                String nomChantier = "Non assigné";
-                if (user.isAssignedToProject(widget.projet.id)) {
-                  nomChantier = "Projet Global";
-                } else if (user.assignedChantierId != null) {
-                  final chantierMatch = widget.projet.chantiers.where(
-                    (c) => c.id == user.assignedChantierId,
-                  );
-                  if (chantierMatch.isNotEmpty) {
-                    nomChantier = chantierMatch.first.nom;
-                  }
-                }
-
-                return Card(
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
+      body: Stack(
+        children: [
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _assignedUsers.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.group_off,
+                        size: 80,
+                        color: Colors.grey.withValues(alpha: 0.5),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        "Aucun utilisateur dans l'équipe",
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        "Ajoutez des membres à votre projet",
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.withValues(alpha: 0.7),
+                        ),
+                      ),
+                    ],
                   ),
-                  child: ListTile(
-                    onTap: () => _showAssignToSpecificChantierDialog(user),
-                    leading: CircleAvatar(
-                      backgroundColor: _getRoleColor(user.role),
-                      child: const Icon(Icons.person, color: Colors.white),
-                    ),
-                    title: Text(user.nom),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("${user.role.name.toUpperCase()} • ${user.email}"),
-                        const SizedBox(height: 4),
-                        Row(
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 80),
+                  itemCount: _assignedUsers.length,
+                  itemBuilder: (context, index) {
+                    final user = _assignedUsers[index];
+
+                    String assignmentType = "Projet Global";
+                    String? chantierName = _getAssignedChantierName(user);
+
+                    if (chantierName != null) {
+                      assignmentType = "Chantier: $chantierName";
+                    }
+
+                    return Card(
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      child: ListTile(
+                        onTap: () => _showAssignToSpecificChantierDialog(user),
+                        leading: CircleAvatar(
+                          backgroundColor: _getRoleColor(user.role),
+                          child: const Icon(Icons.person, color: Colors.white),
+                        ),
+                        title: Text(user.nom),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(
-                              Icons.location_on,
-                              size: 14,
-                              color: Colors.orange,
-                            ),
-                            const SizedBox(width: 4),
                             Text(
-                              "Affectation : $nomChantier",
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.orange,
-                              ),
+                              "${user.role.name.toUpperCase()} • ${user.email}",
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.location_on,
+                                  size: 14,
+                                  color: Colors.orange,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  assignmentType,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.orange,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
+                        trailing: IconButton(
+                          icon: const Icon(
+                            Icons.person_remove,
+                            color: Colors.red,
+                          ),
+                          onPressed: () => _showDeleteConfirm(user),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+          if (_isAssigning)
+            Container(
+              color: Colors.black.withValues(alpha: 0.3),
+              child: const Center(
+                child: Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text('Assignation en cours...'),
                       ],
                     ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.person_remove, color: Colors.red),
-                      onPressed: () => _showDeleteConfirm(user),
-                    ),
                   ),
-                );
-              },
+                ),
+              ),
             ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddExistingUserDialog,
+        onPressed: _isAssigning ? null : _showAddExistingUserDialog,
         backgroundColor: const Color(0xFF1A334D),
         icon: const Icon(Icons.person_add, color: Colors.white),
         label: const Text(

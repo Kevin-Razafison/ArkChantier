@@ -20,6 +20,32 @@ class Ouvrier {
     this.salaireJournalier = 0.0,
     List<String>? joursPointes,
   }) : joursPointes = joursPointes ?? [];
+
+  // Méthode copyWith ajoutée
+  Ouvrier copyWith({
+    String? id,
+    String? nom,
+    String? specialite,
+    String? telephone,
+    String? photoUrl,
+    String? photoPath,
+    bool? estPresent,
+    double? salaireJournalier,
+    List<String>? joursPointes,
+  }) {
+    return Ouvrier(
+      id: id ?? this.id,
+      nom: nom ?? this.nom,
+      specialite: specialite ?? this.specialite,
+      telephone: telephone ?? this.telephone,
+      photoUrl: photoUrl ?? this.photoUrl,
+      photoPath: photoPath ?? this.photoPath,
+      estPresent: estPresent ?? this.estPresent,
+      salaireJournalier: salaireJournalier ?? this.salaireJournalier,
+      joursPointes: joursPointes ?? this.joursPointes,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'nom': nom,
