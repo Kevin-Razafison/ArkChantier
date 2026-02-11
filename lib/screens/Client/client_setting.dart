@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../main.dart';
 import '../../models/user_model.dart';
 import '../../widgets/sync_status.dart';
+import '../admin/conditions_utilisation_screen.dart';
+import '../admin/politique_confidentialite_screen.dart';
 
 class ClientSettingsView extends StatefulWidget {
   final UserModel user;
@@ -15,7 +17,6 @@ class ClientSettingsView extends StatefulWidget {
 class _ClientSettingsViewState extends State<ClientSettingsView> {
   bool _notificationsEnabled = true;
   bool _emailNotifications = true;
-  String _selectedLanguage = 'Français';
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +65,10 @@ class _ClientSettingsViewState extends State<ClientSettingsView> {
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             child: ListTile(
               leading: const Icon(Icons.email, color: Colors.blue),
-              title: const Text('Email'),
+              title: Text(
+                'Email',
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              ),
               subtitle: Text(
                 widget.user.email,
                 style: const TextStyle(fontSize: 13),
@@ -168,24 +172,62 @@ class _ClientSettingsViewState extends State<ClientSettingsView> {
               },
             ),
           ),
+
+          const SizedBox(height: 10),
+          Divider(color: isDark ? Colors.white10 : Colors.black12),
+
+          // Section Confidentialité & Légal
+          _buildSectionTitle("Confidentialité & Légal", isDark),
           Card(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             child: ListTile(
-              leading: const Icon(Icons.language, color: Colors.green),
+              leading: const Icon(Icons.privacy_tip, color: Colors.purple),
               title: Text(
-                "Langue",
+                "Politique de confidentialité",
                 style: TextStyle(color: isDark ? Colors.white : Colors.black87),
               ),
               subtitle: Text(
-                _selectedLanguage,
+                "Protection de vos données",
                 style: TextStyle(
                   color: isDark ? Colors.white54 : Colors.black54,
-                  fontSize: 13,
+                  fontSize: 12,
                 ),
               ),
               trailing: const Icon(Icons.arrow_forward_ios, size: 16),
               onTap: () {
-                _showLanguageDialog();
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        const PolitiqueConfidentialiteScreen(),
+                  ),
+                );
+              },
+            ),
+          ),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: ListTile(
+              leading: const Icon(Icons.gavel, color: Colors.green),
+              title: Text(
+                "Conditions d'utilisation",
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              ),
+              subtitle: Text(
+                "Termes et conditions",
+                style: TextStyle(
+                  color: isDark ? Colors.white54 : Colors.black54,
+                  fontSize: 12,
+                ),
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const ConditionsUtilisationScreen(),
+                  ),
+                );
               },
             ),
           ),
@@ -214,7 +256,7 @@ class _ClientSettingsViewState extends State<ClientSettingsView> {
               onTap: () {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Ouverture du chat...'),
+                    content: Text('Fonctionnalité à venir'),
                     behavior: SnackBarBehavior.floating,
                   ),
                 );
@@ -241,50 +283,6 @@ class _ClientSettingsViewState extends State<ClientSettingsView> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Fonctionnalité à venir'),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              },
-            ),
-          ),
-
-          const SizedBox(height: 10),
-          Divider(color: isDark ? Colors.white10 : Colors.black12),
-
-          // Section Confidentialité
-          _buildSectionTitle("Confidentialité & Sécurité", isDark),
-          Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: ListTile(
-              leading: const Icon(Icons.privacy_tip, color: Colors.purple),
-              title: Text(
-                "Politique de confidentialité",
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-              ),
-              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Ouverture de la politique...'),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              },
-            ),
-          ),
-          Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: ListTile(
-              leading: const Icon(Icons.security, color: Colors.green),
-              title: Text(
-                "Conditions d'utilisation",
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-              ),
-              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Ouverture des CGU...'),
                     behavior: SnackBarBehavior.floating,
                   ),
                 );
@@ -326,7 +324,7 @@ class _ClientSettingsViewState extends State<ClientSettingsView> {
               onTap: () {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Ouverture du formulaire...'),
+                    content: Text('Fonctionnalité à venir'),
                     behavior: SnackBarBehavior.floating,
                   ),
                 );
@@ -362,42 +360,6 @@ class _ClientSettingsViewState extends State<ClientSettingsView> {
               color: isDark ? Colors.blueAccent : Colors.blue.shade800,
               letterSpacing: 1.1,
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showLanguageDialog() {
-    final languages = ['Français', 'English', 'Español', 'العربية'];
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Choisir la langue"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: languages.map((lang) {
-            return RadioListTile<String>(
-              title: Text(lang),
-              value: lang,
-              groupValue: _selectedLanguage,
-              onChanged: (value) {
-                setState(() => _selectedLanguage = value!);
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Langue changée : $value'),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              },
-            );
-          }).toList(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Fermer"),
           ),
         ],
       ),

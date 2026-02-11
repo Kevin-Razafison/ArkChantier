@@ -20,10 +20,10 @@ class ConditionsUtilisationScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A334D).withOpacity(0.1),
+              color: const Color(0xFF1A334D).withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: const Color(0xFF1A334D).withOpacity(0.3),
+                color: const Color(0xFF1A334D).withValues(alpha: 0.3),
               ),
             ),
             child: Column(
@@ -299,9 +299,9 @@ Nous nous engageons à répondre dans un délai de 72 heures ouvrées.""",
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(0.1),
+              color: Colors.orange.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
             ),
             child: Row(
               children: [
