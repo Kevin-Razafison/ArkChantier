@@ -20,7 +20,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   bool _notificationsEnabled = true;
   bool _soundEnabled = true;
-  String _appVersion = '2.0.0';
+  String _appVersion = '1.0.0';
 
   @override
   void initState() {
@@ -30,7 +30,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Future<void> _loadAppVersion() async {
     setState(() {
-      _appVersion = '2.0.0 - Offline First (Build 2026)';
+      _appVersion = '1.0.0 - Offline First (Build 2026)';
     });
   }
 

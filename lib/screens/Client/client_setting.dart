@@ -42,7 +42,7 @@ class _ClientSettingsViewState extends State<ClientSettingsView> {
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             child: ListTile(
               leading: CircleAvatar(
-                backgroundColor: Colors.blue.withOpacity(0.1),
+                backgroundColor: Colors.blue.withValues(alpha: 0.1),
                 child: const Icon(Icons.person, color: Colors.blue),
               ),
               title: Text(
@@ -304,7 +304,7 @@ class _ClientSettingsViewState extends State<ClientSettingsView> {
                 style: TextStyle(color: isDark ? Colors.white : Colors.black87),
               ),
               subtitle: Text(
-                "2.0.0 - Offline First (Build 2026)",
+                "1.0.0 - Offline First (Build 2026)",
                 style: TextStyle(
                   color: isDark ? Colors.white54 : Colors.black54,
                   fontSize: 13,
