@@ -44,6 +44,7 @@ class _ForemanShellState extends State<ForemanShell> {
     });
   }
 
+  // ✅ AMÉLIORATION: Gestion d'erreur dans la génération PDF
   Future<void> _generateDailyReport(Chantier chantier) async {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -58,6 +59,7 @@ class _ForemanShellState extends State<ForemanShell> {
       final List<dm.Depense> depenses = await DataStorage.loadDepenses(
         chantier.id,
       );
+
       await PdfService.generateChantierFullReport(
         chantier: chantier,
         incidents: chantier.incidents,
@@ -65,7 +67,16 @@ class _ForemanShellState extends State<ForemanShell> {
         stocks: stocks,
         depenses: depenses,
       );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Rapport PDF généré avec succès"),
+          backgroundColor: Colors.green,
+        ),
+      );
     } catch (e) {
+      debugPrint('❌ Erreur génération PDF: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -117,7 +128,6 @@ class _ForemanShellState extends State<ForemanShell> {
         currentImage: _profileImage,
         onImageChanged: _updateProfileImage,
       ),
-      // ✅ CHEF DE CHANTIER voit le SALON CHANTIER (Admin + Chef Chantier + Ouvriers)
       ChatScreen(
         chatRoomId: monChantier.id,
         chatRoomType: ChatRoomType.chantier,
@@ -158,6 +168,7 @@ class _ForemanShellState extends State<ForemanShell> {
         actions: [
           IconButton(
             icon: const Icon(Icons.picture_as_pdf, color: Colors.orangeAccent),
+            tooltip: "Générer rapport PDF",
             onPressed: () => _generateDailyReport(monChantier),
           ),
         ],
@@ -209,7 +220,7 @@ class _ForemanShellState extends State<ForemanShell> {
       case 7:
         return "MON PROFIL";
       case 8:
-        return "DISCUSSION ÉQUIPE"; // ✅ Titre clair
+        return "DISCUSSION ÉQUIPE";
       default:
         return "CHANTIER";
     }

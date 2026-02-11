@@ -22,11 +22,20 @@ class _ForemanStockViewState extends State<ForemanStockView> {
   }
 
   Future<void> _loadStocks() async {
-    final data = await DataStorage.loadStocks(widget.chantier.id);
-    setState(() {
-      _stocks = data;
-      _isLoading = false;
-    });
+    try {
+      final data = await DataStorage.loadStocks(widget.chantier.id);
+      if (mounted) {
+        setState(() {
+          _stocks = data;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur chargement stocks: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   void _updateQuantity(Materiel item, double change) async {
@@ -45,56 +54,73 @@ class _ForemanStockViewState extends State<ForemanStockView> {
         child: CircularProgressIndicator(color: Colors.orange),
       );
     }
+
     return Scaffold(
-      // Suppression du backgroundColor fixe
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _stocks.length,
-        itemBuilder: (context, index) {
-          final item = _stocks[index];
-          return Card(
-            // La carte devient blanche en mode clair et bleue nuit en mode sombre
-            color: isDark ? const Color(0xFF1A334D) : Colors.white,
-            elevation: isDark ? 0 : 2,
-            margin: const EdgeInsets.only(bottom: 10),
-            child: ListTile(
-              title: Text(
-                item.nom,
-                style: TextStyle(
-                  color: isDark ? Colors.white : Colors.black87,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              subtitle: Text(
-                "${item.quantite} ${item.unite}",
-                style: const TextStyle(
-                  color: Colors.orange,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
+      body: _stocks.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  IconButton(
-                    icon: const Icon(
-                      Icons.remove_circle_outline,
-                      color: Colors.redAccent,
-                    ),
-                    onPressed: () => _updateQuantity(item, -1),
+                  Icon(
+                    Icons.inventory_2_outlined,
+                    size: 80,
+                    color: Colors.grey.shade400,
                   ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.add_circle_outline,
-                      color: Colors.greenAccent,
-                    ),
-                    onPressed: () => _updateQuantity(item, 1),
+                  const SizedBox(height: 16),
+                  Text(
+                    "Aucun matériel en stock",
+                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
                   ),
                 ],
               ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _stocks.length,
+              itemBuilder: (context, index) {
+                final item = _stocks[index];
+                return Card(
+                  color: isDark ? const Color(0xFF1A334D) : Colors.white,
+                  elevation: isDark ? 0 : 2,
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: ListTile(
+                    title: Text(
+                      item.nom,
+                      style: TextStyle(
+                        color: isDark ? Colors.white : Colors.black87,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    subtitle: Text(
+                      "${item.quantite} ${item.unite}",
+                      style: const TextStyle(
+                        color: Colors.orange,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(
+                            Icons.remove_circle_outline,
+                            color: Colors.redAccent,
+                          ),
+                          onPressed: () => _updateQuantity(item, -1),
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.add_circle_outline,
+                            color: Colors.greenAccent,
+                          ),
+                          onPressed: () => _updateQuantity(item, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
-          );
-        },
-      ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.orange,
         onPressed: () => _showAddMaterialDialog(isDark),
@@ -103,6 +129,7 @@ class _ForemanStockViewState extends State<ForemanStockView> {
     );
   }
 
+  // ✅ FIX: Dialog sans overflow
   void _showAddMaterialDialog(bool isDark) {
     final nomController = TextEditingController();
     final uniteController = TextEditingController();
@@ -111,7 +138,6 @@ class _ForemanStockViewState extends State<ForemanStockView> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        // Adaptation du fond de l'alerte
         backgroundColor: isDark ? const Color(0xFF1A334D) : Colors.white,
         title: Text(
           "Ajouter un matériau",
@@ -119,35 +145,40 @@ class _ForemanStockViewState extends State<ForemanStockView> {
             color: isDark ? Colors.white : const Color(0xFF1A334D),
           ),
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nomController,
-              style: TextStyle(color: isDark ? Colors.white : Colors.black),
-              decoration: const InputDecoration(
-                labelText: "Nom (ex: Acier 12)",
-                labelStyle: TextStyle(color: Colors.orange),
+        content: SingleChildScrollView(
+          // ✅ Important pour éviter overflow
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nomController,
+                style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                decoration: const InputDecoration(
+                  labelText: "Nom (ex: Acier 12)",
+                  labelStyle: TextStyle(color: Colors.orange),
+                ),
               ),
-            ),
-            TextField(
-              controller: quantiteController,
-              keyboardType: TextInputType.number,
-              style: TextStyle(color: isDark ? Colors.white : Colors.black),
-              decoration: const InputDecoration(
-                labelText: "Quantité initiale",
-                labelStyle: TextStyle(color: Colors.orange),
+              const SizedBox(height: 16),
+              TextField(
+                controller: quantiteController,
+                keyboardType: TextInputType.number,
+                style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                decoration: const InputDecoration(
+                  labelText: "Quantité initiale",
+                  labelStyle: TextStyle(color: Colors.orange),
+                ),
               ),
-            ),
-            TextField(
-              controller: uniteController,
-              style: TextStyle(color: isDark ? Colors.white : Colors.black),
-              decoration: const InputDecoration(
-                labelText: "Unité (ex: kg, sacs, m3)",
-                labelStyle: TextStyle(color: Colors.orange),
+              const SizedBox(height: 16),
+              TextField(
+                controller: uniteController,
+                style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                decoration: const InputDecoration(
+                  labelText: "Unité (ex: kg, sacs, m3)",
+                  labelStyle: TextStyle(color: Colors.orange),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -157,20 +188,40 @@ class _ForemanStockViewState extends State<ForemanStockView> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
             onPressed: () async {
-              if (nomController.text.isNotEmpty) {
-                final nouveau = Materiel(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
-                  nom: nomController.text,
-                  quantite: int.tryParse(quantiteController.text) ?? 0,
-                  unite: uniteController.text,
-                  prixUnitaire: 0,
-                  categorie: CategorieMateriel.consommable,
+              // ✅ Validation
+              if (nomController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Le nom est obligatoire'),
+                    backgroundColor: Colors.red,
+                  ),
                 );
-                setState(() => _stocks.add(nouveau));
-                await DataStorage.saveStocks(widget.chantier.id, _stocks);
-                if (!context.mounted) return;
-                Navigator.pop(context);
+                return;
               }
+
+              final nouveau = Materiel(
+                id: DateTime.now().millisecondsSinceEpoch.toString(),
+                nom: nomController.text.trim(),
+                quantite: int.tryParse(quantiteController.text) ?? 0,
+                unite: uniteController.text.trim().isEmpty
+                    ? "unité"
+                    : uniteController.text.trim(),
+                prixUnitaire: 0,
+                categorie: CategorieMateriel.consommable,
+              );
+
+              setState(() => _stocks.add(nouveau));
+              await DataStorage.saveStocks(widget.chantier.id, _stocks);
+
+              if (!context.mounted) return;
+              Navigator.pop(context);
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text("${nouveau.nom} ajouté"),
+                  backgroundColor: Colors.green,
+                ),
+              );
             },
             child: const Text("Ajouter", style: TextStyle(color: Colors.white)),
           ),

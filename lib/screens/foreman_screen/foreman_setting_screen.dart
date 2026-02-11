@@ -15,14 +15,12 @@ class ForemanSettingsView extends StatefulWidget {
 class _ForemanSettingsViewState extends State<ForemanSettingsView> {
   @override
   Widget build(BuildContext context) {
-    // Détection du mode sombre
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Paramètres'),
         actions: [
-          // Indicateur compact
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: CompactSyncIndicator(),
@@ -30,6 +28,8 @@ class _ForemanSettingsViewState extends State<ForemanSettingsView> {
         ],
       ),
       body: ListView(
+        // ✅ Ajout de padding pour éviter overflow sur petits écrans
+        padding: const EdgeInsets.only(bottom: 20),
         children: [
           // Section Synchronisation
           _buildSectionTitle("Synchronisation", isDark),

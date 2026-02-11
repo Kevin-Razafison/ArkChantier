@@ -48,7 +48,15 @@ class _ForemanAttendanceViewState extends State<ForemanAttendanceView> {
       }
     } catch (e) {
       debugPrint('❌ Error loading equipe: $e');
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur de chargement: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -158,6 +166,7 @@ class _ForemanAttendanceViewState extends State<ForemanAttendanceView> {
 
       if (!worker.estPresent) {
         _togglePresence(worker, forceValue: true);
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("${worker.nom} pointé présent !"),
@@ -166,6 +175,7 @@ class _ForemanAttendanceViewState extends State<ForemanAttendanceView> {
           ),
         );
       } else {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("${worker.nom} est déjà présent.")),
         );
@@ -200,6 +210,7 @@ class _ForemanAttendanceViewState extends State<ForemanAttendanceView> {
         );
       } catch (e2) {
         debugPrint('❌ Worker not found in global annuaire: $workerId');
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text("Ouvrier non reconnu."),
@@ -210,6 +221,7 @@ class _ForemanAttendanceViewState extends State<ForemanAttendanceView> {
     }
   }
 
+  // ✅ AMÉLIORATION: Dialog avec scroll et SafeArea
   Widget _buildAddOuvrierButton(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -218,18 +230,29 @@ class _ForemanAttendanceViewState extends State<ForemanAttendanceView> {
           debugPrint('➕ Opening global annuaire...');
           final globalOuvriers = await DataStorage.loadGlobalOuvriers();
           if (!context.mounted) return;
+
           showDialog(
             context: context,
             builder: (context) => AlertDialog(
               title: const Text("Ajouter un ouvrier"),
-              content: SizedBox(
-                width: double.maxFinite,
-                height: 300,
+              // ✅ FIX: Utiliser ConstrainedBox au lieu de SizedBox fixe
+              content: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.5,
+                  maxWidth: double.maxFinite,
+                ),
                 child: globalOuvriers.isEmpty
                     ? const Center(
-                        child: Text("Aucun ouvrier dans l'annuaire global"),
+                        child: Padding(
+                          padding: EdgeInsets.all(20.0),
+                          child: Text(
+                            "Aucun ouvrier dans l'annuaire global",
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
                       )
                     : ListView.builder(
+                        shrinkWrap: true, // ✅ Important pour le dialog
                         itemCount: globalOuvriers.length,
                         itemBuilder: (context, index) {
                           final ouvrier = globalOuvriers[index];
@@ -249,10 +272,13 @@ class _ForemanAttendanceViewState extends State<ForemanAttendanceView> {
                                       setState(() {
                                         _equipe.add(ouvrier);
                                       });
+
+                                      // Save the team
                                       DataStorage.saveTeam(
                                         widget.chantier.id,
                                         _equipe,
                                       );
+
                                       Navigator.pop(context);
                                       ScaffoldMessenger.of(
                                         context,
@@ -261,6 +287,7 @@ class _ForemanAttendanceViewState extends State<ForemanAttendanceView> {
                                           content: Text(
                                             "${ouvrier.nom} ajouté au chantier",
                                           ),
+                                          backgroundColor: Colors.green,
                                         ),
                                       );
                                     },

@@ -34,7 +34,6 @@ class _ForemanProfileViewState extends State<ForemanProfileView> {
     super.dispose();
   }
 
-  // Fonction pour changer la photo de profil (similaire à l'ouvrier)
   Future<void> _pickImage() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
@@ -42,7 +41,7 @@ class _ForemanProfileViewState extends State<ForemanProfileView> {
     }
   }
 
-  // ✅ NOUVELLE FONCTION : Dialog de changement de mot de passe
+  // ✅ AMÉLIORATION: Dialog de changement de mot de passe sans overflow
   void _showChangePasswordDialog() {
     _oldPasswordController.clear();
     _newPasswordController.clear();
@@ -53,6 +52,7 @@ class _ForemanProfileViewState extends State<ForemanProfileView> {
       builder: (ctx) => AlertDialog(
         title: const Text("Modifier le mot de passe"),
         content: SingleChildScrollView(
+          // ✅ Important pour éviter overflow
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -106,7 +106,6 @@ class _ForemanProfileViewState extends State<ForemanProfileView> {
     );
   }
 
-  // ✅ NOUVELLE FONCTION : Gérer le changement de mot de passe
   Future<void> _handlePasswordChange(BuildContext dialogContext) async {
     // Validation
     if (_oldPasswordController.text.isEmpty ||
@@ -152,6 +151,9 @@ class _ForemanProfileViewState extends State<ForemanProfileView> {
         _showSnackBar("Modification locale non implémentée", Colors.orange);
       }
     } on FirebaseAuthException catch (e) {
+      debugPrint('❌ Erreur Firebase Auth: ${e.code}');
+
+      // Messages d'erreur clairs pour le debug
       String errorMsg = "Erreur lors de la modification";
 
       if (e.code == 'wrong-password') {
@@ -225,9 +227,14 @@ class _ForemanProfileViewState extends State<ForemanProfileView> {
                   side: BorderSide(
                     color: isDark ? Colors.orangeAccent : Colors.orange,
                   ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
                 ),
               ),
             ),
+            const SizedBox(height: 40), // ✅ Espace en bas
           ],
         ),
       ),
@@ -243,7 +250,6 @@ class _ForemanProfileViewState extends State<ForemanProfileView> {
               CircleAvatar(
                 radius: 60,
                 backgroundColor: isDark ? Colors.white10 : Colors.grey.shade200,
-                // On utilise widget.currentImage qui vient du Shell
                 backgroundImage: widget.currentImage != null
                     ? FileImage(widget.currentImage!)
                     : null,
@@ -301,12 +307,15 @@ class _ForemanProfileViewState extends State<ForemanProfileView> {
   Widget _buildSectionLabel(String label, bool isDark) {
     return Padding(
       padding: const EdgeInsets.only(left: 8, bottom: 8),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w900,
-          color: isDark ? Colors.white54 : Colors.blueGrey,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            color: isDark ? Colors.white54 : Colors.blueGrey,
+          ),
         ),
       ),
     );

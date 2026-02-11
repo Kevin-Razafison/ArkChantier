@@ -29,7 +29,6 @@ class ForemanSidebar extends StatelessWidget {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              // ✅ Use the global app state to logout
               await ChantierApp.of(context).logout(context);
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -56,26 +55,43 @@ class ForemanSidebar extends StatelessWidget {
       child: Column(
         children: [
           _buildHeader(),
-          _buildMenuItem(Icons.dashboard_outlined, "Tableau de Bord", 0),
-          _buildMenuItem(Icons.qr_code_scanner, "Pointage Ouvriers", 1),
-          _buildMenuItem(Icons.add_a_photo_outlined, "Rapports Photos", 2),
-          _buildMenuItem(Icons.inventory_2_outlined, "Matériel & Stocks", 3),
-          _buildMenuItem(Icons.warning_amber_rounded, "Journal d'Incidents", 4),
-          _buildMenuItem(
-            Icons.monetization_on_outlined,
-            "Dépenses & Reçus",
-            5,
-            color: Colors.orangeAccent,
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                _buildMenuItem(Icons.dashboard_outlined, "Tableau de Bord", 0),
+                _buildMenuItem(Icons.qr_code_scanner, "Pointage Ouvriers", 1),
+                _buildMenuItem(
+                  Icons.add_a_photo_outlined,
+                  "Rapports Photos",
+                  2,
+                ),
+                _buildMenuItem(
+                  Icons.inventory_2_outlined,
+                  "Matériel & Stocks",
+                  3,
+                ),
+                _buildMenuItem(
+                  Icons.warning_amber_rounded,
+                  "Journal d'Incidents",
+                  4,
+                ),
+                _buildMenuItem(
+                  Icons.monetization_on_outlined,
+                  "Dépenses & Reçus",
+                  5,
+                  color: Colors.orangeAccent,
+                ),
+                _buildMenuItem(Icons.person_outline, "Mon Profil", 7),
+                _buildMenuItem(Icons.settings_outlined, "Paramètres", 6),
+                _buildMenuItem(Icons.chat_outlined, "Discussion", 8),
+              ],
+            ),
           ),
-          _buildMenuItem(Icons.person_outline, "Mon Profil", 7),
-          _buildMenuItem(Icons.settings_outlined, "Paramètres", 6),
-          _buildMenuItem(Icons.chat_outlined, "Discussion", 8),
-
-          const Spacer(),
           const Divider(color: Colors.white24),
           ListTile(
-            leading: Icon(Icons.logout, color: Colors.orangeAccent),
-            title: Text(
+            leading: const Icon(Icons.logout, color: Colors.orangeAccent),
+            title: const Text(
               "Déconnexion",
               style: TextStyle(color: Colors.orangeAccent),
             ),
@@ -94,20 +110,24 @@ class ForemanSidebar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           CircleAvatar(
+            radius: 30,
             backgroundColor: Colors.orange,
             backgroundImage: profileImage != null
                 ? FileImage(profileImage!)
                 : null,
             child: profileImage == null
-                ? const Icon(Icons.engineering, color: Colors.white)
+                ? const Icon(Icons.engineering, color: Colors.white, size: 30)
                 : null,
           ),
           const SizedBox(height: 15),
           Text(
             user.nom.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.bold,
+              fontSize: 14,
             ),
           ),
           const Text(
