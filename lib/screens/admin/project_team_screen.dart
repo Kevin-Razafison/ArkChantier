@@ -210,6 +210,8 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
 
   void _showAddExistingUserDialog() {
     DataStorage.loadAllUsers().then((allUsers) {
+      if (!mounted) return;
+
       final availableUsers = allUsers
           .where((u) => !_isUserAssignedToProject(u, widget.projet))
           .toList();

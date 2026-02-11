@@ -180,8 +180,6 @@ class _AdminShellState extends State<AdminShell> with TickerProviderStateMixin {
               _showLogoutConfirmation();
             } else if (value == 'profil') {
               setState(() => _selectedIndex = 5);
-            } else if (value == 'aide') {
-              _showHelp();
             }
           },
           itemBuilder: (context) => [
@@ -192,16 +190,6 @@ class _AdminShellState extends State<AdminShell> with TickerProviderStateMixin {
                   Icon(Icons.person, size: 20),
                   SizedBox(width: 12),
                   Text('Mon profil'),
-                ],
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'aide',
-              child: Row(
-                children: [
-                  Icon(Icons.help_outline, size: 20, color: Colors.blue),
-                  SizedBox(width: 12),
-                  Text('Aide'),
                 ],
               ),
             ),
@@ -257,50 +245,6 @@ class _AdminShellState extends State<AdminShell> with TickerProviderStateMixin {
     );
   }
 
-  void _showHelp() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.help_outline, color: Colors.blue),
-            SizedBox(width: 10),
-            Text('Centre d\'aide'),
-          ],
-        ),
-        content: const SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Raccourcis clavier :',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 8),
-              Text('• Ctrl + N : Nouveau chantier'),
-              Text('• Ctrl + S : Synchroniser'),
-              Text('• Ctrl + P : Profil'),
-              SizedBox(height: 16),
-              Text(
-                'Besoin d\'aide ?',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 8),
-              Text('Contactez le support à support@chantier-pro.com'),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('FERMER'),
-          ),
-        ],
-      ),
-    );
-  }
-
   String _getRoleName(UserRole role) {
     switch (role) {
       case UserRole.chefProjet:
@@ -329,13 +273,14 @@ class _AdminShellState extends State<AdminShell> with TickerProviderStateMixin {
       AdminChatHub(user: widget.user, projet: widget.currentProject),
     ];
 
-    return WillPopScope(
-      onWillPop: () async {
-        if (_selectedIndex != 0) {
-          setState(() => _selectedIndex = 0);
-          return false;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, dynamic result) async {
+        if (!didPop) {
+          if (_selectedIndex != 0) {
+            setState(() => _selectedIndex = 0);
+          }
         }
-        return true;
       },
       child: Scaffold(
         key: _scaffoldKey,

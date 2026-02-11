@@ -9,7 +9,6 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import '../../models/chantier_model.dart';
 
 class ProjectLauncherScreen extends StatefulWidget {
   final UserModel user;
@@ -34,7 +33,6 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Charger depuis DataStorage
       final data = await DataStorage.loadAllProjects();
 
       if (mounted) {
@@ -46,10 +44,7 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
 
       debugPrint("📁 ${data.length} projet(s) chargé(s)");
 
-      // Si aucun projet et c'est l'admin, créer un projet par défaut
-      if (data.isEmpty && widget.user.role == UserRole.chefProjet && mounted) {
-        await _createDefaultProject();
-      }
+      // ❌ SUPPRIMÉ : plus aucun projet par défaut créé automatiquement
     } catch (e) {
       debugPrint("❌ Erreur chargement projets: $e");
       if (mounted) {
@@ -61,33 +56,8 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
     }
   }
 
-  Future<void> _createDefaultProject() async {
-    final defaultProject = Projet(
-      id: 'default_${DateTime.now().millisecondsSinceEpoch}',
-      nom: 'Projet Démonstration',
-      dateCreation: DateTime.now(),
-      devise: 'MGA',
-      chantiers: [
-        Chantier(
-          id: 'chantier_1',
-          nom: 'Chantier Principal',
-          lieu: 'Antananarivo',
-          progression: 0.3,
-          statut: StatutChantier.enCours,
-          latitude: -18.8792,
-          longitude: 47.5079,
-          budgetInitial: 50000000,
-          depensesActuelles: 15000000,
-        ),
-      ],
-    );
-
-    await DataStorage.saveSingleProject(defaultProject);
-
-    if (mounted) {
-      await _loadProjets(); // Recharger la liste
-    }
-  }
+  // ❌ MÉTHODE SUPPRIMÉE : _createDefaultProject() n’est plus utilisée
+  // (supprimée intégralement)
 
   Future<void> _importArkProject() async {
     try {
@@ -121,7 +91,6 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
     try {
       final content = DataStorage.encodeProjectForFile(p);
 
-      // Sur Linux, on va enregistrer dans le dossier "Downloads" ou "Documents"
       final directory =
           await getDownloadsDirectory() ??
           await getApplicationDocumentsDirectory();
@@ -132,8 +101,6 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
       await file.writeAsString(content);
 
       if (Platform.isLinux || Platform.isWindows) {
-        // 💡 Puisque SharePlus ne supporte pas les fichiers sur Linux,
-        // on affiche juste un message avec le chemin du fichier.
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Fichier enregistré dans : $filePath")),
@@ -168,28 +135,21 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
-              Navigator.pop(ctx); // Fermer le dialog
+              Navigator.pop(ctx);
 
-              // Supprimer localement d'abord
               setState(() => _isLoading = true);
 
               try {
-                // Sauvegarder l'état actuel pour éviter de perdre d'autres projets
                 final currentProjects = await DataStorage.loadAllProjects();
                 final updatedProjects = currentProjects
                     .where((proj) => proj.id != p.id)
                     .toList();
 
-                // Sauvegarder la nouvelle liste
                 await DataStorage.saveAllProjects(updatedProjects);
-
-                // Supprimer du stockage Firebase (si connecté)
                 await DataStorage.deleteProject(p.id);
 
-                // Recharger l'interface
                 if (mounted) {
-                  await _loadProjets(); // Utiliser await pour attendre le chargement
-
+                  await _loadProjets();
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -227,12 +187,11 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
 
   void _showCreateProjectDialog() {
     final nomController = TextEditingController();
-    String selectedDevise = "MGA"; // Par défaut
+    String selectedDevise = "MGA";
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        // Utilisation de StatefulBuilder pour le dropdown
         builder: (ctx, setDialogState) => AlertDialog(
           title: const Text("Nouveau Projet BTP"),
           content: Column(
@@ -293,7 +252,6 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
     );
   }
 
-  // Nouvelle méthode pour afficher le menu latéral en drawer sur mobile
   void _showMobileDrawer() {
     final bool isClient = widget.user.role == UserRole.client;
 
@@ -380,13 +338,11 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
       return matchesSearch;
     }).toList();
 
-    // Détection de la taille de l'écran
     final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth < 800; // Seuil pour mobile
+    final isMobile = screenWidth < 800;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
-      // AppBar pour mobile avec menu hamburger
       appBar: isMobile
           ? AppBar(
               backgroundColor: const Color(0xFF1E293B),
@@ -413,7 +369,6 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
     );
   }
 
-  // Layout pour mobile (sans sidebar)
   Widget _buildMobileLayout(List<Projet> filtered, bool isClient) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -438,7 +393,7 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
                       ? _buildEmptyState(isClient)
                       : ListView.separated(
                           itemCount: filtered.length,
-                          separatorBuilder: (_, __) =>
+                          separatorBuilder: (_, _) =>
                               const Divider(color: Colors.white10),
                           itemBuilder: (ctx, i) =>
                               _buildProjectTile(filtered[i]),
@@ -449,11 +404,9 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
     );
   }
 
-  // Layout pour desktop (avec sidebar)
   Widget _buildDesktopLayout(List<Projet> filtered, bool isClient) {
     return Row(
       children: [
-        // BARRE LATÉRALE GAUCHE (Actions Filtrées)
         Container(
           width: 280,
           color: const Color(0xFF1E293B),
@@ -468,7 +421,6 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
                   size: 90,
                 ),
               ),
-
               if (!isClient) ...[
                 _buildMenuButton(
                   Icons.add_box_outlined,
@@ -508,7 +460,6 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
                   () {},
                 ),
               ],
-
               const Spacer(),
               const Padding(
                 padding: EdgeInsets.all(16.0),
@@ -520,8 +471,6 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
             ],
           ),
         ),
-
-        // ZONE DROITE (Liste des projets)
         Expanded(
           child: Padding(
             padding: const EdgeInsets.all(40.0),
@@ -711,7 +660,6 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
         style: const TextStyle(color: Colors.grey, fontSize: 14),
       ),
       onTap: onTap,
-      // Petit effet au survol (optionnel)
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     );
   }
@@ -734,6 +682,18 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
             style: const TextStyle(color: Colors.grey),
             textAlign: TextAlign.center,
           ),
+          if (!isClient) ...[
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text("Créer un premier projet"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: _showCreateProjectDialog,
+            ),
+          ],
         ],
       ),
     );

@@ -144,7 +144,11 @@ class DataStorage {
   }
 
   static Future<List<Materiel>> loadMateriels(String chantierId) async {
-    return await _syncService.loadMateriels(chantierId);
+    final allMaterials = await _syncService.loadMateriels(chantierId);
+    // ✅ Filtrer uniquement les matériels de ce chantier
+    return allMaterials
+        .where((m) => m.chantierId == chantierId || m.chantierId == null)
+        .toList();
   }
 
   static Future<List<Materiel>> loadAllMateriels() async {
@@ -154,10 +158,37 @@ class DataStorage {
     for (var p in projets) {
       for (var c in p.chantiers) {
         final mats = await loadMateriels(c.id);
-        allMat.addAll(mats);
+        // ✅ Filtrer pour ne garder que les matériels de ce chantier
+        final filteredMats = mats
+            .where((m) => m.chantierId == c.id || m.chantierId == null)
+            .toList();
+        allMat.addAll(filteredMats);
       }
     }
     return allMat;
+  }
+
+  // ✅ NOUVELLE MÉTHODE: Charger les matériels d'un projet spécifique
+  static Future<List<Materiel>> loadMaterielsForProject(String projetId) async {
+    final projets = await loadAllProjects();
+    final projet = projets.firstWhere(
+      (p) => p.id == projetId,
+      orElse: () => Projet.empty(),
+    );
+
+    if (projet.id == 'empty') return [];
+
+    List<Materiel> projectMaterials = [];
+    for (var chantier in projet.chantiers) {
+      final mats = await loadMateriels(chantier.id);
+      // Filtrer pour ne garder que les matériels de ce chantier
+      final filteredMats = mats
+          .where((m) => m.chantierId == chantier.id || m.chantierId == null)
+          .toList();
+      projectMaterials.addAll(filteredMats);
+    }
+
+    return projectMaterials;
   }
 
   static Future<void> saveReports(
@@ -386,12 +417,18 @@ class DataStorage {
 
   static Future<List<Materiel>> loadStocks(String chantierId) async {
     final stocks = await loadMateriels(chantierId);
+    // ✅ Filtrer uniquement les matériels associés à ce chantier
+    final filteredStocks = stocks
+        .where((m) => m.chantierId == chantierId || m.chantierId == null)
+        .toList();
 
-    if (stocks.isEmpty) {
+    // Ne retourner les données par défaut que si vraiment aucun matériel n'existe
+    if (filteredStocks.isEmpty) {
       return [
         Materiel(
           id: '1',
           nom: 'Ciment CPJ45',
+          chantierId: chantierId, // ✅ Associer au chantier
           quantite: 50,
           unite: 'Sacs',
           prixUnitaire: 5000,
@@ -400,6 +437,7 @@ class DataStorage {
         Materiel(
           id: '2',
           nom: 'Sable 0/4',
+          chantierId: chantierId, // ✅ Associer au chantier
           quantite: 10,
           unite: 'm3',
           prixUnitaire: 12000,
@@ -408,6 +446,7 @@ class DataStorage {
         Materiel(
           id: '3',
           nom: 'Gravier 15/25',
+          chantierId: chantierId, // ✅ Associer au chantier
           quantite: 15,
           unite: 'm3',
           prixUnitaire: 15000,
@@ -416,7 +455,7 @@ class DataStorage {
       ];
     }
 
-    return stocks;
+    return filteredStocks;
   }
 
   static Future<void> saveDepenses(

@@ -52,7 +52,7 @@ class _AdminChatHubState extends State<AdminChatHub> {
   Widget _buildChatScreen() {
     return PopScope(
       canPop: false,
-      onPopInvoked: (bool didPop) {
+      onPopInvokedWithResult: (bool didPop, dynamic result) {
         if (!didPop) {
           // L'utilisateur tente de quitter la page
           setState(() {

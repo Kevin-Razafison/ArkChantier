@@ -224,45 +224,63 @@ class _ClientSidebarState extends State<ClientSidebar>
   }) {
     bool isSelected = widget.currentIndex == index;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 12),
-      decoration: BoxDecoration(
-        color: isSelected
-            ? Colors.white.withValues(alpha: 0.15)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
-        border: isSelected
-            ? Border.all(color: Colors.blue.withValues(alpha: 0.3), width: 1)
-            : null,
-      ),
-      child: ListTile(
-        leading: Icon(
-          icon,
-          color: isSelected ? Colors.blue : color,
-          size: isSelected ? 26 : 24,
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: isSelected ? Colors.white : color,
-            fontSize: isSelected ? 14.5 : 14,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+    return Builder(
+      builder: (context) {
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 12),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? Colors.white.withValues(alpha: 0.15)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: isSelected
+                ? Border.all(
+                    color: Colors.blue.withValues(alpha: 0.3),
+                    width: 1,
+                  )
+                : null,
           ),
-        ),
-        trailing: isSelected
-            ? Container(
-                width: 4,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: Colors.blue,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              )
-            : null,
-        onTap: () => widget.onDestinationSelected(index),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
+          child: ListTile(
+            leading: Icon(
+              icon,
+              color: isSelected ? Colors.blue : color,
+              size: isSelected ? 26 : 24,
+            ),
+            title: Text(
+              title,
+              style: TextStyle(
+                color: isSelected ? Colors.white : color,
+                fontSize: isSelected ? 14.5 : 14,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+            trailing: isSelected
+                ? Container(
+                    width: 4,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: Colors.blue,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  )
+                : null,
+            onTap: () {
+              // ✅ FIX: Ne rien faire si déjà sélectionné
+              if (widget.currentIndex == index) {
+                return;
+              }
+
+              // ✅ FIX: Appeler directement le callback
+              // Le shell s'occupera de fermer le drawer
+              widget.onDestinationSelected(index);
+            },
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      },
     );
   }
 

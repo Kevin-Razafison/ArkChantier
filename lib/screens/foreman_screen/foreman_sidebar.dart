@@ -145,10 +145,18 @@ class ForemanSidebar extends StatelessWidget {
     int index, {
     Color color = Colors.white70,
   }) {
-    return ListTile(
-      leading: Icon(icon, color: color),
-      title: Text(title, style: TextStyle(color: color, fontSize: 14)),
-      onTap: () => onDestinationSelected(index),
+    return Builder(
+      builder: (context) {
+        return ListTile(
+          leading: Icon(icon, color: color),
+          title: Text(title, style: TextStyle(color: color, fontSize: 14)),
+          onTap: () {
+            // ✅ FIX: Appeler directement le callback
+            // Le shell s'occupera de fermer le drawer
+            onDestinationSelected(index);
+          },
+        );
+      },
     );
   }
 }

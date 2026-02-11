@@ -129,103 +129,136 @@ class _ForemanStockViewState extends State<ForemanStockView> {
     );
   }
 
-  // ✅ FIX: Dialog sans overflow
+  // ✅ FIX: Dialog sans overflow + chargement + fermeture auto
   void _showAddMaterialDialog(bool isDark) {
     final nomController = TextEditingController();
     final uniteController = TextEditingController();
     final quantiteController = TextEditingController();
+    bool isLoading = false; // ✅ Indicateur de chargement
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1A334D) : Colors.white,
-        title: Text(
-          "Ajouter un matériau",
-          style: TextStyle(
-            color: isDark ? Colors.white : const Color(0xFF1A334D),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1A334D) : Colors.white,
+          title: Text(
+            "Ajouter un matériau",
+            style: TextStyle(
+              color: isDark ? Colors.white : const Color(0xFF1A334D),
+            ),
           ),
-        ),
-        content: SingleChildScrollView(
-          // ✅ Important pour éviter overflow
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nomController,
-                style: TextStyle(color: isDark ? Colors.white : Colors.black),
-                decoration: const InputDecoration(
-                  labelText: "Nom (ex: Acier 12)",
-                  labelStyle: TextStyle(color: Colors.orange),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: quantiteController,
-                keyboardType: TextInputType.number,
-                style: TextStyle(color: isDark ? Colors.white : Colors.black),
-                decoration: const InputDecoration(
-                  labelText: "Quantité initiale",
-                  labelStyle: TextStyle(color: Colors.orange),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: uniteController,
-                style: TextStyle(color: isDark ? Colors.white : Colors.black),
-                decoration: const InputDecoration(
-                  labelText: "Unité (ex: kg, sacs, m3)",
-                  labelStyle: TextStyle(color: Colors.orange),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Annuler"),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            onPressed: () async {
-              // ✅ Validation
-              if (nomController.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Le nom est obligatoire'),
-                    backgroundColor: Colors.red,
+          content: SingleChildScrollView(
+            // ✅ Important pour éviter overflow
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nomController,
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                  decoration: const InputDecoration(
+                    labelText: "Nom (ex: Acier 12)",
+                    labelStyle: TextStyle(color: Colors.orange),
                   ),
-                );
-                return;
-              }
-
-              final nouveau = Materiel(
-                id: DateTime.now().millisecondsSinceEpoch.toString(),
-                nom: nomController.text.trim(),
-                quantite: int.tryParse(quantiteController.text) ?? 0,
-                unite: uniteController.text.trim().isEmpty
-                    ? "unité"
-                    : uniteController.text.trim(),
-                prixUnitaire: 0,
-                categorie: CategorieMateriel.consommable,
-              );
-
-              setState(() => _stocks.add(nouveau));
-              await DataStorage.saveStocks(widget.chantier.id, _stocks);
-
-              if (!context.mounted) return;
-              Navigator.pop(context);
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text("${nouveau.nom} ajouté"),
-                  backgroundColor: Colors.green,
+                  enabled: !isLoading, // ✅ Désactiver pendant le chargement
                 ),
-              );
-            },
-            child: const Text("Ajouter", style: TextStyle(color: Colors.white)),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: quantiteController,
+                  keyboardType: TextInputType.number,
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                  decoration: const InputDecoration(
+                    labelText: "Quantité initiale",
+                    labelStyle: TextStyle(color: Colors.orange),
+                  ),
+                  enabled: !isLoading, // ✅ Désactiver pendant le chargement
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: uniteController,
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                  decoration: const InputDecoration(
+                    labelText: "Unité (ex: kg, sacs, m3)",
+                    labelStyle: TextStyle(color: Colors.orange),
+                  ),
+                  enabled: !isLoading, // ✅ Désactiver pendant le chargement
+                ),
+              ],
+            ),
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: isLoading
+                  ? null
+                  : () => Navigator.pop(
+                      context,
+                    ), // ✅ Désactiver pendant le chargement
+              child: const Text("Annuler"),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+              onPressed: isLoading
+                  ? null
+                  : () async {
+                      // ✅ Désactiver pendant le chargement
+                      // ✅ Validation
+                      if (nomController.text.trim().isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Le nom est obligatoire'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                        return;
+                      }
+
+                      // ✅ Activer le chargement
+                      setDialogState(() => isLoading = true);
+
+                      final nouveau = Materiel(
+                        id: DateTime.now().millisecondsSinceEpoch.toString(),
+                        nom: nomController.text.trim(),
+                        chantierId:
+                            widget.chantier.id, // ✅ Associer au chantier
+                        quantite: int.tryParse(quantiteController.text) ?? 0,
+                        unite: uniteController.text.trim().isEmpty
+                            ? "unité"
+                            : uniteController.text.trim(),
+                        prixUnitaire: 0,
+                        categorie: CategorieMateriel.consommable,
+                      );
+
+                      setState(() => _stocks.add(nouveau));
+                      await DataStorage.saveStocks(widget.chantier.id, _stocks);
+
+                      if (!context.mounted) return;
+                      Navigator.pop(
+                        context,
+                      ); // ✅ Fermer automatiquement après succès
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text("${nouveau.nom} ajouté"),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    },
+              child:
+                  isLoading // ✅ Afficher le chargement
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Text(
+                      "Ajouter",
+                      style: TextStyle(color: Colors.white),
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }

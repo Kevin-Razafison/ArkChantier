@@ -347,40 +347,46 @@ class _SidebarDrawerState extends State<SidebarDrawer>
               )
             : null,
         onTap: () {
+          // ✅ FIX: Déjà sélectionné, ne rien faire
           if (!isSpecial && widget.currentIndex == index) {
-            if (isMobile) Navigator.pop(context);
             return;
           }
 
-          if (isMobile) {
-            Navigator.pop(context);
-          }
+          if (isSpecial) {
+            // Pour les écrans spéciaux, fermer le drawer d'abord si mobile
+            if (isMobile && mounted) {
+              Navigator.of(context).pop();
+            }
 
-          Future.delayed(const Duration(milliseconds: 100), () {
-            if (isSpecial) {
-              if (!context.mounted) return;
+            // Puis naviguer vers l'écran spécial
+            Future.delayed(Duration(milliseconds: isMobile ? 250 : 0), () {
+              if (!mounted) return;
 
               if (index == -1) {
+                if (!context.mounted) return;
                 Navigator.push(
-                  context,
+                  widget.parentContext,
                   MaterialPageRoute(
                     builder: (context) =>
                         ProjectTeamScreen(projet: widget.currentProject),
                   ),
                 );
               } else if (index == -2) {
+                if (!context.mounted) return;
                 Navigator.push(
-                  context,
+                  widget.parentContext,
                   MaterialPageRoute(
                     builder: (context) =>
                         UserManagementScreen(projet: widget.currentProject),
                   ),
                 );
               }
-            } else {
-              widget.onDestinationSelected(index);
-            }
-          });
+            });
+          } else {
+            // ✅ Pour la navigation normale, appeler directement le callback
+            // Le callback dans le shell s'occupera de fermer le drawer
+            widget.onDestinationSelected(index);
+          }
         },
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),

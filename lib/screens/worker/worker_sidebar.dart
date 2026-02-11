@@ -87,23 +87,40 @@ class WorkerSidebar extends StatelessWidget {
 
   Widget _buildItem(int index, IconData icon, String label) {
     bool isSelected = currentIndex == index;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: ListTile(
-        selected: isSelected,
-        selectedTileColor: Colors.white10,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        leading: Icon(icon, color: isSelected ? Colors.green : Colors.white70),
-        title: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? Colors.white : Colors.white70,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            fontSize: 14,
+    return Builder(
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          child: ListTile(
+            selected: isSelected,
+            selectedTileColor: Colors.white10,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            leading: Icon(
+              icon,
+              color: isSelected ? Colors.green : Colors.white70,
+            ),
+            title: Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? Colors.white : Colors.white70,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                fontSize: 14,
+              ),
+            ),
+            onTap: () {
+              if (currentIndex == index) {
+                return;
+              }
+
+              // ✅ FIX: Appeler directement le callback
+              // Le shell s'occupera de fermer le drawer
+              onDestinationSelected(index);
+            },
           ),
-        ),
-        onTap: () => onDestinationSelected(index),
-      ),
+        );
+      },
     );
   }
 }

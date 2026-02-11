@@ -69,13 +69,14 @@ class _ClientShellState extends State<ClientShell>
       ClientSettingsView(user: widget.user),
     ];
 
-    return WillPopScope(
-      onWillPop: () async {
-        if (_currentIndex != 0) {
-          _navigateToIndex(0);
-          return false;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, dynamic result) async {
+        if (!didPop) {
+          if (_currentIndex != 0) {
+            _navigateToIndex(0);
+          }
         }
-        return true;
       },
       child: Scaffold(
         key: _scaffoldKey,

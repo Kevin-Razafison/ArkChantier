@@ -11,16 +11,13 @@ class AdminCreationScript {
       'email': 'admin@ark.com',
       'password': 'Admin123!',
       'nom': 'Administrateur Principal ARK',
-      'projetNom': 'Projet Principal',
-      'chantierNom': 'Chantier Principal',
+      // Les champs 'projetNom' et 'chantierNom' ne sont plus utilisés
     },
     // Pour ajouter d'autres admins, décommentez et modifiez :
     // {
     //   'email': 'admin2@ark.com',
     //   'password': 'Admin456!',
     //   'nom': 'Second Administrateur',
-    //   'projetNom': 'Projet Secondaire',
-    //   'chantierNom': 'Chantier Secondaire',
     // },
   ];
 
@@ -37,8 +34,7 @@ class AdminCreationScript {
           email: adminConfig['email'] as String,
           password: adminConfig['password'] as String,
           nom: adminConfig['nom'] as String,
-          projetNom: adminConfig['projetNom'] as String,
-          chantierNom: adminConfig['chantierNom'] as String,
+          // projetNom et chantierNom ne sont plus nécessaires
         );
       }
 
@@ -53,7 +49,7 @@ class AdminCreationScript {
       debugPrint('🧹 Nettoyage de Firebase...');
       final firestore = FirebaseFirestore.instance;
 
-      // 2. Supprimer toutes les collections principales
+      // Supprimer toutes les collections principales
       final collections = ['users', 'admins', 'projets'];
 
       for (var collection in collections) {
@@ -80,8 +76,7 @@ class AdminCreationScript {
     required String email,
     required String password,
     required String nom,
-    required String projetNom,
-    required String chantierNom,
+    // Les paramètres projetNom et chantierNom ont été supprimés
   }) async {
     try {
       final auth = FirebaseAuth.instance;
@@ -113,13 +108,7 @@ class AdminCreationScript {
 
       final adminId = userCredential.user!.uid;
 
-      // 2. Créer un ID de projet unique
-      final projetId =
-          'projet_${DateTime.now().millisecondsSinceEpoch}_${adminId.substring(0, 8)}';
-      final chantierId =
-          'chantier_${DateTime.now().millisecondsSinceEpoch}_${adminId.substring(0, 8)}';
-
-      // 3. Créer l'entrée admin dans Firestore
+      // 2. Créer l'entrée admin dans Firestore (collection 'admins')
       await firestore.collection('admins').doc(adminId).set({
         'id': adminId,
         'email': email,
@@ -128,49 +117,15 @@ class AdminCreationScript {
         'isSuperAdmin': true,
       });
 
-      // 4. Créer le projet principal
-      await firestore.collection('projets').doc(projetId).set({
-        'id': projetId,
-        'nom': projetNom,
-        'dateCreation': FieldValue.serverTimestamp(),
-        'devise': 'MGA',
-        'adminId': adminId,
-        'chantiers': [
-          {
-            'id': chantierId,
-            'nom': chantierNom,
-            'lieu': 'Site de construction',
-            'progression': 0.0,
-            'statut': 0,
-            'budgetInitial': 0.0,
-            'depensesActuelles': 0.0,
-            'createdAt': DateTime.now().toIso8601String(), // <-- CORRECTION
-          },
-        ],
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
-      // 5. Lier le projet à l'admin
-      await firestore
-          .collection('admins')
-          .doc(adminId)
-          .collection('projets')
-          .doc(projetId)
-          .set({
-            'id': projetId,
-            'nom': projetNom,
-            'isDefault': true,
-            'linkedAt': FieldValue.serverTimestamp(),
-          });
-
-      // 6. Créer l'utilisateur dans la collection users
+      // 3. Créer l'utilisateur dans la collection 'users' (même document)
+      //    Aucun projet ou chantier n'est assigné par défaut.
       await firestore.collection('users').doc(adminId).set({
         'id': adminId,
         'nom': nom,
         'email': email,
         'role': 'chefProjet',
-        'assignedIds': [projetId],
-        'assignedProjectId': projetId, // NOUVEAU: Assignation directe
+        'assignedIds': [], // ← plus aucun ID assigné
+        'assignedProjectId': null, // ← aucun projet par défaut
         'adminId': adminId,
         'passwordHash': EncryptionService.hashPassword(password),
         'firebaseUid': adminId,
@@ -185,8 +140,8 @@ class AdminCreationScript {
 📧 Email: $email
 🔑 Mot de passe: $password
 👤 Nom: $nom
-📊 Projet: $projetNom ($projetId)
-🏗️ Chantier: $chantierNom ($chantierId)
+⚠️  Aucun projet/chantier créé par défaut.
+   Vous pourrez en créer directement depuis l'application.
       ''');
 
       // Déconnexion pour laisser l'utilisateur se connecter normalement
@@ -200,7 +155,6 @@ class AdminCreationScript {
 
   // Méthode simplifiée pour l'initialisation (ancienne méthode)
   static Future<void> createDefaultAdmin() async {
-    // Utiliser la nouvelle méthode avec la configuration
     await createAdminsFromConfig();
   }
 }
