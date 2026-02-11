@@ -28,6 +28,8 @@ class _WorkerSettingsViewState extends State<WorkerSettingsView> {
         ],
       ),
       body: ListView(
+        // ✅ Ajout padding pour éviter overflow
+        padding: const EdgeInsets.only(bottom: 20),
         children: [
           // Section Synchronisation
           _buildSectionTitle("Synchronisation", isDark),
@@ -79,6 +81,14 @@ class _WorkerSettingsViewState extends State<WorkerSettingsView> {
               "Contacter le chef de chantier",
               style: TextStyle(color: isDark ? Colors.white54 : Colors.black54),
             ),
+            onTap: () {
+              // ✅ Placeholder pour future fonctionnalité
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Contactez votre chef de chantier directement"),
+                ),
+              );
+            },
           ),
           ListTile(
             leading: const Icon(Icons.info_outline, color: Colors.grey),

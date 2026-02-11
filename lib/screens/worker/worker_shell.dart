@@ -36,29 +36,52 @@ class _WorkerShellState extends State<WorkerShell> {
       WorkerProfileView(user: widget.user),
       chantierActuel != null
           ? WorkerChantierView(chantier: chantierActuel, projet: widget.projet)
-          : const Center(child: Text("Aucun chantier assigné")),
+          : Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.construction,
+                    size: 80,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    "Aucun chantier assigné",
+                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
       WorkerSettingsView(user: widget.user),
-      // ✅ OUVRIER voit le SALON CHANTIER (Admin + Chef Chantier + Ouvriers)
       chantierActuel != null
           ? ChatScreen(
               chatRoomId: chantierActuel.id,
               chatRoomType: ChatRoomType.chantier,
               currentUser: widget.user,
             )
-          : const Center(child: Text("Chat indisponible")),
+          : Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.chat_bubble_outline,
+                    size: 80,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    "Chat indisponible",
+                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
     ];
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          _selectedIndex == 0
-              ? "Mon Profil"
-              : _selectedIndex == 1
-              ? "Mon Chantier"
-              : _selectedIndex == 2
-              ? "Paramètres"
-              : "Discussion Équipe", // ✅ Titre clair
-        ),
+        title: Text(_getTitle(_selectedIndex)),
         backgroundColor: const Color(0xFF1A334D),
         foregroundColor: Colors.white,
         automaticallyImplyLeading: true,
@@ -72,5 +95,20 @@ class _WorkerShellState extends State<WorkerShell> {
       ),
       body: IndexedStack(index: _selectedIndex, children: pages),
     );
+  }
+
+  String _getTitle(int index) {
+    switch (index) {
+      case 0:
+        return "Mon Profil";
+      case 1:
+        return "Mon Chantier";
+      case 2:
+        return "Paramètres";
+      case 3:
+        return "Discussion Équipe";
+      default:
+        return "Ouvrier";
+    }
   }
 }

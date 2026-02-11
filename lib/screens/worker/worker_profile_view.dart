@@ -76,10 +76,13 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
       }
     } catch (e) {
       debugPrint('❌ Erreur _fetchOuvrierData: $e');
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
+  // ✅ FIX: Dialog d'édition sans overflow
   Future<void> _editProfile() async {
     final nameController = TextEditingController(text: _realWorkerData!.nom);
     String? tempImagePath = _realWorkerData!.photoPath;
@@ -89,38 +92,62 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setModalState) => AlertDialog(
           title: const Text("Modifier mon profil"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              GestureDetector(
-                onTap: () async {
-                  final XFile? image = await _picker.pickImage(
-                    source: ImageSource.gallery,
-                  );
-                  if (image != null) {
-                    setModalState(() => tempImagePath = image.path);
-                  }
-                },
-                child: CircleAvatar(
-                  radius: 40,
-                  backgroundColor: Colors.grey[200],
-                  backgroundImage: tempImagePath != null
-                      ? FileImage(File(tempImagePath!))
-                      : null,
-                  child: tempImagePath == null
-                      ? const Icon(Icons.camera_alt, size: 30)
-                      : null,
+          content: SingleChildScrollView(
+            // ✅ Important pour éviter overflow
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: () async {
+                    final XFile? image = await _picker.pickImage(
+                      source: ImageSource.gallery,
+                    );
+                    if (image != null) {
+                      setModalState(() => tempImagePath = image.path);
+                    }
+                  },
+                  child: Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 50,
+                        backgroundColor: Colors.grey[200],
+                        backgroundImage: tempImagePath != null
+                            ? FileImage(File(tempImagePath!))
+                            : null,
+                        child: tempImagePath == null
+                            ? const Icon(Icons.person, size: 40)
+                            : null,
+                      ),
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            color: Colors.green,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.camera_alt,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: "Nom complet",
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: "Nom complet",
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -128,35 +155,51 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
               child: const Text("Annuler"),
             ),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
               onPressed: () async {
-                if (nameController.text.isEmpty) return;
+                // ✅ Validation
+                if (nameController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Le nom ne peut pas être vide"),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
 
-                final allWorkers = await DataStorage.loadTeam(
-                  "annuaire_global",
-                );
+                final allWorkers = await DataStorage.loadGlobalOuvriers();
                 final index = allWorkers.indexWhere(
                   (w) => w.id == widget.user.id,
                 );
 
                 if (index != -1) {
-                  allWorkers[index].nom = nameController.text;
+                  allWorkers[index].nom = nameController.text.trim();
                   allWorkers[index].photoPath = tempImagePath;
+                  await DataStorage.saveGlobalOuvriers(allWorkers);
                 }
-                await DataStorage.saveTeam("annuaire_global", allWorkers);
 
                 if (!mounted) return;
 
                 setState(() {
-                  _realWorkerData!.nom = nameController.text;
+                  _realWorkerData!.nom = nameController.text.trim();
                   _realWorkerData!.photoPath = tempImagePath;
                 });
+
                 if (!context.mounted) return;
                 Navigator.pop(dialogContext);
+
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Profil mis à jour !")),
+                  const SnackBar(
+                    content: Text("Profil mis à jour !"),
+                    backgroundColor: Colors.green,
+                  ),
                 );
               },
-              child: const Text("Enregistrer"),
+              child: const Text(
+                "Enregistrer",
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -166,7 +209,12 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.green),
+      );
+    }
+
     if (_realWorkerData == null) return _buildErrorState();
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -194,6 +242,7 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
             _buildSalaryCard(joursTravailles, totalPaie, isDark),
             const SizedBox(height: 25),
             _buildQRBadgeCard(isDark),
+            const SizedBox(height: 40), // ✅ Espace en bas
           ],
         ),
       ),
@@ -213,7 +262,7 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
             children: [
               CircleAvatar(
                 radius: 35,
-                backgroundColor: Colors.orange,
+                backgroundColor: Colors.green,
                 backgroundImage: _realWorkerData!.photoPath != null
                     ? FileImage(File(_realWorkerData!.photoPath!))
                     : null,
@@ -240,11 +289,12 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const Text(
                       "OUVRIER QUALIFIÉ",
                       style: TextStyle(
-                        color: Colors.orange,
+                        color: Colors.green,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -267,6 +317,7 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
             child: IconButton(
               icon: const Icon(Icons.edit, color: Colors.white70, size: 20),
               onPressed: _editProfile,
+              tooltip: "Modifier mon profil",
             ),
           ),
         ],
@@ -286,6 +337,12 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E293B) : Colors.white,
         borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+          ),
+        ],
       ),
       child: GridView.builder(
         shrinkWrap: true,
@@ -315,6 +372,7 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
                       ? Colors.white
                       : (isDark ? Colors.white38 : Colors.black38),
                   fontSize: 12,
+                  fontWeight: isPointed ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
             ),
@@ -330,6 +388,12 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E293B) : Colors.white,
         borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+          ),
+        ],
       ),
       child: Column(
         children: [
@@ -338,11 +402,14 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
             children: [
               const Text(
                 "Salaire journalier",
-                style: TextStyle(color: Colors.grey),
+                style: TextStyle(color: Colors.grey, fontSize: 14),
               ),
               Text(
                 "${_realWorkerData!.salaireJournalier.toInt()} Ar",
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
               ),
             ],
           ),
@@ -350,9 +417,18 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                "CUMUL DU MOIS",
-                style: TextStyle(fontWeight: FontWeight.w900),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "CUMUL DU MOIS",
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
+                  ),
+                  Text(
+                    "$jours jour(s) travaillé(s)",
+                    style: const TextStyle(color: Colors.grey, fontSize: 11),
+                  ),
+                ],
               ),
               Text(
                 "${total.toInt()} Ar",
@@ -373,12 +449,34 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF1A334D),
                 foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              onPressed: () =>
-                  PdfService.generateOuvrierReport(_realWorkerData!, "Ar"),
+              onPressed: () async {
+                try {
+                  await PdfService.generateOuvrierReport(
+                    _realWorkerData!,
+                    "Ar",
+                  );
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Fiche de paie générée"),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text("Erreur: $e"),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              },
             ),
           ),
         ],
@@ -388,35 +486,69 @@ class _WorkerProfileViewState extends State<WorkerProfileView> {
 
   Widget _buildQRBadgeCard(bool isDark) {
     return Center(
-      child: Container(
-        padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(
-          color: Colors
-              .white, // On laisse le QR sur fond blanc pour qu'il soit scannable
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: QrImageView(
-          data: _realWorkerData!.id,
-          version: QrVersions.auto,
-          size: 140,
-          eyeStyle: const QrEyeStyle(
-            eyeShape: QrEyeShape.square,
-            color: Color(0xFF1A334D),
+      child: Column(
+        children: [
+          const Text(
+            "MON BADGE QR",
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              color: Colors.blueGrey,
+            ),
           ),
-        ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 10,
+                ),
+              ],
+            ),
+            child: QrImageView(
+              data: _realWorkerData!.id,
+              version: QrVersions.auto,
+              size: 150,
+              eyeStyle: const QrEyeStyle(
+                eyeShape: QrEyeShape.square,
+                color: Color(0xFF1A334D),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            "Présentez ce code au chef pour pointer",
+            style: TextStyle(fontSize: 11, color: Colors.grey),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildErrorState() {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.warning_amber_rounded, size: 60, color: Colors.orange),
-          Text(
+          const Icon(
+            Icons.warning_amber_rounded,
+            size: 60,
+            color: Colors.orange,
+          ),
+          const SizedBox(height: 16),
+          const Text(
             "Données introuvables",
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            "Contactez votre chef de chantier",
+            style: TextStyle(color: Colors.grey),
           ),
         ],
       ),

@@ -11,7 +11,6 @@ class WorkerSidebar extends StatelessWidget {
     required this.onDestinationSelected,
   });
 
-  /// ✅ CORRECTION : Fonction de déconnexion avec dialog et utilisation de ChantierApp.logout
   Future<void> _handleLogout(BuildContext context) async {
     showDialog(
       context: context,
@@ -25,8 +24,7 @@ class WorkerSidebar extends StatelessWidget {
           ),
           ElevatedButton(
             onPressed: () async {
-              Navigator.pop(ctx); // Fermer le dialog
-              // ✅ Utiliser la méthode logout de ChantierApp
+              Navigator.pop(ctx);
               await ChantierApp.of(context).logout(context);
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -47,14 +45,32 @@ class WorkerSidebar extends StatelessWidget {
       child: Column(
         children: [
           const SizedBox(height: 60),
-          const Icon(Icons.engineering, size: 80, color: Colors.orange),
+          const Icon(Icons.engineering, size: 80, color: Colors.green),
+          const SizedBox(height: 10),
+          const Text(
+            "ESPACE OUVRIER",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.5,
+            ),
+          ),
           const SizedBox(height: 20),
-          _buildItem(0, Icons.person, "MON PROFIL"),
-          _buildItem(1, Icons.construction, "MON CHANTIER"),
-          _buildItem(2, Icons.settings, "PARAMÈTRES"),
-          _buildItem(3, Icons.chat_outlined, "DISCUSSION"),
-          const Spacer(),
-          // ✅ CORRECTION : Utiliser _handleLogout au lieu de Navigator.pushReplacementNamed
+
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                _buildItem(0, Icons.person, "MON PROFIL"),
+                _buildItem(1, Icons.construction, "MON CHANTIER"),
+                _buildItem(2, Icons.settings, "PARAMÈTRES"),
+                _buildItem(3, Icons.chat_outlined, "DISCUSSION"),
+              ],
+            ),
+          ),
+
+          const Divider(color: Colors.white24, height: 1),
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.redAccent),
             title: const Text(
@@ -77,12 +93,13 @@ class WorkerSidebar extends StatelessWidget {
         selected: isSelected,
         selectedTileColor: Colors.white10,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        leading: Icon(icon, color: isSelected ? Colors.orange : Colors.white70),
+        leading: Icon(icon, color: isSelected ? Colors.green : Colors.white70),
         title: Text(
           label,
           style: TextStyle(
             color: isSelected ? Colors.white : Colors.white70,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            fontSize: 14,
           ),
         ),
         onTap: () => onDestinationSelected(index),
