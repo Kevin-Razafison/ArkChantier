@@ -248,71 +248,117 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
                 decoration: const InputDecoration(
                   labelText: "Devise par défaut",
                 ),
-                items: ["MGA", "EUR", "USD", "CAD"]
-                    .map((d) => DropdownMenuItem(value: d, child: Text(d)))
-                    .toList(),
-                onChanged: (val) => setDialogState(() => selectedDevise = val!),
+                items: const [
+                  DropdownMenuItem(value: "MGA", child: Text("MGA (Ariary)")),
+                  DropdownMenuItem(value: "EUR", child: Text("EUR (Euro)")),
+                  DropdownMenuItem(value: "USD", child: Text("USD (Dollar)")),
+                ],
+                onChanged: (val) {
+                  setDialogState(() {
+                    selectedDevise = val!;
+                  });
+                },
               ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text("Annuler"),
+              child: const Text("ANNULER"),
             ),
             ElevatedButton(
               onPressed: () async {
-                if (nomController.text.isNotEmpty) {
-                  Navigator.pop(ctx);
+                final nom = nomController.text.trim();
+                if (nom.isEmpty) return;
 
-                  setState(() => _isLoading = true);
+                final newProjet = Projet(
+                  id: const Uuid().v4(),
+                  nom: nom,
+                  dateCreation: DateTime.now(),
+                  devise: selectedDevise,
+                  chantiers: [],
+                );
 
-                  try {
-                    final newProject = Projet(
-                      id: const Uuid().v4(),
-                      nom: nomController.text,
-                      devise: selectedDevise,
-                      dateCreation: DateTime.now(),
-                      chantiers: [],
-                    );
+                await DataStorage.saveSingleProject(newProjet);
+                await _loadProjets();
 
-                    // Sauvegarder le projet
-                    await DataStorage.saveSingleProject(newProject);
-
-                    debugPrint(
-                      "✅ Projet créé: ${newProject.nom} (${newProject.id})",
-                    );
-
-                    // Recharger la liste
-                    await _loadProjets();
-
-                    // Message de confirmation
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          "Projet '${newProject.nom}' créé avec succès !",
-                        ),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                  } catch (e) {
-                    debugPrint("❌ Erreur création projet: $e");
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text("Erreur lors de la création: $e"),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  } finally {
-                    if (mounted) {
-                      setState(() => _isLoading = false);
-                    }
-                  }
-                }
+                if (!ctx.mounted) return;
+                Navigator.pop(ctx);
               },
-              child: const Text("Créer"),
+              child: const Text("CRÉER"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Nouvelle méthode pour afficher le menu latéral en drawer sur mobile
+  void _showMobileDrawer() {
+    final bool isClient = widget.user.role == UserRole.client;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E293B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            if (!isClient) ...[
+              _buildMenuButton(Icons.add_box_outlined, "Nouveau Projet", () {
+                Navigator.pop(context);
+                _showCreateProjectDialog();
+              }),
+              _buildMenuButton(Icons.folder_open, "Ouvrir un dossier", () {
+                Navigator.pop(context);
+                _importArkProject();
+              }),
+              _buildMenuButton(
+                Icons.cloud_download_outlined,
+                "Importer de l'ERP",
+                () {
+                  Navigator.pop(context);
+                },
+              ),
+            ] else ...[
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                child: Text(
+                  "ESPACE CLIENT",
+                  style: TextStyle(
+                    color: Colors.orange,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ),
+              _buildMenuButton(Icons.dashboard_customize, "Mes Chantiers", () {
+                Navigator.pop(context);
+              }),
+              _buildMenuButton(Icons.support_agent, "Contacter le Chef", () {
+                Navigator.pop(context);
+              }),
+            ],
+            const SizedBox(height: 20),
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text(
+                "v2.0.0 - Stable",
+                style: TextStyle(color: Colors.grey, fontSize: 10),
+              ),
             ),
           ],
         ),
@@ -323,9 +369,6 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
   @override
   Widget build(BuildContext context) {
     final bool isClient = widget.user.role == UserRole.client;
-
-    // Filtrage des projets : Si client, on ne montre que son projet (lié à chantierId)
-    // Sinon, on montre tout pour l'admin/chef
     final filtered = _projets.where((p) {
       final matchesSearch = p.nom.toLowerCase().contains(
         _searchQuery.toLowerCase(),
@@ -337,115 +380,183 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
       return matchesSearch;
     }).toList();
 
+    // Détection de la taille de l'écran
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 800; // Seuil pour mobile
+
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
-      body: Row(
-        children: [
-          // BARRE LATÉRALE GAUCHE (Actions Filtrées)
-          Container(
-            width: 280,
-            color: const Color(0xFF1E293B),
-            child: Column(
-              children: [
-                Image.asset(
-                  'assets/images/logo.png',
-                  height: 150,
-                  errorBuilder: (ctx, err, stack) => const Icon(
-                    Icons.architecture,
-                    color: Colors.orange,
-                    size: 90,
-                  ),
+      // AppBar pour mobile avec menu hamburger
+      appBar: isMobile
+          ? AppBar(
+              backgroundColor: const Color(0xFF1E293B),
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.menu, color: Colors.white),
+                onPressed: _showMobileDrawer,
+              ),
+              title: Image.asset(
+                'assets/images/logo.png',
+                height: 40,
+                errorBuilder: (ctx, err, stack) => const Icon(
+                  Icons.architecture,
+                  color: Colors.orange,
+                  size: 30,
                 ),
+              ),
+              centerTitle: true,
+            )
+          : null,
+      body: isMobile
+          ? _buildMobileLayout(filtered, isClient)
+          : _buildDesktopLayout(filtered, isClient),
+    );
+  }
 
-                if (!isClient) ...[
-                  _buildMenuButton(
-                    Icons.add_box_outlined,
-                    "Nouveau Projet",
-                    _showCreateProjectDialog,
-                  ),
-                  _buildMenuButton(
-                    Icons.folder_open,
-                    "Ouvrir un dossier",
-                    _importArkProject,
-                  ),
-                  _buildMenuButton(
-                    Icons.cloud_download_outlined,
-                    "Importer de l'ERP",
-                    () {},
-                  ),
-                ] else ...[
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    child: Text(
-                      "ESPACE CLIENT",
-                      style: TextStyle(
-                        color: Colors.orange,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2,
-                      ),
+  // Layout pour mobile (sans sidebar)
+  Widget _buildMobileLayout(List<Projet> filtered, bool isClient) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            isClient ? "Votre Projet" : "Projets Récents",
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.w300,
+            ),
+          ),
+          const SizedBox(height: 20),
+          _buildSearchBar(),
+          const SizedBox(height: 16),
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : Expanded(
+                  child: filtered.isEmpty
+                      ? _buildEmptyState(isClient)
+                      : ListView.separated(
+                          itemCount: filtered.length,
+                          separatorBuilder: (_, __) =>
+                              const Divider(color: Colors.white10),
+                          itemBuilder: (ctx, i) =>
+                              _buildProjectTile(filtered[i]),
+                        ),
+                ),
+        ],
+      ),
+    );
+  }
+
+  // Layout pour desktop (avec sidebar)
+  Widget _buildDesktopLayout(List<Projet> filtered, bool isClient) {
+    return Row(
+      children: [
+        // BARRE LATÉRALE GAUCHE (Actions Filtrées)
+        Container(
+          width: 280,
+          color: const Color(0xFF1E293B),
+          child: Column(
+            children: [
+              Image.asset(
+                'assets/images/logo.png',
+                height: 150,
+                errorBuilder: (ctx, err, stack) => const Icon(
+                  Icons.architecture,
+                  color: Colors.orange,
+                  size: 90,
+                ),
+              ),
+
+              if (!isClient) ...[
+                _buildMenuButton(
+                  Icons.add_box_outlined,
+                  "Nouveau Projet",
+                  _showCreateProjectDialog,
+                ),
+                _buildMenuButton(
+                  Icons.folder_open,
+                  "Ouvrir un dossier",
+                  _importArkProject,
+                ),
+                _buildMenuButton(
+                  Icons.cloud_download_outlined,
+                  "Importer de l'ERP",
+                  () {},
+                ),
+              ] else ...[
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Text(
+                    "ESPACE CLIENT",
+                    style: TextStyle(
+                      color: Colors.orange,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
                     ),
                   ),
-                  _buildMenuButton(
-                    Icons.dashboard_customize,
-                    "Mes Chantiers",
-                    () {},
-                  ),
-                  _buildMenuButton(
-                    Icons.support_agent,
-                    "Contacter le Chef",
-                    () {},
-                  ),
-                ],
+                ),
+                _buildMenuButton(
+                  Icons.dashboard_customize,
+                  "Mes Chantiers",
+                  () {},
+                ),
+                _buildMenuButton(
+                  Icons.support_agent,
+                  "Contacter le Chef",
+                  () {},
+                ),
+              ],
 
-                const Spacer(),
-                const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text(
-                    "v2.0.0 - Stable",
-                    style: TextStyle(color: Colors.grey, fontSize: 10),
+              const Spacer(),
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text(
+                  "v2.0.0 - Stable",
+                  style: TextStyle(color: Colors.grey, fontSize: 10),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // ZONE DROITE (Liste des projets)
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(40.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isClient ? "Votre Projet" : "Projets Récents",
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 32,
+                    fontWeight: FontWeight.w300,
                   ),
                 ),
+                const SizedBox(height: 30),
+                _buildSearchBar(),
+                const SizedBox(height: 20),
+                _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : Expanded(
+                        child: filtered.isEmpty
+                            ? _buildEmptyState(isClient)
+                            : ListView.separated(
+                                itemCount: filtered.length,
+                                separatorBuilder: (_, _) =>
+                                    const Divider(color: Colors.white10),
+                                itemBuilder: (ctx, i) =>
+                                    _buildProjectTile(filtered[i]),
+                              ),
+                      ),
               ],
             ),
           ),
-
-          // ZONE DROITE (Liste des projets)
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(40.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    isClient ? "Votre Projet" : "Projets Récents",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 32,
-                      fontWeight: FontWeight.w300,
-                    ),
-                  ),
-                  const SizedBox(height: 30),
-                  _buildSearchBar(),
-                  const SizedBox(height: 20),
-                  _isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : Expanded(
-                          child: filtered.isEmpty
-                              ? _buildEmptyState(isClient)
-                              : ListView.separated(
-                                  itemCount: filtered.length,
-                                  separatorBuilder: (_, _) =>
-                                      const Divider(color: Colors.white10),
-                                  itemBuilder: (ctx, i) =>
-                                      _buildProjectTile(filtered[i]),
-                                ),
-                        ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -469,6 +580,8 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
 
   Widget _buildProjectTile(Projet p) {
     final bool isClient = widget.user.role == UserRole.client;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 800;
 
     return ListTile(
       onTap: () {
@@ -487,55 +600,101 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
         );
       },
       leading: Container(
-        padding: const EdgeInsets.all(8),
+        padding: EdgeInsets.all(isMobile ? 6 : 8),
         decoration: BoxDecoration(
           color: Colors.orange.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
           p.devise,
-          style: const TextStyle(
+          style: TextStyle(
             color: Colors.orange,
             fontWeight: FontWeight.bold,
+            fontSize: isMobile ? 12 : 14,
           ),
         ),
       ),
       title: Text(
         p.nom,
-        style: const TextStyle(
+        style: TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.bold,
+          fontSize: isMobile ? 14 : 16,
         ),
       ),
       subtitle: Text(
         "${p.chantiers.length} chantiers • Créé le ${p.dateCreation.day}/${p.dateCreation.month}",
-        style: const TextStyle(color: Colors.grey, fontSize: 12),
+        style: TextStyle(color: Colors.grey, fontSize: isMobile ? 11 : 12),
       ),
       trailing: !isClient
-          ? IntrinsicWidth(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    padding: const EdgeInsets.all(4),
-                    iconSize: 18,
-                    tooltip: "Exporter (.ark)",
-                    icon: const Icon(Icons.share, color: Colors.blueAccent),
-                    onPressed: () => _exportProject(p),
-                  ),
-                  IconButton(
-                    padding: const EdgeInsets.all(4),
-                    iconSize: 18,
-                    tooltip: "Supprimer",
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      color: Colors.white24,
+          ? isMobile
+                ? PopupMenuButton(
+                    icon: const Icon(Icons.more_vert, color: Colors.white54),
+                    color: const Color(0xFF1E293B),
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        child: Row(
+                          children: const [
+                            Icon(
+                              Icons.share,
+                              color: Colors.blueAccent,
+                              size: 18,
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              "Exporter",
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ],
+                        ),
+                        onTap: () => _exportProject(p),
+                      ),
+                      PopupMenuItem(
+                        child: Row(
+                          children: const [
+                            Icon(
+                              Icons.delete_outline,
+                              color: Colors.redAccent,
+                              size: 18,
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              "Supprimer",
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ],
+                        ),
+                        onTap: () => _confirmDeleteProject(p),
+                      ),
+                    ],
+                  )
+                : IntrinsicWidth(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          padding: const EdgeInsets.all(4),
+                          iconSize: 18,
+                          tooltip: "Exporter (.ark)",
+                          icon: const Icon(
+                            Icons.share,
+                            color: Colors.blueAccent,
+                          ),
+                          onPressed: () => _exportProject(p),
+                        ),
+                        IconButton(
+                          padding: const EdgeInsets.all(4),
+                          iconSize: 18,
+                          tooltip: "Supprimer",
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.white24,
+                          ),
+                          onPressed: () => _confirmDeleteProject(p),
+                        ),
+                      ],
                     ),
-                    onPressed: () => _confirmDeleteProject(p),
-                  ),
-                ],
-              ),
-            )
+                  )
           : const Icon(
               Icons.arrow_forward_ios,
               color: Colors.white24,
@@ -573,6 +732,7 @@ class _ProjectLauncherScreenState extends State<ProjectLauncherScreen> {
                 ? "Aucun projet n'est lié à votre compte client."
                 : "Aucun projet trouvé",
             style: const TextStyle(color: Colors.grey),
+            textAlign: TextAlign.center,
           ),
         ],
       ),

@@ -6,7 +6,7 @@
         </intent>
     </queries>
     <application
-        android:label="mon_chantier_app"
+        android:label="ARK Chantier"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -48,7 +48,7 @@
             <data android:mimeType="text/plain"/>
         </intent>
     </queries>
-    <uses-permission name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET" />
 </manifest>
