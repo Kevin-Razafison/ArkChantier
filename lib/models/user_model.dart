@@ -209,13 +209,14 @@ class UserModel {
 
   static UserModel mockAdmin({List<String> assignedIds = const []}) {
     return UserModel(
-      id: 'admin_default',
-      nom: 'Administrateur ARK',
-      email: 'admin@ark.com',
+      id: 'temp_admin',
+      nom: 'Admin Temporaire',
+      email: 'temp@ark.com',
       role: UserRole.chefProjet,
       assignedIds: assignedIds,
-      passwordHash: EncryptionService.hashPassword("admin123"),
+      passwordHash: EncryptionService.hashPassword("temp123"),
       assignedProjectId: null,
+      disabled: true, // Marquer comme désactivé
     );
   }
 

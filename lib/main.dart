@@ -15,14 +15,21 @@ import 'screens/foreman_screen/foreman_shell.dart';
 import 'screens/Client/client_shell.dart';
 import 'models/projet_model.dart';
 import 'dart:convert';
+import 'create_admin_script.dart';
+
+// main.dart - version avec vérification
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 0. Initialiser SharedPreferences
+  final prefs = await SharedPreferences.getInstance();
+  final bool adminAlreadyCreated = prefs.getBool('admin_created') ?? false;
+
   // 1. Initialiser DataStorage
   await DataStorage.initialize();
 
-  // 3. Essayer Firebase (optionnel)
+  // 2. Essayer Firebase (optionnel)
   bool firebaseInitialized = false;
 
   try {
@@ -37,6 +44,22 @@ void main() async {
 
     firebaseInitialized = true;
     debugPrint("✅ Firebase initialisé avec succès");
+
+    // 3. Créer l'admin UNIQUEMENT si ce n'est pas déjà fait
+    if (!adminAlreadyCreated) {
+      debugPrint("👤 Création de l'admin (première exécution)...");
+      try {
+        await AdminCreationScript.createAdminsFromConfig();
+
+        // Marquer comme créé
+        await prefs.setBool('admin_created', true);
+        debugPrint("✅ Admin créé et marqué comme créé");
+      } catch (e) {
+        debugPrint("❌ Erreur création admin: $e");
+      }
+    } else {
+      debugPrint("✅ Admin déjà créé précédemment");
+    }
   } catch (e) {
     debugPrint("⚠️ Firebase non disponible - Mode hors ligne: $e");
     firebaseInitialized = false;
@@ -132,6 +155,61 @@ class ChantierAppState extends State<ChantierApp> {
       });
     } else {
       _checkSyncStatus();
+    }
+  }
+
+  Future<void> runAdminCreationScript() async {
+    if (!widget.firebaseEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Firebase désactivé - Impossible de créer l\'admin'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Création Admin'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 20),
+            Text('Création de l\'admin en cours...'),
+            SizedBox(height: 10),
+            Text(
+              'Cette action va nettoyer Firebase et créer un nouvel admin.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      await AdminCreationScript.createAdminsFromConfig();
+
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Admin créé avec succès !'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Erreur: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -358,16 +436,31 @@ class ChantierAppState extends State<ChantierApp> {
 
   Future<void> _initializeAdmin() async {
     final projets = await DataStorage.loadAllProjects();
+
+    if (projets.isEmpty) {
+      setState(() {
+        currentUser = UserModel(
+          id: 'temp',
+          nom: 'Utilisateur Temporaire',
+          email: 'temp@ark.com',
+          role: UserRole.chefProjet,
+          assignedIds: [],
+          passwordHash: EncryptionService.hashPassword("temp"),
+        );
+      });
+      return;
+    }
+
     final projectIds = projets.map((p) => p.id).toList();
 
     setState(() {
       currentUser = UserModel(
-        id: '0',
+        id: 'admin_temp',
         nom: 'Admin',
-        email: 'admin@chantier.com',
+        email: 'admin@ark.com',
         role: UserRole.chefProjet,
         assignedIds: projectIds,
-        passwordHash: EncryptionService.hashPassword("1234"),
+        passwordHash: EncryptionService.hashPassword("temp123"),
       );
     });
   }

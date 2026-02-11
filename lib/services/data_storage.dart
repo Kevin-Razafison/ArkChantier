@@ -209,7 +209,9 @@ class DataStorage {
               (u) =>
                   u.firebaseUid != null &&
                   u.email != 'admin@ark.com' &&
-                  u.email != 'admin@chantier.com',
+                  u.email != 'admin@chantier.com' &&
+                  u.email != 'temp@ark.com' && // Exclure le temp
+                  u.disabled == false, // Exclure les désactivés
             )
             .toList();
 

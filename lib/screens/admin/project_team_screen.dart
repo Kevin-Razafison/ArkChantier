@@ -32,9 +32,19 @@ class _ProjectTeamScreenState extends State<ProjectTeamScreen> {
     try {
       final users = await DataStorage.loadAllUsers();
       final admin = users.firstWhere(
-        (u) => u.role == UserRole.chefProjet,
-        orElse: () => users.isNotEmpty ? users.first : UserModel.mockAdmin(),
+        (u) => u.role == UserRole.chefProjet && u.disabled == false,
+        orElse: () => users.isNotEmpty
+            ? users.first
+            : UserModel(
+                id: 'no_admin',
+                nom: 'Aucun Admin',
+                email: 'noadmin@ark.com',
+                role: UserRole.chefProjet,
+                passwordHash: '',
+                assignedIds: [],
+              ),
       );
+
       setState(() {
         _adminId = admin.firebaseUid ?? admin.id;
       });
